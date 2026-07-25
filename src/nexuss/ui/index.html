@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Nexuss Control Plane</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+
+  <header class="topbar">
+    <div class="brand" aria-label="Nexuss">
+      <div class="brand-mark" aria-hidden="true">N</div>
+      <div>
+        <div class="brand-name">NEXUSS</div>
+        <div class="brand-subtitle">Personal Cognitive Control Plane</div>
+      </div>
+    </div>
+    <div class="system-state" id="system-state">
+      <span class="state-dot" aria-hidden="true"></span>
+      <span id="system-state-label">Connecting</span>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="rail glass-panel" aria-label="Capability shortcuts">
+      <div class="section-label">CAPABILITIES</div>
+      <button class="capability active" data-prompt="Check my workspace and system status.">
+        <span class="capability-icon">◫</span>
+        <span><strong>Workspace status</strong><small>Live local read-only</small></span>
+      </button>
+      <button class="capability" data-prompt="Give me my daily briefing.">
+        <span class="capability-icon">◇</span>
+        <span><strong>Daily briefing</strong><small>Simulated P1 sources</small></span>
+      </button>
+      <button class="capability" data-prompt="Check ATS intelligence.">
+        <span class="capability-icon">⌁</span>
+        <span><strong>ATS intelligence</strong><small>Protected simulation</small></span>
+      </button>
+
+      <div class="security-card">
+        <div class="section-label">CURRENT BOUNDARY</div>
+        <p>Read-only local metadata. No file contents, credentials, trading, or device changes.</p>
+      </div>
+    </aside>
+
+    <section class="conversation glass-panel" aria-label="Nexuss conversation">
+      <div class="conversation-header">
+        <div>
+          <div class="eyebrow">NEXUSS INTERFACE</div>
+          <h1>What should we do?</h1>
+        </div>
+        <span class="mode-pill">P2 · Local read-only</span>
+      </div>
+
+      <div class="timeline" id="timeline" aria-live="polite">
+        <article class="message assistant-message">
+          <div class="avatar">N</div>
+          <div class="message-content">
+            <div class="message-meta">Nexuss</div>
+            <p>I am online. Ask me to check this workspace, inspect system status, or run a simulated P1 capability.</p>
+          </div>
+        </article>
+      </div>
+
+      <div class="suggestions" aria-label="Suggested prompts">
+        <button data-prompt="Check my workspace and system status.">Inspect this workspace</button>
+        <button data-prompt="Give me my daily briefing.">Run daily briefing</button>
+        <button data-prompt="Check system health.">Check Nexuss health</button>
+      </div>
+
+      <form class="composer" id="command-form">
+        <button type="button" class="voice-button" id="voice-button" aria-label="Start voice input" title="Start voice input">
+          <span class="microphone" aria-hidden="true"></span>
+        </button>
+        <textarea id="command-input" rows="1" maxlength="10000" placeholder="Type or speak an instruction…" aria-label="Instruction"></textarea>
+        <button type="submit" class="send-button" id="send-button">
+          <span>Execute</span>
+          <span aria-hidden="true">↗</span>
+        </button>
+      </form>
+      <div class="composer-note" id="composer-note">Voice uses your browser’s speech-recognition capability and sends only the final transcript.</div>
+    </section>
+
+    <aside class="evidence glass-panel" aria-label="Execution evidence">
+      <div class="evidence-header">
+        <div>
+          <div class="section-label">ACTION RECEIPT</div>
+          <h2 id="receipt-state">No task yet</h2>
+        </div>
+        <div class="verification-badge neutral" id="verification-badge">UNVERIFIED</div>
+      </div>
+
+      <div class="metric-grid">
+        <div class="metric"><span>Intent</span><strong id="metric-intent">—</strong></div>
+        <div class="metric"><span>Confidence</span><strong id="metric-confidence">—</strong></div>
+        <div class="metric"><span>Plan steps</span><strong id="metric-steps">—</strong></div>
+        <div class="metric"><span>Task state</span><strong id="metric-state">—</strong></div>
+      </div>
+
+      <section class="evidence-section">
+        <div class="section-title-row">
+          <h3>Plan and policy</h3>
+          <span id="policy-summary">Waiting</span>
+        </div>
+        <div id="plan-list" class="detail-list empty-state">No execution plan available.</div>
+      </section>
+
+      <section class="evidence-section">
+        <div class="section-title-row">
+          <h3>Verified evidence</h3>
+          <span id="evidence-summary">0 records</span>
+        </div>
+        <div id="evidence-list" class="detail-list empty-state">Evidence will appear after execution.</div>
+      </section>
+
+      <section class="receipt-footer">
+        <span>Receipt ID</span>
+        <code id="receipt-id">—</code>
+      </section>
+    </aside>
+  </main>
+
+  <footer>
+    <span>CONFIDENTIAL · NEXUSS AI · kexyz254peter</span>
+    <span id="session-label">Session initializing</span>
+  </footer>
+</body>
+</html>

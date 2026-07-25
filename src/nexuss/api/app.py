@@ -1,9 +1,12 @@
-"""FastAPI surface for the Nexuss P1 Core Simulator."""
+"""FastAPI surface for the Nexuss P2 UI and read-only capability slice."""
 
+from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import FastAPI, Header, HTTPException, status
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from nexuss.core.service import CoreSimulatorService, InvalidSessionError, TaskNotFoundError
 from nexuss.domain.models import (
@@ -14,18 +17,33 @@ from nexuss.domain.models import (
     TaskView,
 )
 
-app = FastAPI(title="Nexuss Core API", version="0.1.0")
+_UI_DIRECTORY = Path(__file__).resolve().parents[1] / "ui"
+
+app = FastAPI(title="Nexuss Core API", version="0.2.0")
+app.mount("/assets", StaticFiles(directory=_UI_DIRECTORY), name="nexuss-ui-assets")
 service = CoreSimulatorService()
+
+
+@app.get("/", include_in_schema=False)
+def ui_index() -> FileResponse:
+    return FileResponse(
+        _UI_DIRECTORY / "index.html",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.get("/health/live")
 def health_live() -> dict[str, str]:
-    return {"status": "alive"}
+    return {
+        "status": "alive",
+        "service": "nexuss-core-api",
+        "version": "0.2.0",
+    }
 
 
 @app.get("/health/ready")
 def health_ready() -> dict[str, str]:
-    return {"status": "ready", "mode": "p1_simulator"}
+    return {"status": "ready", "mode": "p2_ui_local_readonly"}
 
 
 @app.post("/v1/tasks", response_model=TaskView, status_code=status.HTTP_202_ACCEPTED)

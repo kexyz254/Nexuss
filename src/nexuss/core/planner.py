@@ -20,6 +20,9 @@ def build_plan(task_id: UUID, intent: Intent) -> TaskPlan:
         IntentKind.SYSTEM_HEALTH: [
             ("nexuss.read_health", RiskTier.LOW, ["health_snapshot"]),
         ],
+        IntentKind.LOCAL_WORKSPACE_STATUS: [
+            ("workspace.read_status", RiskTier.LOW, ["workspace_status_snapshot"]),
+        ],
         IntentKind.PREPARE_WORKSPACE: [
             ("device.workspace.prepare", RiskTier.MEDIUM, ["workspace_state"]),
         ],

@@ -1,4 +1,4 @@
-"""Deterministic intent classification for the P1 simulator."""
+"""Deterministic intent classification for the Nexuss P2 vertical slice."""
 
 from nexuss.domain.models import Intent, IntentKind
 
@@ -17,6 +17,11 @@ def classify_intent(utterance: str) -> Intent:
     ):
         kind = IntentKind.ATS_WRITE
         confidence = 0.99
+    elif any(
+        term in normalized for term in ("workspace", "repository", "repo", "computer")
+    ) and any(term in normalized for term in ("status", "check", "inspect", "system")):
+        kind = IntentKind.LOCAL_WORKSPACE_STATUS
+        confidence = 0.98
     elif "daily briefing" in normalized or normalized == "briefing":
         kind = IntentKind.DAILY_BRIEFING
         confidence = 0.99

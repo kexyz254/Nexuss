@@ -25,6 +25,7 @@ class AssuranceLevel(StrEnum):
 class IntentKind(StrEnum):
     DAILY_BRIEFING = "daily_briefing"
     SYSTEM_HEALTH = "system_health"
+    LOCAL_WORKSPACE_STATUS = "local_workspace_status"
     PREPARE_WORKSPACE = "prepare_workspace"
     PLAY_MEDIA = "play_media"
     ATS_READ = "ats_read"

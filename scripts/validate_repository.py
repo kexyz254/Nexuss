@@ -21,8 +21,15 @@ REQUIRED = [
     "contracts/schemas/capability-result.schema.json",
     "contracts/schemas/action-receipt.schema.json",
     "docs/adr/ADR-0003-p1-core-simulator.md",
+    "docs/adr/ADR-0004-ui-and-local-readonly-vertical-slice.md",
+    "docs/requirements/p2-ui-local-readonly-v0.1.md",
     "src/nexuss/api/app.py",
+    "src/nexuss/core/executor.py",
+    "src/nexuss/core/local_workspace.py",
     "src/nexuss/core/service.py",
+    "src/nexuss/ui/index.html",
+    "src/nexuss/ui/app.js",
+    "src/nexuss/ui/styles.css",
 ]
 
 FORBIDDEN_NAMES = {
@@ -59,20 +66,20 @@ def main() -> int:
         if not (ROOT / required_path).is_file():
             errors.append(f"missing required file: {required_path}")
 
-    for path in ROOT.rglob("*"):
-        if not path.is_file():
+    for candidate_path in ROOT.rglob("*"):
+        if not candidate_path.is_file():
             continue
 
-        relative_path = path.relative_to(ROOT)
+        relative_candidate = candidate_path.relative_to(ROOT)
 
-        if any(part in IGNORED_DIRECTORIES for part in relative_path.parts):
+        if any(part in IGNORED_DIRECTORIES for part in relative_candidate.parts):
             continue
 
-        if path.name in FORBIDDEN_NAMES:
-            errors.append(f"forbidden secret-like file: {relative_path}")
+        if candidate_path.name in FORBIDDEN_NAMES:
+            errors.append(f"forbidden secret-like file: {relative_candidate}")
 
-        if path.suffix in FORBIDDEN_SUFFIXES:
-            errors.append(f"forbidden generated file: {relative_path}")
+        if candidate_path.suffix in FORBIDDEN_SUFFIXES:
+            errors.append(f"forbidden generated file: {relative_candidate}")
 
     for schema_path in SCHEMAS:
         try:

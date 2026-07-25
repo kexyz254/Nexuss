@@ -1,13 +1,13 @@
-"""Application service coordinating the complete P1 task lifecycle."""
+"""Application service coordinating the complete Nexuss P2 task lifecycle."""
 
 from datetime import UTC, datetime
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+from nexuss.core.executor import execute_step
 from nexuss.core.intents import classify_intent
 from nexuss.core.ledger import InMemoryActionLedger
 from nexuss.core.planner import build_plan
 from nexuss.core.policy import evaluate_step
-from nexuss.core.simulator import execute_step
 from nexuss.domain.models import (
     ActionReceipt,
     CapabilityResult,
