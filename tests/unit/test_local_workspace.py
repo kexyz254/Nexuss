@@ -37,5 +37,6 @@ def test_collect_local_workspace_status_returns_bounded_metadata(
     assert result["git_clean"] is False
     assert result["git_changed_entries"] == 2
     assert result["observed_at"] == observed_at.isoformat()
+    assert result["api_mode"] == "p3_approved_actions"
     assert "environment" not in result
     assert "file_contents" not in result

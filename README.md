@@ -2,45 +2,70 @@
 
 > **CONFIDENTIAL - NEXUSS AI - kexyz254peter - Unauthorized distribution prohibited**
 
-Nexuss is a user-owned Personal Cognitive Operating System that converts natural-language intent into secure, policy-governed, cross-device action.
+Nexuss is a user-owned Personal Cognitive Operating System that converts natural-language intent into secure, policy-governed, verifiable digital action.
 
 ## Current stage
 
-Prototype Increment P2: browser control surface plus the first live, local, read-only capability.
+Prototype Increment P3: Approved Action Platform.
 
-P2 provides an end-to-end interface at `http://127.0.0.1:8100/` where a user can type or dictate an instruction, inspect the deterministic plan and policy decisions, view execution evidence, and verify the Action Receipt.
+P3 provides a premium browser control surface at `http://127.0.0.1:8100/` where a user can type or dictate an instruction, inspect the plan and policy decision, approve exact write payloads, view verified evidence, inspect append-only Action Receipt versions, and undo an eligible receipt-owned action.
 
-The first live capability, `workspace.read_status`, collects bounded local metadata only:
+### Live capabilities
 
-- operating-system and Python runtime identity;
-- current Nexuss repository, Git branch, commit, and clean/modified state;
-- available disk capacity;
-- evidence timestamp and explicit `live_local_readonly` source mode.
+- `workspace.read_status`: bounded, live, local, read-only repository and runtime metadata.
+- `workspace.create_note`: real Markdown note creation inside the Nexuss managed workspace after exact-payload approval.
+- `workspace.rollback_create_note`: receipt-bound removal of only an unchanged note created by Nexuss.
+- `assistant.respond`: deterministic identity, capability, and help responses without side effects.
 
-It does not read user file contents, expose credentials, execute arbitrary shell commands, modify the workspace, or connect to production ATS execution.
+### Simulated capabilities
 
-## Current safety boundaries
+Calendar, email, GitHub summary, and ATS intelligence remain explicitly simulated. The UI and receipts never present simulation as live data.
+
+## Approved-action security boundary
+
+P3 enforces:
+
+- explicit capability registration;
+- fail-closed policy evaluation;
+- authenticated session binding;
+- one-time, five-minute approval tokens;
+- SHA-256 binding to the exact action payload;
+- managed-directory confinement;
+- path-traversal and reserved-name rejection;
+- Markdown-only, UTF-8, 32 KiB notes;
+- atomic exclusive creation with no overwrite;
+- post-write SHA-256 verification;
+- append-only receipt versions;
+- hash-verified, receipt-owned rollback;
+- no shell execution and no arbitrary filesystem access.
+
+The default managed workspace is:
+
+```text
+~/.nexuss/workspace
+```
+
+It can be changed for a private development environment using `NEXUSS_MANAGED_WORKSPACE` before the server starts.
+
+## Current prohibitions
 
 This repository does **not** authorize:
 
 - real-money transfers;
 - autonomous trading or betting;
-- undisclosed voice impersonation;
+- production ATS modification;
+- arbitrary command execution;
+- unrestricted file access or deletion;
 - unattended social publishing;
 - credential recovery;
-- production ATS modification;
-- arbitrary command execution.
-
-## Architecture rule
-
-ATS is one protected specialist subsystem connected through a read-only contract. Nexuss remains the parent interaction, policy, orchestration, device, and data-control layer.
+- undisclosed voice impersonation.
 
 ## Run locally
 
 ```bash
 python scripts/validate_repository.py
 python -m pytest tests
-uvicorn nexuss.api.app:app --host 127.0.0.1 --port 8100
+uvicorn nexuss.api.app:app --host 127.0.0.1 --port 8100 --reload
 ```
 
 Then open:
@@ -49,18 +74,30 @@ Then open:
 http://127.0.0.1:8100/
 ```
 
-Browser speech recognition is a progressive enhancement. The transcript is shown for review before execution; text input remains available when browser voice support is unavailable.
+Recommended P3 demonstration:
 
-## Repository principles
+```text
+Create a note called Nexuss launch checklist with the tasks: verify P3, review the Action Receipt, and test undo.
+```
+
+Browser speech recognition is a progressive enhancement. The transcript is shown for review before execution, and voice never bypasses approval.
+
+## Engineering principles
 
 - contract-first interfaces;
 - zero implicit trust;
+- explicit capability manifests;
 - read-only-first integrations;
-- fail-closed consequential actions;
+- approval for consequential actions;
 - verifiable results before completion;
-- complete Action Receipts;
+- append-only Action Receipts;
+- reversible actions where technically safe;
 - reproducible builds;
 - no secrets in source control.
+
+## Prototype limitation
+
+P3 task, approval, and receipt state is process-local. Restarting Uvicorn clears that prototype state. Encrypted durable persistence and multi-process coordination are required before production deployment.
 
 ## Ownership
 

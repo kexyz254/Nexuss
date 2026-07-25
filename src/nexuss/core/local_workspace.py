@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import platform
 import shutil
-import subprocess  # nosec B404 - bounded, no-shell Git metadata inspection only
+
+# Security review: subprocess is limited to bounded, read-only Git metadata.
+import subprocess  # nosec B404
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -25,7 +27,8 @@ def _run_git(repository_root: Path, *arguments: str) -> str:
 
     command = [git_executable, "-C", str(repository_root), *arguments]
     try:
-        completed = subprocess.run(  # nosec B603 - fixed executable, no shell, allowlisted args
+        # Security review: fixed Git executable, no shell, allowlisted arguments.
+        completed = subprocess.run(  # nosec B603
             command,
             check=True,
             capture_output=True,
@@ -78,5 +81,5 @@ def collect_local_workspace_status(
         "git_changed_entries": len(changed_entries),
         "disk_total_bytes": disk.total,
         "disk_free_bytes": disk.free,
-        "api_mode": "p2_ui_local_readonly",
+        "api_mode": "p3_approved_actions",
     }

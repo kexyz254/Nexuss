@@ -7,9 +7,9 @@ def test_health_live() -> None:
     assert health_live() == {
         "status": "alive",
         "service": "nexuss-core-api",
-        "version": "0.2.0",
+        "version": "0.3.0",
     }
 
 
 def test_health_ready() -> None:
-    assert health_ready() == {"status": "ready", "mode": "p2_ui_local_readonly"}
+    assert health_ready() == {"status": "ready", "mode": "p3_approved_actions"}

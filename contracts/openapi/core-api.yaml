@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Nexuss Core API
-  version: 0.2.0
-  description: Confidential P2 UI and local read-only capability contract - kexyz254peter
+  version: 0.3.0
+  description: Confidential P3 approved-action platform contract - kexyz254peter
 paths:
   /health/live:
     get:
@@ -18,13 +18,13 @@ paths:
                 properties:
                   status: {type: string, const: alive}
                   service: {type: string, const: nexuss-core-api}
-                  version: {type: string, const: 0.2.0}
+                  version: {type: string, const: 0.3.0}
   /health/ready:
     get:
       operationId: healthReady
       responses:
         '200':
-          description: P2 interface and local read-only executor are ready
+          description: P3 UI, approval service, and controlled-action executor are ready
           content:
             application/json:
               schema:
@@ -32,7 +32,12 @@ paths:
                 required: [status, mode]
                 properties:
                   status: {type: string, const: ready}
-                  mode: {type: string, const: p2_ui_local_readonly}
+                  mode: {type: string, const: p3_approved_actions}
+  /v1/capabilities:
+    get:
+      operationId: listCapabilities
+      responses:
+        '200': {description: Explicitly registered capability manifests}
   /v1/tasks:
     post:
       operationId: createTask
@@ -52,7 +57,7 @@ paths:
             schema:
               $ref: '../schemas/task-request.schema.json'
       responses:
-        '202': {description: Task lifecycle evaluated}
+        '202': {description: Task interpreted, planned, and policy evaluated}
         '401': {description: Invalid user session}
   /v1/tasks/{task_id}:
     get:
@@ -65,6 +70,60 @@ paths:
       responses:
         '200': {description: Current task state}
         '404': {description: Task not found}
+  /v1/tasks/{task_id}/approval:
+    post:
+      operationId: decideTaskApproval
+      parameters:
+        - in: path
+          name: task_id
+          required: true
+          schema: {type: string, format: uuid}
+        - in: header
+          name: X-Nexuss-Session-ID
+          required: true
+          schema: {type: string, format: uuid}
+        - in: header
+          name: X-Nexuss-Session-Authenticated
+          required: true
+          schema: {type: boolean}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/approval-decision.schema.json'
+      responses:
+        '200': {description: Approval decision applied and lifecycle advanced}
+        '401': {description: Session mismatch}
+        '404': {description: Task not found}
+        '409': {description: Approval expired, modified, consumed, or invalid}
+  /v1/tasks/{task_id}/rollback:
+    post:
+      operationId: rollbackTask
+      parameters:
+        - in: path
+          name: task_id
+          required: true
+          schema: {type: string, format: uuid}
+        - in: header
+          name: X-Nexuss-Session-ID
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [confirmation]
+              properties:
+                confirmation: {type: string, const: undo}
+      responses:
+        '200': {description: Receipt-bound rollback completed and verified}
+        '401': {description: Session mismatch}
+        '404': {description: Task not found}
+        '409': {description: Rollback unavailable or verification failed}
   /v1/tasks/{task_id}/receipt:
     get:
       operationId: getTaskReceipt
@@ -75,9 +134,20 @@ paths:
           schema: {type: string, format: uuid}
       responses:
         '200':
-          description: Immutable Action Receipt
+          description: Latest immutable Action Receipt snapshot
           content:
             application/json:
               schema:
                 $ref: '../schemas/action-receipt.schema.json'
         '404': {description: Receipt not found}
+  /v1/tasks/{task_id}/receipts:
+    get:
+      operationId: getTaskReceiptHistory
+      parameters:
+        - in: path
+          name: task_id
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200': {description: Append-only receipt history ordered by receipt version}
+        '404': {description: Receipt history not found}

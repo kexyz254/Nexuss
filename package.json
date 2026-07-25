@@ -1,11 +1,11 @@
 {
   "name": "nexuss-ai-os",
-  "version": "0.0.1",
+  "version": "0.3.0",
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
     "validate": "python scripts/validate_repository.py",
     "test": "python -m pytest tests",
-    "lint": "ruff check . && mypy services libs scripts"
+    "lint": "ruff check . && mypy src services libs scripts"
   }
 }
