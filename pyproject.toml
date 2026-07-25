@@ -29,3 +29,6 @@ target-version = "py312"
 [tool.mypy]
 python_version = "3.12"
 strict = true
+
+[tool.setuptools]
+py-modules = []
