@@ -56,12 +56,12 @@ fb4a165f1587364240f3c322a32d78a397cdbab235af60edb231ea7e5c95f2cc  ./services/pol
 d1f775a9374b8385ad80e94012bc9a88c32cf56939958221324b98ace33776af  ./src/nexuss/core/executor.py
 c18a2290a842e09104b74b49aca0ec451b64c4ca5688b55a2650807b71e3c00a  ./src/nexuss/core/intents.py
 9379f226116e38f0f4bae57058cbf6d7e8bb3932783a2419d239edb0159703e4  ./src/nexuss/core/ledger.py
-6fa3098a3350b9e28d5829fd8d3d7b9b602d1d24bb396f02727a0381a37d8c24  ./src/nexuss/core/local_workspace.py
+76b175877e79745f11ec452173971ed80cfabf86dd610a32c8ca7548d37592e2  ./src/nexuss/core/local_workspace.py
 82a0d5a9ef935699d8b7357db9aba849a221a65ddd08dd1f52f4d71355e3dca5  ./src/nexuss/core/managed_notes.py
 790aedec8d40ddadc77dfb6d9bed729d0ee106ec333c7f321b99cc63e705fa79  ./src/nexuss/core/planner.py
 077afd7d7ffde850788102a87e1df943b4a0fcc6aad1ee0ab76c523ccb3d4d87  ./src/nexuss/core/policy.py
 0352ae88a35f527986c9391d3ee3874962471231b8c1613505e1a990e0ecbda0  ./src/nexuss/core/registry.py
-7dfd866f9e973e2ffaa1405f34a58b3f8aa8443cf522414de7701ea969c7ab1e  ./src/nexuss/core/service.py
+67aea5587bdd262cb09a23766bf9ec7ea7e09600463d4622531b79b69205fac4  ./src/nexuss/core/service.py
 5b1eee3d34b3b04f079c2e72e032c3d9906ea998d410d32a594fca8afebbad2a  ./src/nexuss/core/simulator.py
 ea300b3f21a2868eb12989c86c1b1e9917fc6483ddd1200dba11c286e2cceb82  ./src/nexuss/core/state_machine.py
 446d5d9b88e2f382fa7cad59e3878baf007fd9da426f0b419e814873c2617391  ./src/nexuss/domain/__init__.py

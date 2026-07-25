@@ -369,7 +369,10 @@ class CoreSimulatorService:
             if now >= approval.expires_at:
                 validate_transition(task.state, TaskState.DENIED)
                 expired = approval.model_copy(
-                    update={"status": ApprovalStatus.EXPIRED, "approval_token": None}
+                    update={
+                        "status": ApprovalStatus.EXPIRED,
+                        "approval_token": None,  # nosec B105
+                    }
                 )
                 self._append_event(
                     task_id,
@@ -402,7 +405,10 @@ class CoreSimulatorService:
             if decision.decision is ApprovalDecisionKind.REJECT:
                 validate_transition(task.state, TaskState.DENIED)
                 rejected = approval.model_copy(
-                    update={"status": ApprovalStatus.REJECTED, "approval_token": None}
+                    update={
+                        "status": ApprovalStatus.REJECTED,
+                        "approval_token": None,  # nosec B105
+                    }
                 )
                 self._append_event(
                     task_id,
@@ -434,7 +440,10 @@ class CoreSimulatorService:
             )
             state, results = self._execute_authorized_steps(task_id, task.plan, task.events, now)
             consumed = approval.model_copy(
-                update={"status": ApprovalStatus.CONSUMED, "approval_token": None}
+                update={
+                    "status": ApprovalStatus.CONSUMED,
+                    "approval_token": None,  # nosec B105
+                }
             )
             task = task.model_copy(
                 update={
