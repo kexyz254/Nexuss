@@ -9,6 +9,7 @@ _ALLOWLIST = {
     "ats.read_health",
     "ats.read_intelligence",
     "nexuss.read_health",
+    "workspace.read_status",
     "media.prepare_playback",
 }
 
@@ -47,7 +48,7 @@ def evaluate_step(step: PlanStep) -> PolicyDecision:
             capability_id=step.capability_id,
             outcome=PolicyOutcome.ALLOW,
             reason_code="READ_ONLY_LOW_RISK",
-            explanation="The capability is read-only or simulated and low risk.",
+            explanation="The capability is explicitly read-only or simulated and low risk.",
         )
 
     return PolicyDecision(
