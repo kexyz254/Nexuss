@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import platform
 import shutil
+
 # Security review: subprocess is limited to bounded, read-only Git metadata.
 import subprocess  # nosec B404
 import sys

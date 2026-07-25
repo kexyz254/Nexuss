@@ -56,7 +56,7 @@ fb4a165f1587364240f3c322a32d78a397cdbab235af60edb231ea7e5c95f2cc  ./services/pol
 d1f775a9374b8385ad80e94012bc9a88c32cf56939958221324b98ace33776af  ./src/nexuss/core/executor.py
 c18a2290a842e09104b74b49aca0ec451b64c4ca5688b55a2650807b71e3c00a  ./src/nexuss/core/intents.py
 9379f226116e38f0f4bae57058cbf6d7e8bb3932783a2419d239edb0159703e4  ./src/nexuss/core/ledger.py
-76b175877e79745f11ec452173971ed80cfabf86dd610a32c8ca7548d37592e2  ./src/nexuss/core/local_workspace.py
+1463f26d2803f266ecd38fb9b604971d7c098ec85e797c8eb9d282f35cbcc047  ./src/nexuss/core/local_workspace.py
 82a0d5a9ef935699d8b7357db9aba849a221a65ddd08dd1f52f4d71355e3dca5  ./src/nexuss/core/managed_notes.py
 790aedec8d40ddadc77dfb6d9bed729d0ee106ec333c7f321b99cc63e705fa79  ./src/nexuss/core/planner.py
 077afd7d7ffde850788102a87e1df943b4a0fcc6aad1ee0ab76c523ccb3d4d87  ./src/nexuss/core/policy.py
