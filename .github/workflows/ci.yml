@@ -20,6 +20,6 @@ jobs:
       - run: pip install -e '.[dev]'
       - run: python scripts/validate_repository.py
       - run: ruff check .
-      - run: mypy services libs scripts
-      - run: pytest --cov=services --cov=libs --cov-report=term-missing
-      - run: bandit -q -r services libs scripts
+      - run: mypy src services libs scripts
+      - run: pytest --cov=src/nexuss --cov=services --cov=libs --cov-report=term-missing
+      - run: bandit -q -r src services libs scripts

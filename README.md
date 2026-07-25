@@ -6,7 +6,9 @@ Nexuss is a user-owned Personal Cognitive Operating System that converts natural
 
 ## Current stage
 
-Prototype Increment P0: engineering foundation only.
+Prototype Increment P1: deterministic Core Simulator.
+
+P1 proves the request-to-receipt lifecycle using explicitly simulated data.
 
 This repository does **not** yet authorize:
 - real-money transfers;
@@ -36,6 +38,9 @@ ATS is one protected specialist subsystem connected through a read-only contract
 ```bash
 python scripts/validate_repository.py
 python -m pytest tests
+
+# Run the P1 API locally after installing dev dependencies
+uvicorn nexuss.api.app:app --reload
 ```
 
 ## Ownership

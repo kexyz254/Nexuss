@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexuss.local/schemas/action-receipt.schema.json",
+  "title": "Nexuss Action Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "receipt_id",
+    "task_id",
+    "request_id",
+    "state",
+    "intent",
+    "plan_id",
+    "policy_decisions",
+    "results",
+    "created_at",
+    "verified"
+  ],
+  "properties": {
+    "receipt_id": {"type": "string", "format": "uuid"},
+    "task_id": {"type": "string", "format": "uuid"},
+    "request_id": {"type": "string", "format": "uuid"},
+    "state": {"enum": ["received", "awaiting_approval", "denied", "completed", "failed"]},
+    "intent": {"type": "object"},
+    "plan_id": {"type": "string", "format": "uuid"},
+    "policy_decisions": {"type": "array", "items": {"type": "object"}},
+    "results": {"type": "array", "items": {"type": "object"}},
+    "created_at": {"type": "string", "format": "date-time"},
+    "verified": {"type": "boolean"}
+  }
+}

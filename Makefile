@@ -8,4 +8,4 @@ test:
 
 lint:
 	ruff check .
-	mypy services libs scripts
+	mypy src services libs scripts

@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Nexuss Core API
-  version: 0.0.1
-  description: Confidential prototype contract - kexyz254peter
+  version: 0.1.0
+  description: Confidential P1 simulator contract - kexyz254peter
 paths:
   /health/live:
     get:
@@ -15,10 +15,19 @@ paths:
       operationId: healthReady
       responses:
         '200':
-          description: Required dependencies are ready
+          description: P1 simulator is ready
   /v1/tasks:
     post:
       operationId: createTask
+      parameters:
+        - in: header
+          name: X-Nexuss-Session-ID
+          required: true
+          schema: {type: string, format: uuid}
+        - in: header
+          name: X-Nexuss-Session-Authenticated
+          required: true
+          schema: {type: boolean}
       requestBody:
         required: true
         content:
@@ -26,9 +35,32 @@ paths:
             schema:
               $ref: '../schemas/task-request.schema.json'
       responses:
-        '202':
-          description: Task accepted for interpretation
-        '400':
-          description: Invalid request
-        '401':
-          description: Invalid user session
+        '202': {description: Task lifecycle evaluated}
+        '401': {description: Invalid user session}
+  /v1/tasks/{task_id}:
+    get:
+      operationId: getTask
+      parameters:
+        - in: path
+          name: task_id
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200': {description: Current task state}
+        '404': {description: Task not found}
+  /v1/tasks/{task_id}/receipt:
+    get:
+      operationId: getTaskReceipt
+      parameters:
+        - in: path
+          name: task_id
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Immutable Action Receipt
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/action-receipt.schema.json'
+        '404': {description: Receipt not found}
