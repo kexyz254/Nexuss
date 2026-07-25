@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexuss.local/schemas/capability-result.schema.json",
+  "title": "Capability Result Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["task_id", "step_id", "capability_id", "status", "observed_at", "evidence"],
+  "properties": {
+    "task_id": {"type": "string", "format": "uuid"},
+    "step_id": {"type": "string", "format": "uuid"},
+    "capability_id": {"type": "string", "pattern": "^[a-z0-9_.-]+$"},
+    "status": {"enum": ["verified", "partial", "failed", "rolled_back"]},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "evidence": {"type": "array", "items": {"type": "object"}},
+    "error": {"type": ["object", "null"]},
+    "device_signature": {"type": ["string", "null"]}
+  }
+}

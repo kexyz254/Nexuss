@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexuss.local/schemas/task-request.schema.json",
+  "title": "Nexuss Task Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["request_id", "channel", "utterance", "user_session_id", "requested_at"],
+  "properties": {
+    "request_id": {"type": "string", "format": "uuid"},
+    "channel": {"enum": ["voice", "text"]},
+    "utterance": {"type": "string", "minLength": 1, "maxLength": 10000},
+    "user_session_id": {"type": "string", "format": "uuid"},
+    "target_devices": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "requested_at": {"type": "string", "format": "date-time"},
+    "client_context": {"type": "object", "additionalProperties": true}
+  }
+}
