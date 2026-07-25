@@ -14,7 +14,7 @@ _SIMULATED_ATTRIBUTES: dict[str, dict[str, object]] = {
         "mode": "read_only_simulated",
         "market_signal": "not_real_data",
     },
-    "nexuss.read_health": {"status": "ready", "mode": "p2_ui_local_readonly"},
+    "nexuss.read_health": {"status": "ready", "mode": "p3_approved_actions"},
     "media.prepare_playback": {"status": "prepared", "source_mode": "simulated"},
 }
 

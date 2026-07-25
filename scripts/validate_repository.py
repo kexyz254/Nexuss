@@ -20,13 +20,18 @@ REQUIRED = [
     "contracts/schemas/task-request.schema.json",
     "contracts/schemas/capability-result.schema.json",
     "contracts/schemas/action-receipt.schema.json",
+    "contracts/schemas/approval-decision.schema.json",
     "docs/adr/ADR-0003-p1-core-simulator.md",
     "docs/adr/ADR-0004-ui-and-local-readonly-vertical-slice.md",
-    "docs/requirements/p2-ui-local-readonly-v0.1.md",
+    "docs/adr/ADR-0005-approved-action-platform.md",
+    "docs/requirements/p3-approved-action-platform-v0.1.md",
+    "docs/security/p3-approved-actions-threat-model.md",
     "src/nexuss/api/app.py",
     "src/nexuss/core/executor.py",
-    "src/nexuss/core/local_workspace.py",
+    "src/nexuss/core/managed_notes.py",
+    "src/nexuss/core/registry.py",
     "src/nexuss/core/service.py",
+    "src/nexuss/core/state_machine.py",
     "src/nexuss/ui/index.html",
     "src/nexuss/ui/app.js",
     "src/nexuss/ui/styles.css",
@@ -56,6 +61,7 @@ SCHEMAS = [
     "contracts/schemas/task-request.schema.json",
     "contracts/schemas/capability-result.schema.json",
     "contracts/schemas/action-receipt.schema.json",
+    "contracts/schemas/approval-decision.schema.json",
 ]
 
 
@@ -83,7 +89,12 @@ def main() -> int:
 
     for schema_path in SCHEMAS:
         try:
-            json.loads((ROOT / schema_path).read_text(encoding="utf-8"))
+            document = json.loads((ROOT / schema_path).read_text(encoding="utf-8"))
+            if document.get("additionalProperties") is not False:
+                errors.append(
+                    "schema must fail closed with additionalProperties=false: "
+                    f"{schema_path}"
+                )
         except Exception as exc:  # noqa: BLE001
             errors.append(f"invalid JSON {schema_path}: {exc}")
 

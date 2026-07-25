@@ -1,133 +1,274 @@
+<!-- Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary. -->
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <title>Nexuss Control Plane</title>
+  <meta name="theme-color" content="#07111d">
+  <title>Nexuss · Personal Cognitive Control Plane</title>
   <link rel="stylesheet" href="/assets/styles.css">
   <script src="/assets/app.js" defer></script>
 </head>
 <body>
-  <div class="ambient ambient-one"></div>
-  <div class="ambient ambient-two"></div>
+  <div class="aurora aurora-a" aria-hidden="true"></div>
+  <div class="aurora aurora-b" aria-hidden="true"></div>
+  <div class="grid-overlay" aria-hidden="true"></div>
 
   <header class="topbar">
-    <div class="brand" aria-label="Nexuss">
-      <div class="brand-mark" aria-hidden="true">N</div>
-      <div>
-        <div class="brand-name">NEXUSS</div>
-        <div class="brand-subtitle">Personal Cognitive Control Plane</div>
+    <a class="brand" href="/" aria-label="Nexuss home">
+      <span class="brand-mark" aria-hidden="true"><span>N</span></span>
+      <span class="brand-copy">
+        <strong>NEXUSS</strong>
+        <small>Personal Cognitive Control Plane</small>
+      </span>
+    </a>
+
+    <button class="command-search" id="command-search" type="button" aria-label="Focus command input">
+      <span class="search-glyph" aria-hidden="true">⌕</span>
+      <span>Ask Nexuss or run a capability</span>
+      <kbd>⌘ K</kbd>
+    </button>
+
+    <div class="topbar-actions">
+      <div class="trust-chip" title="P3 controlled-action boundary">
+        <span class="shield" aria-hidden="true">◆</span>
+        <span>Approval guard active</span>
       </div>
-    </div>
-    <div class="system-state" id="system-state">
-      <span class="state-dot" aria-hidden="true"></span>
-      <span id="system-state-label">Connecting</span>
+      <div class="system-state" id="system-state" role="status">
+        <span class="state-dot" aria-hidden="true"></span>
+        <span id="system-state-label">Connecting</span>
+      </div>
     </div>
   </header>
 
-  <main class="workspace">
-    <aside class="rail glass-panel" aria-label="Capability shortcuts">
-      <div class="section-label">CAPABILITIES</div>
-      <button class="capability active" data-prompt="Check my workspace and system status.">
-        <span class="capability-icon">◫</span>
-        <span><strong>Workspace status</strong><small>Live local read-only</small></span>
-      </button>
-      <button class="capability" data-prompt="Give me my daily briefing.">
-        <span class="capability-icon">◇</span>
-        <span><strong>Daily briefing</strong><small>Simulated P1 sources</small></span>
-      </button>
-      <button class="capability" data-prompt="Check ATS intelligence.">
-        <span class="capability-icon">⌁</span>
-        <span><strong>ATS intelligence</strong><small>Protected simulation</small></span>
-      </button>
+  <main class="shell">
+    <aside class="navigation panel" aria-label="Nexuss capabilities">
+      <div class="nav-heading">
+        <span class="section-label">CONTROL PLANE</span>
+        <span class="version-pill">P3</span>
+      </div>
 
-      <div class="security-card">
-        <div class="section-label">CURRENT BOUNDARY</div>
-        <p>Read-only local metadata. No file contents, credentials, trading, or device changes.</p>
+      <nav class="nav-list">
+        <button class="nav-item active" data-prompt="Check my workspace and system status.">
+          <span class="nav-icon">⌁</span>
+          <span><strong>Workspace intelligence</strong><small>Live · read-only</small></span>
+          <span class="nav-state live">LIVE</span>
+        </button>
+        <button class="nav-item write-action" data-prompt="Create a note called Nexuss launch checklist with the tasks: verify P3, review the Action Receipt, and test undo.">
+          <span class="nav-icon">＋</span>
+          <span><strong>Create managed note</strong><small>Real · approval required</small></span>
+          <span class="nav-state approval">R2</span>
+        </button>
+        <button class="nav-item" data-prompt="Who are you?">
+          <span class="nav-icon">N</span>
+          <span><strong>About Nexuss</strong><small>Identity and help</small></span>
+          <span class="nav-state local">R0</span>
+        </button>
+        <button class="nav-item" data-prompt="Give me my daily briefing.">
+          <span class="nav-icon">◇</span>
+          <span><strong>Daily briefing</strong><small>Clearly labelled simulation</small></span>
+          <span class="nav-state simulated">SIM</span>
+        </button>
+        <button class="nav-item" data-prompt="Check ATS intelligence.">
+          <span class="nav-icon">↗</span>
+          <span><strong>ATS intelligence</strong><small>Protected simulation</small></span>
+          <span class="nav-state simulated">SIM</span>
+        </button>
+      </nav>
+
+      <section class="boundary-card" aria-labelledby="boundary-title">
+        <div class="boundary-icon" aria-hidden="true">◈</div>
+        <div>
+          <span class="section-label" id="boundary-title">ACTIVE TRUST BOUNDARY</span>
+          <p>Real writes are confined to the Nexuss managed workspace and require exact-payload approval.</p>
+        </div>
+      </section>
+
+      <div class="nav-footer">
+        <div class="session-row">
+          <span class="session-dot"></span>
+          <span id="session-label">Session</span>
+        </div>
+        <small>Confidential · kexyz254peter</small>
       </div>
     </aside>
 
-    <section class="conversation glass-panel" aria-label="Nexuss conversation">
-      <div class="conversation-header">
+    <section class="conversation panel" aria-label="Nexuss conversation">
+      <header class="conversation-header">
         <div>
-          <div class="eyebrow">NEXUSS INTERFACE</div>
-          <h1>What should we do?</h1>
+          <span class="eyebrow">NEXUSS INTERFACE</span>
+          <h1>Turn intent into verified action.</h1>
+          <p>Every action is planned, policy-checked, approved when required, executed, and evidenced.</p>
         </div>
-        <span class="mode-pill">P2 · Local read-only</span>
-      </div>
+        <div class="mode-stack">
+          <span class="mode-pill"><span></span>P3 · Approved actions</span>
+          <span class="mode-note">Live local + controlled write</span>
+        </div>
+      </header>
 
-      <div class="timeline" id="timeline" aria-live="polite">
-        <article class="message assistant-message">
-          <div class="avatar">N</div>
-          <div class="message-content">
-            <div class="message-meta">Nexuss</div>
-            <p>I am online. Ask me to check this workspace, inspect system status, or run a simulated P1 capability.</p>
+      <div class="conversation-body">
+        <div class="timeline" id="timeline" aria-live="polite" aria-label="Conversation history">
+          <article class="message assistant-message welcome-message">
+            <div class="avatar">N</div>
+            <div class="message-content">
+              <div class="message-meta"><span>Nexuss</span><time>Now</time></div>
+              <div class="bubble">
+                <p>I am online. I can inspect this workspace, explain my capabilities, or create a real managed note after showing you the exact action for approval.</p>
+                <div class="welcome-features">
+                  <span><i class="green-dot"></i>Verified evidence</span>
+                  <span><i class="blue-dot"></i>Approval-bound writes</span>
+                  <span><i class="violet-dot"></i>Receipt-based undo</span>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="quick-actions" aria-label="Suggested instructions">
+          <button data-prompt="Create a note called Nexuss launch checklist with the tasks: verify P3, review the Action Receipt, and test undo."><span>＋</span>Create a verified note</button>
+          <button data-prompt="Check my workspace and system status."><span>⌁</span>Inspect this workspace</button>
+          <button data-prompt="What can you do?"><span>◇</span>Show capabilities</button>
+        </div>
+
+        <form class="composer" id="command-form">
+          <div class="voice-control">
+            <button type="button" class="voice-button" id="voice-button" aria-label="Start voice input" title="Start voice input">
+              <span class="microphone" aria-hidden="true"></span>
+            </button>
+            <div class="waveform" id="waveform" aria-hidden="true">
+              <i></i><i></i><i></i><i></i><i></i>
+            </div>
           </div>
-        </article>
+          <textarea id="command-input" rows="1" maxlength="10000" placeholder="Type or speak an instruction…" aria-label="Instruction"></textarea>
+          <div class="composer-actions">
+            <span class="enter-hint">↵</span>
+            <button type="submit" class="execute-button" id="send-button">
+              <span>Execute</span>
+              <span aria-hidden="true">↗</span>
+            </button>
+          </div>
+        </form>
+        <div class="composer-meta">
+          <span id="composer-note">Voice transcripts are reviewable before execution.</span>
+          <span>Shift + Enter for a new line</span>
+        </div>
       </div>
-
-      <div class="suggestions" aria-label="Suggested prompts">
-        <button data-prompt="Check my workspace and system status.">Inspect this workspace</button>
-        <button data-prompt="Give me my daily briefing.">Run daily briefing</button>
-        <button data-prompt="Check system health.">Check Nexuss health</button>
-      </div>
-
-      <form class="composer" id="command-form">
-        <button type="button" class="voice-button" id="voice-button" aria-label="Start voice input" title="Start voice input">
-          <span class="microphone" aria-hidden="true"></span>
-        </button>
-        <textarea id="command-input" rows="1" maxlength="10000" placeholder="Type or speak an instruction…" aria-label="Instruction"></textarea>
-        <button type="submit" class="send-button" id="send-button">
-          <span>Execute</span>
-          <span aria-hidden="true">↗</span>
-        </button>
-      </form>
-      <div class="composer-note" id="composer-note">Voice uses your browser’s speech-recognition capability and sends only the final transcript.</div>
     </section>
 
-    <aside class="evidence glass-panel" aria-label="Execution evidence">
-      <div class="evidence-header">
+    <aside class="inspector panel" aria-label="Action inspector">
+      <header class="inspector-header">
         <div>
-          <div class="section-label">ACTION RECEIPT</div>
-          <h2 id="receipt-state">No task yet</h2>
+          <span class="section-label">ACTION CONTROL</span>
+          <h2 id="receipt-state">Ready</h2>
         </div>
-        <div class="verification-badge neutral" id="verification-badge">UNVERIFIED</div>
+        <span class="verification-badge idle" id="verification-badge">STANDBY</span>
+      </header>
+
+      <div class="inspector-tabs" role="tablist" aria-label="Action details">
+        <button class="tab active" data-tab="lifecycle" role="tab">Lifecycle</button>
+        <button class="tab" data-tab="evidence" role="tab">Evidence</button>
+        <button class="tab" data-tab="receipt" role="tab">Receipt</button>
       </div>
 
-      <div class="metric-grid">
-        <div class="metric"><span>Intent</span><strong id="metric-intent">—</strong></div>
-        <div class="metric"><span>Confidence</span><strong id="metric-confidence">—</strong></div>
-        <div class="metric"><span>Plan steps</span><strong id="metric-steps">—</strong></div>
-        <div class="metric"><span>Task state</span><strong id="metric-state">—</strong></div>
+      <div class="tab-panel active" id="tab-lifecycle">
+        <div class="metrics">
+          <div class="metric"><span>Intent</span><strong id="metric-intent">Awaiting request</strong></div>
+          <div class="metric"><span>Confidence</span><strong id="metric-confidence">—</strong></div>
+          <div class="metric"><span>Risk</span><strong id="metric-risk">—</strong></div>
+          <div class="metric"><span>Task state</span><strong id="metric-state">Ready</strong></div>
+        </div>
+
+        <section class="inspector-section">
+          <div class="section-title-row">
+            <h3>Action timeline</h3>
+            <span id="event-summary">0 events</span>
+          </div>
+          <div class="event-list empty-state" id="event-list">The verified lifecycle will appear here.</div>
+        </section>
+
+        <section class="inspector-section">
+          <div class="section-title-row">
+            <h3>Plan and policy</h3>
+            <span id="policy-summary">No plan</span>
+          </div>
+          <div class="detail-list empty-state" id="plan-list">Nexuss has not generated a plan.</div>
+        </section>
       </div>
 
-      <section class="evidence-section">
-        <div class="section-title-row">
-          <h3>Plan and policy</h3>
-          <span id="policy-summary">Waiting</span>
-        </div>
-        <div id="plan-list" class="detail-list empty-state">No execution plan available.</div>
-      </section>
+      <div class="tab-panel" id="tab-evidence">
+        <section class="inspector-section top-section">
+          <div class="section-title-row">
+            <h3>Verified evidence</h3>
+            <span id="evidence-summary">0 records</span>
+          </div>
+          <div class="detail-list empty-state" id="evidence-list">No capability evidence is available.</div>
+        </section>
+      </div>
 
-      <section class="evidence-section">
-        <div class="section-title-row">
-          <h3>Verified evidence</h3>
-          <span id="evidence-summary">0 records</span>
+      <div class="tab-panel" id="tab-receipt">
+        <section class="receipt-card">
+          <div class="receipt-mark" aria-hidden="true">✓</div>
+          <span class="section-label">ACTION RECEIPT</span>
+          <h3 id="receipt-title">No receipt yet</h3>
+          <dl>
+            <div><dt>Receipt ID</dt><dd><code id="receipt-id">—</code></dd></div>
+            <div><dt>Version</dt><dd id="receipt-version">—</dd></div>
+            <div><dt>Verified</dt><dd id="receipt-verified">—</dd></div>
+            <div><dt>Reversible</dt><dd id="receipt-reversible">—</dd></div>
+          </dl>
+        </section>
+        <div class="receipt-actions">
+          <button type="button" class="secondary-button" id="review-approval-button" hidden>Review pending approval</button>
+          <button type="button" class="secondary-button" id="copy-path-button" hidden>Copy note path</button>
+          <button type="button" class="danger-button" id="rollback-button" hidden>Undo action</button>
         </div>
-        <div id="evidence-list" class="detail-list empty-state">Evidence will appear after execution.</div>
-      </section>
-
-      <section class="receipt-footer">
-        <span>Receipt ID</span>
-        <code id="receipt-id">—</code>
-      </section>
+      </div>
     </aside>
   </main>
 
-  <footer>
+  <div class="approval-overlay" id="approval-overlay" hidden>
+    <section class="approval-dialog" role="dialog" aria-modal="true" aria-labelledby="approval-title">
+      <header class="approval-header">
+        <div class="approval-symbol" aria-hidden="true">◆</div>
+        <div>
+          <span class="eyebrow">EXPLICIT APPROVAL REQUIRED</span>
+          <h2 id="approval-title">Review exact action</h2>
+          <p>Nexuss will execute only the payload shown below.</p>
+        </div>
+        <button type="button" class="close-button" id="approval-close" aria-label="Close approval">×</button>
+      </header>
+
+      <div class="approval-grid">
+        <div class="approval-fact"><span>Action</span><strong id="approval-action">—</strong></div>
+        <div class="approval-fact"><span>Risk</span><strong id="approval-risk">—</strong></div>
+        <div class="approval-fact"><span>Destination</span><strong id="approval-destination">—</strong></div>
+        <div class="approval-fact"><span>Reversible</span><strong id="approval-reversible">—</strong></div>
+      </div>
+
+      <div class="approval-summary" id="approval-summary">—</div>
+      <div class="preview-header">
+        <span>Exact content preview</span>
+        <code id="approval-hash">—</code>
+      </div>
+      <pre class="approval-preview" id="approval-preview"></pre>
+      <div class="approval-expiry" id="approval-expiry">Approval expires in 5 minutes.</div>
+
+      <footer class="approval-footer">
+        <button type="button" class="secondary-button" id="reject-button">Cancel action</button>
+        <button type="button" class="approve-button" id="approve-button">
+          <span class="button-shield">◆</span>
+          Approve exact action
+        </button>
+      </footer>
+    </section>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <footer class="page-footer">
     <span>CONFIDENTIAL · NEXUSS AI · kexyz254peter</span>
-    <span id="session-label">Session initializing</span>
+    <span>Intent → Policy → Approval → Execution → Verification → Receipt</span>
   </footer>
 </body>
 </html>

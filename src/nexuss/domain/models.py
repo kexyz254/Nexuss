@@ -23,9 +23,13 @@ class AssuranceLevel(StrEnum):
 
 
 class IntentKind(StrEnum):
+    ASSISTANT_IDENTITY = "assistant_identity"
+    ASSISTANT_CAPABILITIES = "assistant_capabilities"
+    ASSISTANT_HELP = "assistant_help"
     DAILY_BRIEFING = "daily_briefing"
     SYSTEM_HEALTH = "system_health"
     LOCAL_WORKSPACE_STATUS = "local_workspace_status"
+    CREATE_NOTE = "create_note"
     PREPARE_WORKSPACE = "prepare_workspace"
     PLAY_MEDIA = "play_media"
     ATS_READ = "ats_read"
@@ -36,6 +40,7 @@ class IntentKind(StrEnum):
 
 
 class RiskTier(StrEnum):
+    INFORMATIONAL = "informational"
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -50,16 +55,49 @@ class PolicyOutcome(StrEnum):
 
 class TaskState(StrEnum):
     RECEIVED = "received"
+    PLANNED = "planned"
     AWAITING_APPROVAL = "awaiting_approval"
-    DENIED = "denied"
+    APPROVED = "approved"
+    EXECUTING = "executing"
+    VERIFYING = "verifying"
     COMPLETED = "completed"
+    PARTIALLY_COMPLETED = "partially_completed"
+    DENIED = "denied"
     FAILED = "failed"
+    ROLLING_BACK = "rolling_back"
+    ROLLED_BACK = "rolled_back"
 
 
 class StepStatus(StrEnum):
     VERIFIED = "verified"
     SKIPPED = "skipped"
     FAILED = "failed"
+    ROLLED_BACK = "rolled_back"
+
+
+class ApprovalStatus(StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+    CONSUMED = "consumed"
+
+
+class ApprovalDecisionKind(StrEnum):
+    APPROVE = "approve"
+    REJECT = "reject"
+
+
+class CapabilityStatus(StrEnum):
+    ACTIVE = "active"
+    SIMULATED = "simulated"
+    PROHIBITED = "prohibited"
+
+
+class ApprovalPolicy(StrEnum):
+    NONE = "none"
+    EXPLICIT = "explicit"
+    PROHIBITED = "prohibited"
 
 
 class TaskRequest(BaseModel):
@@ -99,6 +137,8 @@ class PlanStep(BaseModel):
     capability_id: CapabilityId
     risk_tier: RiskTier
     expected_evidence: list[str] = Field(min_length=1)
+    parameters: dict[str, object] = Field(default_factory=dict)
+    reversible: bool = False
 
 
 class TaskPlan(BaseModel):
@@ -138,10 +178,70 @@ class CapabilityResult(BaseModel):
     error_code: str | None = None
 
 
+class ActionEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: UUID
+    sequence: int = Field(ge=1)
+    state: TaskState
+    event_type: str
+    occurred_at: datetime
+    detail: str
+
+
+class ApprovalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    approval_id: UUID
+    task_id: UUID
+    capability_id: CapabilityId
+    status: ApprovalStatus
+    action_title: str
+    action_summary: str
+    exact_preview: str
+    destination_label: str
+    payload_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    approval_token: str | None = Field(default=None, min_length=32, max_length=256)
+    session_id: UUID
+    expires_at: datetime
+    risk_tier: RiskTier
+    reversible: bool
+
+
+class ApprovalDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    approval_id: UUID
+    approval_token: str = Field(min_length=32, max_length=256)
+    payload_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    decision: ApprovalDecisionKind
+
+
+class RollbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirmation: str = Field(pattern=r"^undo$")
+
+
+class CapabilityManifest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    capability_id: CapabilityId
+    version: str
+    title: str
+    description: str
+    risk_tier: RiskTier
+    approval_policy: ApprovalPolicy
+    reversible: bool
+    execution_mode: str
+    status: CapabilityStatus
+
+
 class ActionReceipt(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     receipt_id: UUID
+    receipt_version: int = Field(ge=1)
     task_id: UUID
     request_id: UUID
     state: TaskState
@@ -149,8 +249,11 @@ class ActionReceipt(BaseModel):
     plan_id: UUID
     policy_decisions: list[PolicyDecision]
     results: list[CapabilityResult]
+    events: list[ActionEvent]
     created_at: datetime
+    updated_at: datetime
     verified: bool
+    reversible: bool
 
 
 class TaskView(BaseModel):
@@ -158,10 +261,13 @@ class TaskView(BaseModel):
 
     task_id: UUID
     request_id: UUID
+    user_session_id: UUID
     state: TaskState
     intent: Intent
     plan: TaskPlan
     policy_decisions: list[PolicyDecision]
     results: list[CapabilityResult]
+    events: list[ActionEvent]
+    approval: ApprovalRequest | None = None
     created_at: datetime
     updated_at: datetime

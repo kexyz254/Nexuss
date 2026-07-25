@@ -1,60 +1,85 @@
-"""Fail-closed policy evaluation for the P1 simulator."""
+"""Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
 
-from nexuss.domain.models import PlanStep, PolicyDecision, PolicyOutcome, RiskTier
+Fail-closed policy evaluation for the Nexuss P3 capability registry.
+"""
 
-_ALLOWLIST = {
-    "calendar.read_summary",
-    "email.read_summary",
-    "github.read_summary",
-    "ats.read_health",
-    "ats.read_intelligence",
-    "nexuss.read_health",
-    "workspace.read_status",
-    "media.prepare_playback",
-}
+from nexuss.core.registry import get_capability
+from nexuss.domain.models import (
+    ApprovalPolicy,
+    CapabilityStatus,
+    PlanStep,
+    PolicyDecision,
+    PolicyOutcome,
+)
 
-_REQUIRE_APPROVAL = {"device.workspace.prepare"}
-
-_DENYLIST = {
+_PROHIBITED_CAPABILITIES = {
     "ats.write_order",
     "finance.transfer",
     "social.publish",
     "nexuss.unsupported",
+    "device.workspace.prepare",
 }
 
 
 def evaluate_step(step: PlanStep) -> PolicyDecision:
-    if step.capability_id in _DENYLIST:
+    if step.capability_id in _PROHIBITED_CAPABILITIES:
         return PolicyDecision(
             step_id=step.step_id,
             capability_id=step.capability_id,
             outcome=PolicyOutcome.DENY,
-            reason_code="CAPABILITY_PROHIBITED_IN_P1",
-            explanation="The requested capability is excluded from the P1 simulator.",
+            reason_code="CAPABILITY_PROHIBITED_IN_P3",
+            explanation="This capability is outside the approved P3 execution boundary.",
         )
 
-    if step.capability_id in _REQUIRE_APPROVAL:
+    manifest = get_capability(step.capability_id)
+    if manifest is None:
+        return PolicyDecision(
+            step_id=step.step_id,
+            capability_id=step.capability_id,
+            outcome=PolicyOutcome.DENY,
+            reason_code="CAPABILITY_NOT_REGISTERED",
+            explanation="Unregistered capabilities cannot execute in Nexuss.",
+        )
+
+    if manifest.status is CapabilityStatus.PROHIBITED:
+        return PolicyDecision(
+            step_id=step.step_id,
+            capability_id=step.capability_id,
+            outcome=PolicyOutcome.DENY,
+            reason_code="CAPABILITY_REGISTRY_PROHIBITED",
+            explanation="The capability registry marks this capability as prohibited.",
+        )
+
+    if manifest.approval_policy is ApprovalPolicy.EXPLICIT:
         return PolicyDecision(
             step_id=step.step_id,
             capability_id=step.capability_id,
             outcome=PolicyOutcome.REQUIRE_APPROVAL,
-            reason_code="USER_APPROVAL_REQUIRED",
-            explanation="Workspace preparation requires explicit user approval.",
+            reason_code="EXPLICIT_USER_APPROVAL_REQUIRED",
+            explanation=(
+                "This controlled write is authorized only after the user approves the exact "
+                "payload bound to the current authenticated session."
+            ),
         )
 
-    if step.capability_id in _ALLOWLIST and step.risk_tier is RiskTier.LOW:
+    if manifest.approval_policy is ApprovalPolicy.NONE:
+        reason_code = (
+            "INFORMATIONAL_NO_SIDE_EFFECT"
+            if manifest.execution_mode == "deterministic_local"
+            else "REGISTERED_READ_ONLY_OR_SIMULATED"
+        )
         return PolicyDecision(
             step_id=step.step_id,
             capability_id=step.capability_id,
             outcome=PolicyOutcome.ALLOW,
-            reason_code="READ_ONLY_LOW_RISK",
-            explanation="The capability is explicitly read-only or simulated and low risk.",
+            reason_code=reason_code,
+            explanation="The registered capability has no approved external side effect.",
         )
 
     return PolicyDecision(
         step_id=step.step_id,
         capability_id=step.capability_id,
         outcome=PolicyOutcome.DENY,
-        reason_code="FAIL_CLOSED_UNCLASSIFIED_CAPABILITY",
-        explanation="No explicit policy authorizes this capability.",
+        reason_code="FAIL_CLOSED_POLICY_CONFIGURATION",
+        explanation="No explicit policy outcome authorizes this capability.",
     )

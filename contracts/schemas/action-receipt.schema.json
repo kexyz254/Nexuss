@@ -6,6 +6,7 @@
   "additionalProperties": false,
   "required": [
     "receipt_id",
+    "receipt_version",
     "task_id",
     "request_id",
     "state",
@@ -13,19 +14,41 @@
     "plan_id",
     "policy_decisions",
     "results",
+    "events",
     "created_at",
-    "verified"
+    "updated_at",
+    "verified",
+    "reversible"
   ],
   "properties": {
     "receipt_id": {"type": "string", "format": "uuid"},
+    "receipt_version": {"type": "integer", "minimum": 1},
     "task_id": {"type": "string", "format": "uuid"},
     "request_id": {"type": "string", "format": "uuid"},
-    "state": {"enum": ["received", "awaiting_approval", "denied", "completed", "failed"]},
+    "state": {
+      "enum": [
+        "received",
+        "planned",
+        "awaiting_approval",
+        "approved",
+        "executing",
+        "verifying",
+        "completed",
+        "partially_completed",
+        "denied",
+        "failed",
+        "rolling_back",
+        "rolled_back"
+      ]
+    },
     "intent": {"type": "object"},
     "plan_id": {"type": "string", "format": "uuid"},
     "policy_decisions": {"type": "array", "items": {"type": "object"}},
     "results": {"type": "array", "items": {"type": "object"}},
+    "events": {"type": "array", "items": {"type": "object"}},
     "created_at": {"type": "string", "format": "date-time"},
-    "verified": {"type": "boolean"}
+    "updated_at": {"type": "string", "format": "date-time"},
+    "verified": {"type": "boolean"},
+    "reversible": {"type": "boolean"}
   }
 }

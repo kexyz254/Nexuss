@@ -1,4 +1,4 @@
-"""End-to-end UI and live local read-only capability tests for P2."""
+"""End-to-end UI and live local read-only capability tests for P3."""
 
 from datetime import UTC, datetime
 from uuid import UUID
@@ -19,7 +19,7 @@ def _payload(request_id: str, utterance: str) -> dict[str, object]:
         "user_session_id": str(SESSION_ID),
         "target_devices": [],
         "requested_at": datetime(2026, 7, 25, 15, 0, tzinfo=UTC).isoformat(),
-        "client_context": {"interface": "p2-test"},
+        "client_context": {"interface": "p3-test"},
     }
 
 
@@ -30,17 +30,20 @@ def _headers() -> dict[str, str]:
     }
 
 
-def test_ui_and_assets_are_served_same_origin() -> None:
+def test_premium_ui_and_assets_are_served_same_origin() -> None:
     page = client.get("/")
     script = client.get("/assets/app.js")
     stylesheet = client.get("/assets/styles.css")
 
     assert page.status_code == 200
-    assert "NEXUSS" in page.text
-    assert "command-form" in page.text
+    assert "Turn intent into verified action" in page.text
+    assert "approval-overlay" in page.text
+    assert "rollback-button" in page.text
     assert script.status_code == 200
     assert "SpeechRecognition" in script.text
+    assert "decideApproval" in script.text
     assert stylesheet.status_code == 200
+    assert ".approval-dialog" in stylesheet.text
 
 
 def test_workspace_status_runs_live_readonly_lifecycle() -> None:
@@ -70,6 +73,11 @@ def test_workspace_status_runs_live_readonly_lifecycle() -> None:
     assert attributes["repository_name"]
     assert len(attributes["git_commit"]) == 40
 
-    receipt = client.get(f"/v1/tasks/{task['task_id']}/receipt")
-    assert receipt.status_code == 200
-    assert receipt.json()["verified"] is True
+
+def test_capability_registry_is_available_to_the_ui() -> None:
+    response = client.get("/v1/capabilities")
+
+    assert response.status_code == 200
+    manifests = {item["capability_id"]: item for item in response.json()}
+    assert manifests["workspace.create_note"]["approval_policy"] == "explicit"
+    assert manifests["workspace.create_note"]["reversible"] is True

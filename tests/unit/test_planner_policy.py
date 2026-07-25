@@ -1,4 +1,4 @@
-"""Planner and policy boundary tests."""
+"""Planner and capability-registry policy boundary tests."""
 
 from uuid import UUID
 
@@ -29,11 +29,33 @@ def test_ats_write_is_denied_before_execution() -> None:
     decision = evaluate_step(plan.steps[0])
 
     assert decision.outcome is PolicyOutcome.DENY
-    assert decision.reason_code == "CAPABILITY_PROHIBITED_IN_P1"
+    assert decision.reason_code == "CAPABILITY_PROHIBITED_IN_P3"
 
 
-def test_workspace_preparation_requires_approval() -> None:
+def test_unreleased_workspace_preparation_is_denied() -> None:
     plan = build_plan(TASK_ID, classify_intent("Prepare my workspace"))
     decision = evaluate_step(plan.steps[0])
 
+    assert decision.outcome is PolicyOutcome.DENY
+
+
+def test_create_note_requires_exact_user_approval() -> None:
+    plan = build_plan(
+        TASK_ID,
+        classify_intent("Create a note called P3 test with content validation complete"),
+    )
+    decision = evaluate_step(plan.steps[0])
+
+    assert plan.steps[0].capability_id == "workspace.create_note"
+    assert plan.steps[0].reversible is True
     assert decision.outcome is PolicyOutcome.REQUIRE_APPROVAL
+    assert decision.reason_code == "EXPLICIT_USER_APPROVAL_REQUIRED"
+
+
+def test_identity_response_is_allowed_without_side_effect() -> None:
+    plan = build_plan(TASK_ID, classify_intent("Who are you?"))
+    decision = evaluate_step(plan.steps[0])
+
+    assert plan.steps[0].capability_id == "assistant.respond"
+    assert decision.outcome is PolicyOutcome.ALLOW
+    assert decision.reason_code == "INFORMATIONAL_NO_SIDE_EFFECT"

@@ -1,4 +1,4 @@
-"""End-to-end API lifecycle tests for P1."""
+"""End-to-end API lifecycle tests retained across P1-P3."""
 
 from datetime import UTC, datetime
 from uuid import UUID
@@ -44,6 +44,7 @@ def test_daily_briefing_completes_with_verified_receipt() -> None:
     receipt = client.get(f"/v1/tasks/{body['task_id']}/receipt")
     assert receipt.status_code == 200
     assert receipt.json()["verified"] is True
+    assert receipt.json()["receipt_version"] == 1
 
 
 def test_duplicate_request_is_idempotent() -> None:
@@ -54,6 +55,7 @@ def test_duplicate_request_is_idempotent() -> None:
 
     assert first.status_code == second.status_code == 202
     assert first.json()["task_id"] == second.json()["task_id"]
+    assert first.json()["events"] == second.json()["events"]
 
 
 def test_prohibited_ats_write_is_denied_without_results() -> None:
@@ -66,13 +68,13 @@ def test_prohibited_ats_write_is_denied_without_results() -> None:
     assert response.json()["results"] == []
 
 
-def test_workspace_request_waits_for_approval() -> None:
+def test_unreleased_workspace_preparation_is_denied() -> None:
     payload = _payload("00000000-0000-0000-0000-000000000304", "Prepare my workspace")
 
     response = client.post("/v1/tasks", json=payload, headers=_headers())
 
     assert response.status_code == 202
-    assert response.json()["state"] == "awaiting_approval"
+    assert response.json()["state"] == "denied"
     assert response.json()["results"] == []
 
 
@@ -82,3 +84,17 @@ def test_unauthenticated_session_is_rejected() -> None:
     response = client.post("/v1/tasks", json=payload, headers=_headers(authenticated=False))
 
     assert response.status_code == 401
+
+
+def test_identity_question_returns_normal_verified_response() -> None:
+    payload = _payload("00000000-0000-0000-0000-000000000306", "Who are you?")
+
+    response = client.post("/v1/tasks", json=payload, headers=_headers())
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["state"] == "completed"
+    assert body["intent"]["kind"] == "assistant_identity"
+    assert "personal cognitive control plane" in body["results"][0]["evidence"][0][
+        "attributes"
+    ]["response"]

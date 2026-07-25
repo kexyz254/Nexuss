@@ -78,5 +78,5 @@ def collect_local_workspace_status(
         "git_changed_entries": len(changed_entries),
         "disk_total_bytes": disk.total,
         "disk_free_bytes": disk.free,
-        "api_mode": "p2_ui_local_readonly",
+        "api_mode": "p3_approved_actions",
     }

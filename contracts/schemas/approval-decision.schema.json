@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexuss.local/schemas/approval-decision.schema.json",
+  "title": "Nexuss Approval Decision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["approval_id", "approval_token", "payload_sha256", "decision"],
+  "properties": {
+    "approval_id": {"type": "string", "format": "uuid"},
+    "approval_token": {"type": "string", "minLength": 32, "maxLength": 256},
+    "payload_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "decision": {"enum": ["approve", "reject"]}
+  }
+}
