@@ -34,6 +34,7 @@ const elements = {
   copyPath: document.querySelector("#copy-path-button"),
   rollback: document.querySelector("#rollback-button"),
   approvalOverlay: document.querySelector("#approval-overlay"),
+  approvalDialog: document.querySelector(".approval-dialog"),
   approvalClose: document.querySelector("#approval-close"),
   approvalAction: document.querySelector("#approval-action"),
   approvalRisk: document.querySelector("#approval-risk"),
@@ -43,6 +44,11 @@ const elements = {
   approvalHash: document.querySelector("#approval-hash"),
   approvalPreview: document.querySelector("#approval-preview"),
   approvalExpiry: document.querySelector("#approval-expiry"),
+  phonePanel: document.querySelector("#phone-approval-panel"),
+  phonePairingCode: document.querySelector("#phone-pairing-code"),
+  phoneMobileUrl: document.querySelector("#phone-mobile-url"),
+  phoneApprovalStatus: document.querySelector("#phone-approval-status"),
+  copyPairing: document.querySelector("#copy-pairing-button"),
   reject: document.querySelector("#reject-button"),
   approve: document.querySelector("#approve-button"),
   toast: document.querySelector("#toast"),
@@ -58,6 +64,8 @@ let currentTask = null;
 let currentReceipt = null;
 let currentNotePath = null;
 let toastTimer = null;
+let pairingChallenge = null;
+let taskPollTimer = null;
 
 function apiHeaders() {
   return {
@@ -294,6 +302,11 @@ function summarizeTask(task) {
   if (conversational) return String(conversational);
 
   if (task.state === "completed") {
+    const deviceResult = task.results.find((result) => result.capability_id === "device.launch_notepad");
+    if (deviceResult?.evidence?.[0]) {
+      const data = deviceResult.evidence[0].attributes;
+      return `Phone approval verified. ${data.executable} was launched on trusted node ${data.node_id} as process ${data.process_id}, and the Action Receipt can close only that receipt-bound process.`;
+    }
     const noteResult = task.results.find((result) => result.capability_id === "workspace.create_note");
     if (noteResult?.evidence?.[0]) {
       const data = noteResult.evidence[0].attributes;
@@ -308,9 +321,17 @@ function summarizeTask(task) {
     return `Completed and verified ${task.results.length} capability result${task.results.length === 1 ? "" : "s"}.`;
   }
   if (task.state === "awaiting_approval") {
+    if (task.approval?.approval_channel === "phone") {
+      return "I prepared a signed trusted-device command. No command has executed. Pair your phone and approve the exact payload there.";
+    }
     return "I prepared a controlled write action. No file has been created. Review the exact payload and approve or cancel it.";
   }
-  if (task.state === "rolled_back") return "Undo completed. The receipt-owned note was removed and its absence was verified.";
+  if (task.state === "rolled_back") {
+    const deviceRollback = task.results.some((result) => result.capability_id === "device.rollback_launch_notepad");
+    return deviceRollback
+      ? "Undo completed. The receipt-bound device process was terminated and verified absent."
+      : "Undo completed. The receipt-owned note was removed and its absence was verified.";
+  }
   if (task.state === "denied") {
     const reason = task.policy_decisions.find((decision) => decision.outcome === "deny")?.reason_code;
     return `The request was denied by policy${reason ? `: ${reason}` : ""}.`;
@@ -325,7 +346,42 @@ async function fetchReceipt(taskId) {
   return response.json();
 }
 
-function showApproval(approval) {
+async function createPhonePairing() {
+  const response = await fetch("/v1/mobile/pairing", {
+    method: "POST",
+    headers: apiHeaders(),
+    body: "{}",
+  });
+  if (!response.ok) throw new Error(`Phone pairing failed (${response.status})`);
+  pairingChallenge = await response.json();
+  elements.phonePairingCode.textContent = pairingChallenge.pairing_code;
+  elements.phoneMobileUrl.href = pairingChallenge.mobile_url;
+  elements.phoneMobileUrl.textContent = pairingChallenge.mobile_url;
+  elements.phoneApprovalStatus.textContent = `Pairing code expires ${new Date(pairingChallenge.expires_at).toLocaleTimeString()}. Waiting for phone approval…`;
+}
+
+async function pollTaskUntilResolved(taskId) {
+  if (taskPollTimer) clearInterval(taskPollTimer);
+  taskPollTimer = setInterval(async () => {
+    try {
+      const response = await fetch(`/v1/tasks/${taskId}`, { cache: "no-store" });
+      if (!response.ok) return;
+      const task = await response.json();
+      if (task.state === "awaiting_approval") return;
+      clearInterval(taskPollTimer);
+      taskPollTimer = null;
+      const receipt = await fetchReceipt(task.task_id);
+      hideApproval();
+      renderTask(task, receipt);
+      addMessage("assistant", summarizeTask(task));
+      showToast(task.state === "completed" ? "Phone approval accepted. Device command verified." : `Phone decision: ${titleCase(task.state)}.`);
+    } catch (_error) {
+      // Health polling and the phone client remain the source of truth during transient errors.
+    }
+  }, 1200);
+}
+
+async function showApproval(approval) {
   elements.approvalAction.textContent = approval.action_title;
   elements.approvalRisk.textContent = titleCase(approval.risk_tier);
   elements.approvalDestination.textContent = approval.destination_label;
@@ -333,13 +389,32 @@ function showApproval(approval) {
   elements.approvalSummary.textContent = approval.action_summary;
   elements.approvalHash.textContent = approval.payload_sha256;
   elements.approvalPreview.textContent = approval.exact_preview;
-  elements.approvalExpiry.textContent = `Approval expires ${new Date(approval.expires_at).toLocaleTimeString()}. The token is single-use and session-bound.`;
+  elements.approvalExpiry.textContent = `Approval expires ${new Date(approval.expires_at).toLocaleTimeString()}. The token is single-use and payload-bound.`;
+  const phoneRequired = approval.approval_channel === "phone";
+  elements.approvalDialog.classList.toggle("phone-required", phoneRequired);
+  elements.phonePanel.hidden = !phoneRequired;
+  elements.approve.hidden = phoneRequired;
   elements.approvalOverlay.hidden = false;
-  elements.approve.focus();
+  if (phoneRequired) {
+    elements.phonePairingCode.textContent = "--------";
+    elements.phoneApprovalStatus.textContent = "Preparing a one-time phone pairing challenge…";
+    try {
+      await createPhonePairing();
+      void pollTaskUntilResolved(approval.task_id);
+    } catch (error) {
+      elements.phoneApprovalStatus.textContent = error instanceof Error ? error.message : "Phone pairing unavailable";
+    }
+    elements.reject.focus();
+  } else {
+    elements.approve.focus();
+  }
 }
 
 function hideApproval() {
   elements.approvalOverlay.hidden = true;
+  elements.approvalDialog.classList.remove("phone-required");
+  elements.phonePanel.hidden = true;
+  elements.approve.hidden = false;
   elements.input.focus();
 }
 
@@ -355,7 +430,7 @@ async function executeInstruction(utterance, channel = "text") {
     user_session_id: sessionId,
     target_devices: [],
     requested_at: new Date().toISOString(),
-    client_context: { interface: "p3-web-ui", browser_voice: channel === "voice" },
+    client_context: { interface: "p4-web-ui", browser_voice: channel === "voice" },
   };
 
   try {
@@ -369,7 +444,7 @@ async function executeInstruction(utterance, channel = "text") {
     const receipt = await fetchReceipt(task.task_id);
     renderTask(task, receipt);
     addMessage("assistant", summarizeTask(task));
-    if (task.state === "awaiting_approval" && task.approval) showApproval(task.approval);
+    if (task.state === "awaiting_approval" && task.approval) void showApproval(task.approval);
   } catch (error) {
     addMessage("assistant", error instanceof Error ? error.message : "Unexpected Nexuss error", true);
   } finally {
@@ -409,7 +484,7 @@ async function decideApproval(decisionKind) {
 
 async function rollbackCurrentTask() {
   if (!currentTask || !currentReceipt?.reversible) return;
-  if (!window.confirm("Undo this receipt-owned action? Nexuss will delete only the unchanged note created by this task.")) return;
+  if (!window.confirm("Undo this receipt-owned action? Nexuss will reverse only the verified file or process created by this task.")) return;
   setBusy(true);
   try {
     const response = await fetch(`/v1/tasks/${currentTask.task_id}/rollback`, {
@@ -422,7 +497,7 @@ async function rollbackCurrentTask() {
     const receipt = await fetchReceipt(task.task_id);
     renderTask(task, receipt);
     addMessage("assistant", summarizeTask(task));
-    showToast("Rollback verified. The managed note is absent.");
+    showToast("Rollback verified. The receipt-bound action is absent.");
   } catch (error) {
     addMessage("assistant", error instanceof Error ? error.message : "Undo failed", true);
   } finally {
@@ -481,6 +556,11 @@ elements.copyPath.addEventListener("click", async () => {
   if (!currentNotePath) return;
   await navigator.clipboard.writeText(currentNotePath);
   showToast("Managed note path copied.");
+});
+elements.copyPairing.addEventListener("click", async () => {
+  if (!pairingChallenge?.pairing_code) return;
+  await navigator.clipboard.writeText(pairingChallenge.pairing_code);
+  showToast("Phone pairing code copied.");
 });
 
 elements.approvalOverlay.addEventListener("click", (event) => {

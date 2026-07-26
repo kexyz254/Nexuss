@@ -17,3 +17,5 @@ build/
 .idea/
 secrets/
 private-data/
+
+.nexuss-runtime/

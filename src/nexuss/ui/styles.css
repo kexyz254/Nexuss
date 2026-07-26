@@ -402,3 +402,26 @@ kbd { padding: 4px 7px; border: 1px solid var(--line); border-radius: 7px; color
   .page-footer { padding: 0 14px 12px; }
   .page-footer span:last-child { display: none; }
 }
+
+/* P4 trusted phone approval */
+.nav-item.device-action { border-color: rgba(255,209,102,.16); }
+.nav-item.device-action:hover { border-color: rgba(255,209,102,.34); background: rgba(255,209,102,.035); }
+.phone-approval-panel { margin: 14px 22px 0; padding: 14px; display: grid; grid-template-columns: 42px 1fr; gap: 12px; border: 1px solid rgba(111,255,192,.2); border-radius: 13px; background: linear-gradient(145deg, rgba(111,255,192,.055), rgba(111,227,255,.025)); }
+.phone-approval-panel[hidden] { display: none; }
+.phone-approval-icon { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid rgba(111,255,192,.26); border-radius: 12px; color: var(--green); background: rgba(111,255,192,.06); }
+.phone-approval-copy > span { display: block; color: var(--green); font-size: 7px; font-weight: 800; letter-spacing: .14em; }
+.phone-approval-copy > strong { display: block; margin-top: 6px; color: var(--text); font-size: 11px; }
+.phone-approval-copy p { margin: 6px 0 9px; color: var(--muted); font-size: 8.5px; line-height: 1.5; }
+.pairing-code-row { display: flex; align-items: center; gap: 8px; }
+.pairing-code-row code { min-width: 116px; padding: 8px 10px; border: 1px solid rgba(111,227,255,.22); border-radius: 9px; background: rgba(3,11,19,.62); color: var(--cyan); font-size: 15px; font-weight: 900; letter-spacing: .22em; text-align: center; }
+.copy-pairing-button { min-height: 34px; padding: 0 11px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.025); color: var(--text-soft); font-size: 8px; cursor: pointer; }
+.phone-approval-copy a { display: inline-block; margin-top: 9px; color: var(--cyan); font-size: 8.5px; text-decoration: none; }
+.phone-approval-copy a:hover { text-decoration: underline; }
+.phone-approval-copy small { display: block; margin-top: 7px; color: var(--amber); font-size: 7.5px; }
+.approval-dialog.phone-required .approve-button { display: none; }
+.approval-dialog.phone-required .approval-footer { justify-content: flex-start; }
+
+@media (max-width: 760px) {
+  .phone-approval-panel { margin: 14px 14px 0; grid-template-columns: 34px 1fr; }
+  .phone-approval-icon { width: 34px; height: 34px; }
+}

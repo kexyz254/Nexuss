@@ -36,7 +36,7 @@ def test_premium_ui_and_assets_are_served_same_origin() -> None:
     stylesheet = client.get("/assets/styles.css")
 
     assert page.status_code == 200
-    assert "Turn intent into verified action" in page.text
+    assert "Control devices through verified intent" in page.text
     assert "approval-overlay" in page.text
     assert "rollback-button" in page.text
     assert script.status_code == 200

@@ -1,0 +1,71 @@
+/* Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary. */
+:root {
+  color-scheme: dark;
+  --bg: #050d17;
+  --panel: rgba(10, 26, 42, 0.9);
+  --line: rgba(119, 197, 230, 0.17);
+  --cyan: #65d9ff;
+  --mint: #57f1bd;
+  --amber: #ffd166;
+  --red: #ff718d;
+  --text: #eff9ff;
+  --muted: #91a9b8;
+}
+* { box-sizing: border-box; }
+html, body { min-height: 100%; margin: 0; }
+body {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: radial-gradient(circle at 50% -10%, #123554 0, var(--bg) 46%);
+  color: var(--text);
+}
+.mobile-aurora {
+  position: fixed; inset: -20% -40% auto; height: 40rem; pointer-events: none;
+  background: radial-gradient(circle, rgba(42, 207, 255, .14), transparent 58%);
+  filter: blur(30px);
+}
+.phone-shell { width: min(100%, 34rem); margin: 0 auto; min-height: 100vh; padding: max(1rem, env(safe-area-inset-top)) 1rem max(1rem, env(safe-area-inset-bottom)); position: relative; }
+.phone-header { display: flex; align-items: center; gap: .75rem; padding: .6rem .2rem 1.1rem; }
+.mobile-brand { width: 2.7rem; height: 2.7rem; border-radius: .85rem; display: grid; place-items: center; color: var(--cyan); font-weight: 900; border: 1px solid rgba(101, 217, 255, .35); background: linear-gradient(145deg, rgba(101,217,255,.18), rgba(14,35,55,.8)); box-shadow: 0 0 2rem rgba(74,199,246,.12); }
+.phone-header strong { display: block; font-size: .82rem; letter-spacing: .22em; }
+.phone-header small { display: block; color: var(--muted); font-size: .68rem; margin-top: .18rem; }
+.connection-state { margin-left: auto; display: flex; align-items: center; gap: .42rem; padding: .45rem .65rem; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: .68rem; }
+.connection-state i { width: .45rem; height: .45rem; border-radius: 50%; background: #71808c; }
+.connection-state.paired i { background: var(--mint); box-shadow: 0 0 .8rem var(--mint); }
+.pair-card, .standby, .approval-card { border: 1px solid var(--line); border-radius: 1.35rem; background: linear-gradient(160deg, rgba(14,35,56,.96), rgba(7,18,31,.96)); box-shadow: 0 1.5rem 5rem rgba(0,0,0,.34); }
+.pair-card { padding: 1.5rem; margin-top: 1rem; }
+.eyebrow { display: block; color: var(--cyan); font-size: .62rem; font-weight: 800; letter-spacing: .18em; }
+h1 { margin: .65rem 0 .65rem; font-size: clamp(1.65rem, 8vw, 2.3rem); line-height: 1.05; letter-spacing: -.04em; }
+p { color: var(--muted); line-height: 1.55; font-size: .88rem; }
+form { display: grid; gap: .7rem; margin-top: 1.4rem; }
+label { color: #c6d9e5; font-size: .72rem; font-weight: 700; }
+input { width: 100%; border: 1px solid var(--line); background: rgba(3, 12, 21, .7); color: var(--text); border-radius: .85rem; padding: .9rem 1rem; outline: none; font-size: 1rem; }
+#pairing-code { font-size: 1.45rem; letter-spacing: .28em; text-align: center; font-weight: 800; }
+input:focus { border-color: var(--cyan); box-shadow: 0 0 0 .2rem rgba(101,217,255,.1); }
+button { border: 0; border-radius: .85rem; padding: .95rem 1rem; font-weight: 850; cursor: pointer; }
+#pair-button, .approve-button { background: linear-gradient(135deg, #69dcff, #8bc7ff); color: #03121d; box-shadow: 0 .8rem 2rem rgba(101,217,255,.2); }
+.boundary-note, .approval-warning { font-size: .68rem; margin-top: 1rem; }
+.approval-stage { margin-top: 1rem; }
+.standby { min-height: 64vh; padding: 2rem 1.5rem; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.radar { width: 6.5rem; height: 6.5rem; border: 1px solid rgba(101,217,255,.24); border-radius: 50%; display: grid; place-items: center; position: relative; margin-bottom: 1.5rem; }
+.radar::before, .radar::after { content: ""; position: absolute; inset: 18%; border: 1px solid rgba(101,217,255,.18); border-radius: 50%; }
+.radar::after { inset: 36%; }
+.radar span { width: .75rem; height: .75rem; border-radius: 50%; background: var(--mint); box-shadow: 0 0 1.4rem var(--mint); }
+.radar i { position: absolute; width: 50%; height: 1px; left: 50%; top: 50%; transform-origin: left center; background: linear-gradient(90deg, var(--cyan), transparent); animation: sweep 2.4s linear infinite; }
+@keyframes sweep { to { transform: rotate(360deg); } }
+.approval-card { padding: 1.3rem; }
+.approval-topline { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+.risk-badge { border: 1px solid rgba(255,209,102,.42); background: rgba(255,209,102,.1); color: var(--amber); border-radius: 999px; padding: .35rem .55rem; font-size: .62rem; font-weight: 900; letter-spacing: .12em; }
+.expiry { color: var(--muted); font-size: .68rem; }
+.approval-facts { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; margin: 1.2rem 0; }
+.approval-facts div, .preview-section, .hash-section { border: 1px solid var(--line); background: rgba(3,12,21,.45); border-radius: .85rem; padding: .8rem; }
+dt, .preview-section > span, .hash-section > span { color: var(--muted); font-size: .62rem; text-transform: uppercase; letter-spacing: .1em; }
+dd { margin: .35rem 0 0; font-size: .78rem; font-weight: 750; }
+.preview-section, .hash-section { margin-top: .7rem; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; color: #d8eef9; font: .75rem/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; margin: .65rem 0 0; }
+code { display: block; margin-top: .55rem; color: var(--cyan); overflow-wrap: anywhere; font-size: .64rem; }
+.decision-grid { display: grid; grid-template-columns: .8fr 1.2fr; gap: .7rem; margin-top: 1rem; }
+.deny-button { color: var(--red); background: rgba(255,113,141,.09); border: 1px solid rgba(255,113,141,.28); }
+button:disabled { opacity: .45; cursor: wait; }
+.toast { position: fixed; left: 50%; bottom: max(1.3rem, env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(calc(100% - 2rem), 30rem); border: 1px solid var(--line); background: #0b1b2b; padding: .8rem 1rem; border-radius: .8rem; text-align: center; font-size: .76rem; box-shadow: 0 1rem 3rem rgba(0,0,0,.4); }
+footer { text-align: center; color: #526b7b; font-size: .55rem; letter-spacing: .12em; padding: 1.2rem 0 .2rem; }
+@media (max-width: 380px) { .approval-facts { grid-template-columns: 1fr; } .decision-grid { grid-template-columns: 1fr; } }

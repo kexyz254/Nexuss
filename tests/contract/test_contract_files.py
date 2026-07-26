@@ -12,6 +12,8 @@ def test_json_schemas_are_valid_and_fail_closed() -> None:
         "capability-result.schema.json",
         "action-receipt.schema.json",
         "approval-decision.schema.json",
+        "mobile-approval.schema.json",
+        "device-command-envelope.schema.json",
     ]
     for name in names:
         data = json.loads((ROOT / "contracts" / "schemas" / name).read_text(encoding="utf-8"))
@@ -23,12 +25,15 @@ def test_ats_connector_is_readonly_named() -> None:
     assert (ROOT / "connectors" / "ats-readonly").is_dir()
 
 
-def test_p3_openapi_declares_approval_rollback_and_receipt_history() -> None:
+def test_p4_openapi_declares_phone_approval_device_and_receipt_contracts() -> None:
     contract = (ROOT / "contracts" / "openapi" / "core-api.yaml").read_text(encoding="utf-8")
 
     assert "/v1/tasks/{task_id}/approval:" in contract
     assert "/v1/tasks/{task_id}/rollback:" in contract
     assert "/v1/tasks/{task_id}/receipt:" in contract
     assert "/v1/tasks/{task_id}/receipts:" in contract
+    assert "/v1/mobile/pairing:" in contract
+    assert "/v1/mobile/tasks/{task_id}/decision:" in contract
+    assert "mobile-approval.schema.json" in contract
     assert "approval-decision.schema.json" in contract
     assert "ats.write" not in contract

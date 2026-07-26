@@ -26,6 +26,17 @@ REQUIRED = [
     "docs/adr/ADR-0005-approved-action-platform.md",
     "docs/requirements/p3-approved-action-platform-v0.1.md",
     "docs/security/p3-approved-actions-threat-model.md",
+    "docs/adr/ADR-0006-trusted-device-mesh-and-phone-approval.md",
+    "docs/requirements/p4-trusted-device-mesh-v0.1.md",
+    "docs/security/p4-device-mesh-threat-model.md",
+    "contracts/schemas/mobile-approval.schema.json",
+    "contracts/schemas/device-command-envelope.schema.json",
+    "src/nexuss/device/client.py",
+    "src/nexuss/device/signing.py",
+    "src/nexuss/device_node/app.py",
+    "src/nexuss/device_node/executor.py",
+    "src/nexuss/mobile/gateway.py",
+    "src/nexuss/mobile/models.py",
     "src/nexuss/api/app.py",
     "src/nexuss/core/executor.py",
     "src/nexuss/core/managed_notes.py",
@@ -35,6 +46,10 @@ REQUIRED = [
     "src/nexuss/ui/index.html",
     "src/nexuss/ui/app.js",
     "src/nexuss/ui/styles.css",
+    "src/nexuss/ui/mobile.html",
+    "src/nexuss/ui/mobile.js",
+    "src/nexuss/ui/mobile.css",
+    "scripts/start_p4.ps1",
 ]
 
 FORBIDDEN_NAMES = {
@@ -62,6 +77,8 @@ SCHEMAS = [
     "contracts/schemas/capability-result.schema.json",
     "contracts/schemas/action-receipt.schema.json",
     "contracts/schemas/approval-decision.schema.json",
+    "contracts/schemas/mobile-approval.schema.json",
+    "contracts/schemas/device-command-envelope.schema.json",
 ]
 
 

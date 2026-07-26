@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Nexuss Core API
-  version: 0.3.0
-  description: Confidential P3 approved-action platform contract - kexyz254peter
+  version: 0.4.0
+  description: Confidential P4 trusted-device mesh and phone approval contract - kexyz254peter
 paths:
   /health/live:
     get:
@@ -18,21 +18,22 @@ paths:
                 properties:
                   status: {type: string, const: alive}
                   service: {type: string, const: nexuss-core-api}
-                  version: {type: string, const: 0.3.0}
+                  version: {type: string, const: 0.4.0}
   /health/ready:
     get:
       operationId: healthReady
       responses:
         '200':
-          description: P3 UI, approval service, and controlled-action executor are ready
+          description: P4 UI, phone approval gateway, and trusted-device client are ready
           content:
             application/json:
               schema:
                 type: object
-                required: [status, mode]
+                required: [status, mode, phone_approval]
                 properties:
                   status: {type: string, const: ready}
-                  mode: {type: string, const: p3_approved_actions}
+                  mode: {type: string, const: p4_trusted_device_mesh}
+                  phone_approval: {type: string, const: enabled}
   /v1/capabilities:
     get:
       operationId: listCapabilities
@@ -72,7 +73,7 @@ paths:
         '404': {description: Task not found}
   /v1/tasks/{task_id}/approval:
     post:
-      operationId: decideTaskApproval
+      operationId: decideDesktopTaskApproval
       parameters:
         - in: path
           name: task_id
@@ -93,10 +94,74 @@ paths:
             schema:
               $ref: '../schemas/approval-decision.schema.json'
       responses:
-        '200': {description: Approval decision applied and lifecycle advanced}
+        '200': {description: Desktop approval or cancellation applied}
         '401': {description: Session mismatch}
         '404': {description: Task not found}
-        '409': {description: Approval expired, modified, consumed, or invalid}
+        '409': {description: Phone approval required or approval invalid}
+  /v1/mobile/pairing:
+    post:
+      operationId: createPhonePairingChallenge
+      parameters:
+        - in: header
+          name: X-Nexuss-Session-ID
+          required: true
+          schema: {type: string, format: uuid}
+        - in: header
+          name: X-Nexuss-Session-Authenticated
+          required: true
+          schema: {type: boolean}
+      responses:
+        '200': {description: Single-use session-bound eight-digit pairing challenge}
+        '401': {description: Desktop session is not authenticated}
+  /v1/mobile/pair:
+    post:
+      operationId: pairPhone
+      responses:
+        '200': {description: Paired phone bearer session}
+        '409': {description: Pairing invalid, expired, or already consumed}
+  /v1/mobile/pending:
+    get:
+      operationId: listPhoneApprovals
+      parameters:
+        - in: header
+          name: X-Nexuss-Mobile-Device-ID
+          required: true
+          schema: {type: string, format: uuid}
+        - in: header
+          name: X-Nexuss-Mobile-Token
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Pending approvals bound to the paired desktop session
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '../schemas/mobile-approval.schema.json'
+        '401': {description: Phone session invalid or expired}
+  /v1/mobile/tasks/{task_id}/decision:
+    post:
+      operationId: decidePhoneApproval
+      parameters:
+        - in: path
+          name: task_id
+          required: true
+          schema: {type: string, format: uuid}
+        - in: header
+          name: X-Nexuss-Mobile-Device-ID
+          required: true
+          schema: {type: string, format: uuid}
+        - in: header
+          name: X-Nexuss-Mobile-Token
+          required: true
+          schema: {type: string}
+      responses:
+        '200': {description: Phone decision applied and device command lifecycle advanced}
+        '401': {description: Phone session invalid or expired}
+        '404': {description: Task not found}
+        '409': {description: Approval invalid, expired, modified, or consumed}
   /v1/tasks/{task_id}/rollback:
     post:
       operationId: rollbackTask
@@ -109,18 +174,8 @@ paths:
           name: X-Nexuss-Session-ID
           required: true
           schema: {type: string, format: uuid}
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [confirmation]
-              properties:
-                confirmation: {type: string, const: undo}
       responses:
-        '200': {description: Receipt-bound rollback completed and verified}
+        '200': {description: Receipt-bound file or device-process rollback completed}
         '401': {description: Session mismatch}
         '404': {description: Task not found}
         '409': {description: Rollback unavailable or verification failed}
