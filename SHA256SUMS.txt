@@ -36,7 +36,7 @@ bdb05b1af11b08ab58d3e8c114bb5a4791dcd7bba55038aabf5d0f7df83adcf6  ./docs/require
 02d307259b06af8a1eba7dd11813675d4fdf13f8de569f04999a9c3e648e0e2a  ./docs/security/p4-device-mesh-threat-model.md
 e92c4906ad65b521aecc6d3831c79a7dcf49ef9d8fc998bd66c94f2b0d1702f3  ./docs/security/threat-model-v0.1.md
 18d2dbb64e34b898b294d0ba257175b6b83e9355eed52569fabaac95021e5aaa  ./docs/testing/test-strategy-v0.1.md
-768106f2b36f194bd5c0d56c770a733f1f9fcb61b7c8912cb50856efd7ab12bf  ./FILE_MANIFEST.txt
+be675252f92b6335b01986232393b69c5b4653585a68a3a39f573c73b75db41a  ./FILE_MANIFEST.txt
 c4ddac156f06ff5772a091e080c7d4d7f9152dee1c59af6c35e97183dd8f72fb  ./infra/ci/README.md
 9d0f2754839e046b57781af9f8a7b6b1f1c1a35b47cb6de4949c146098fda7f6  ./infra/docker/docker-compose.yml
 070c7cfac153b1b1ddf341c97f3280e979d5cb7521a8aba0dce4c313263f0391  ./libs/common-python/nexuss_models.py
@@ -48,6 +48,7 @@ ab5f3841a46633ee74f4f0b49f1dcd55583c72b1f3839410b6da2eca4ea63643  ./pyproject.to
 d5ff75f36f5a96e59bb3cd3002279420be10823729dd4a9bcd16f3f919168d81  ./README.md
 3f5ac64b3c1fb20b51c2a7ba5dc65ed56c78b83a281d2c839e48d1c7eb33e879  ./scripts/deploy_to_github.ps1
 8ae2bed49a9b0b8fc65b7275442b3819f009d13f23aca5901121bea04ed0d0e4  ./scripts/start_p4.ps1
+2b135909643ef81a79df950016e51dc87161477edd71a788c9b2d29a64ed3adc  ./scripts/start_p4.ps1.pre-powershell-compatibility-fix
 3d10d21dfad0e945955971be9235685de3017817aae45dac9f3ffc96b38287cd  ./scripts/stop_p4.ps1
 aac84b6c357d5250cad58618bf616b59192c05f84064b1144fdecfce1ad8d962  ./scripts/validate_repository.py
 4f21351815ebe272a4b450031c1a3c58269a7e8d914275e642ead289a22b3fe1  ./SECURITY.md
@@ -100,7 +101,7 @@ dae6888b0b558a6b34fc94454848cb5369769745a89212053ff7d5376ddbc392  ./tests/integr
 176e55a4364b0f01276fd2d0ebdaff1cfe7958c3a18e0f60b85cf18b108e8796  ./tests/integration/test_task_lifecycle.py
 6d90de09cd05982c0e5e379f2cd3a10f07532647697dab7357cbd912c2b0b073  ./tests/integration/test_ui_local_capability.py
 b6f0ddb7feb45d5590373fe7d8e2b50f6beb094603f6cb21f1acf6a7d545fdea  ./tests/security/README.md
-ed0d7f4c99113a6b11081a5f6956354fc405f22c7192ffb28565f4b0fbae9ac0  ./tests/security/test_device_node_security.py
+cc79c70e47c144cc2f4910b9dc34a8539ee379b0cb8f7eb1281c4af8ba6d5405  ./tests/security/test_device_node_security.py
 456c8efc7325d0257fc86217797014f5678295bf7414101dada9b22d79b2b79b  ./tests/security/test_local_control_boundary.py
 818825a4b96561dba9cd92a854c333a5d479572437f5abd475d7a7e99133c632  ./tests/unit/test_core_health.py
 53cc6949fe5576bb74162b196a45c776679068d51d4aba53b0950176ceca6ae2  ./tests/unit/test_device_node.py

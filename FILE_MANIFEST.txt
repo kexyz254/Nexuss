@@ -48,6 +48,7 @@
 ./README.md
 ./scripts/deploy_to_github.ps1
 ./scripts/start_p4.ps1
+./scripts/start_p4.ps1.pre-powershell-compatibility-fix
 ./scripts/stop_p4.ps1
 ./scripts/validate_repository.py
 ./SECURITY.md

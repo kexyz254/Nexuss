@@ -57,21 +57,21 @@ def test_signed_command_executes_once_and_replay_is_rejected(
 
     response = client.post(
         "/v1/commands",
-        content=envelope.model_dump_json(),
+        json=envelope.model_dump(mode="json"),
         headers={"X-Nexuss-Node-Signature": signature},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     assert response.json()["verified_running"] is True
     assert runner.executables == [executable]
 
     replay = client.post(
         "/v1/commands",
-        content=envelope.model_dump_json(),
+        json=envelope.model_dump(mode="json"),
         headers={"X-Nexuss-Node-Signature": signature},
     )
 
-    assert replay.status_code == 409
+    assert replay.status_code == 409, replay.text
     assert "DEVICE_NONCE_REPLAYED" in replay.text
 
 
@@ -84,9 +84,9 @@ def test_tampered_signature_is_rejected(
 
     response = client.post(
         "/v1/commands",
-        content=envelope.model_dump_json(),
+        json=envelope.model_dump(mode="json"),
         headers={"X-Nexuss-Node-Signature": "0" * 64},
     )
 
-    assert response.status_code == 401
+    assert response.status_code == 401, response.text
     assert "DEVICE_NODE_SIGNATURE_INVALID" in response.text
