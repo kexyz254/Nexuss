@@ -1,6 +1,6 @@
 """Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
 
-Deterministic intent classification and bounded entity extraction for Nexuss P3.
+Deterministic intent classification and bounded entity extraction for Nexuss P4.
 """
 
 from __future__ import annotations
@@ -69,6 +69,18 @@ def classify_intent(utterance: str) -> Intent:
     ):
         kind = IntentKind.ASSISTANT_HELP
         confidence = 0.97
+    elif any(
+        phrase in normalized
+        for phrase in (
+            "open notepad",
+            "launch notepad",
+            "start notepad",
+            "open text editor",
+        )
+    ):
+        kind = IntentKind.LAUNCH_NOTEPAD
+        confidence = 0.99
+        entities = {"target_node_id": "windows-primary"}
     elif any(term in normalized for term in ("send money", "transfer money", "m-pesa")):
         kind = IntentKind.FINANCIAL_TRANSFER
         confidence = 0.99

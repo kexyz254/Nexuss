@@ -1,0 +1,146 @@
+# Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
+# Start the P4 core API, private-LAN phone client, and loopback-only Windows node.
+
+$ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
+
+$Repository = [System.IO.Path]::GetFullPath(
+    (Join-Path $PSScriptRoot "..")
+).TrimEnd("\")
+$RuntimeDirectory = Join-Path $Repository ".nexuss-runtime"
+$RuntimeFile = Join-Path $RuntimeDirectory "p4-processes.json"
+
+Set-Location $Repository
+
+if ((git branch --show-current).Trim() -ne "feature/p4-trusted-device-mesh") {
+    Write-Warning "P4 normally runs from feature/p4-trusted-device-mesh during development."
+}
+
+$OccupiedPorts = @(
+    Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+        Where-Object { $_.LocalPort -in @(8100, 8200) }
+)
+
+if ($OccupiedPorts.Count -gt 0) {
+    $OccupiedPorts |
+        Select-Object LocalAddress, LocalPort, OwningProcess |
+        Format-Table -AutoSize
+    throw "STOP: Port 8100 or 8200 is already in use. Run scripts\stop_p4.ps1 first."
+}
+
+$PrivateProfiles = @(
+    Get-NetConnectionProfile -ErrorAction SilentlyContinue |
+        Where-Object { $_.NetworkCategory -eq "Private" }
+)
+
+if ($PrivateProfiles.Count -eq 0) {
+    throw "STOP: No active Private Windows network profile was found."
+}
+
+$LanAddress = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+    Where-Object {
+        $_.IPAddress -notlike "127.*" -and
+        $_.IPAddress -notlike "169.254.*" -and
+        (
+            $_.IPAddress -like "10.*" -or
+            $_.IPAddress -like "192.168.*" -or
+            $_.IPAddress -match '^172\.(1[6-9]|2[0-9]|3[0-1])\.'
+        )
+    } |
+    Sort-Object InterfaceMetric |
+    Select-Object -First 1 -ExpandProperty IPAddress
+
+if (-not $LanAddress) {
+    throw "STOP: A private-LAN IPv4 address could not be resolved."
+}
+
+$SecretBytes = New-Object byte[] 48
+$RandomGenerator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+
+try {
+    $RandomGenerator.GetBytes($SecretBytes)
+}
+finally {
+    $RandomGenerator.Dispose()
+}
+$DeviceSecret = [Convert]::ToBase64String($SecretBytes)
+$MobileUrl = "http://${LanAddress}:8100/mobile"
+
+$NodeCommand = @"
+Set-Location '$Repository'
+`$env:PYTHONPATH = '$Repository\src'
+`$env:PYTHONDONTWRITEBYTECODE = '1'
+python -m uvicorn nexuss.device_node.app:app --host 127.0.0.1 --port 8200
+"@
+
+$CoreCommand = @"
+Set-Location '$Repository'
+`$env:PYTHONPATH = '$Repository\src'
+`$env:PYTHONDONTWRITEBYTECODE = '1'
+python -m uvicorn nexuss.api.app:app --host 0.0.0.0 --port 8100 --reload
+"@
+
+$PreviousSecret = $env:NEXUSS_DEVICE_NODE_SECRET
+$PreviousNodeUrl = $env:NEXUSS_DEVICE_NODE_URL
+$PreviousNodeId = $env:NEXUSS_WINDOWS_NODE_ID
+$PreviousMobileUrl = $env:NEXUSS_MOBILE_PUBLIC_URL
+
+try {
+    # Child processes inherit these values without exposing the secret in command-line arguments.
+    $env:NEXUSS_DEVICE_NODE_SECRET = $DeviceSecret
+    $env:NEXUSS_DEVICE_NODE_URL = "http://127.0.0.1:8200"
+    $env:NEXUSS_WINDOWS_NODE_ID = "windows-primary"
+    $env:NEXUSS_MOBILE_PUBLIC_URL = $MobileUrl
+
+    $NodeProcess = Start-Process powershell.exe -PassThru -ArgumentList @(
+        "-NoExit",
+        "-Command",
+        $NodeCommand
+    )
+
+    Start-Sleep -Seconds 2
+
+    $CoreProcess = Start-Process powershell.exe -PassThru -ArgumentList @(
+        "-NoExit",
+        "-Command",
+        $CoreCommand
+    )
+}
+finally {
+    $env:NEXUSS_DEVICE_NODE_SECRET = $PreviousSecret
+    $env:NEXUSS_DEVICE_NODE_URL = $PreviousNodeUrl
+    $env:NEXUSS_WINDOWS_NODE_ID = $PreviousNodeId
+    $env:NEXUSS_MOBILE_PUBLIC_URL = $PreviousMobileUrl
+}
+
+Start-Sleep -Seconds 4
+
+try {
+    $NodeHealth = Invoke-RestMethod -Uri "http://127.0.0.1:8200/health/ready"
+    $CoreHealth = Invoke-RestMethod -Uri "http://127.0.0.1:8100/health/ready"
+}
+catch {
+    foreach ($ProcessId in @($NodeProcess.Id, $CoreProcess.Id)) {
+        & taskkill.exe /PID $ProcessId /T /F 2>$null | Out-Null
+    }
+    throw "P4 startup health verification failed: $($_.Exception.Message)"
+}
+
+New-Item -ItemType Directory -Path $RuntimeDirectory -Force | Out-Null
+@{
+    node_process_id = $NodeProcess.Id
+    core_process_id = $CoreProcess.Id
+    desktop_url = "http://127.0.0.1:8100/"
+    mobile_url = $MobileUrl
+    started_at = [DateTimeOffset]::UtcNow.ToString("o")
+} | ConvertTo-Json | Set-Content -LiteralPath $RuntimeFile -Encoding utf8
+
+Write-Host ""
+Write-Host "Nexuss P4 is ready." -ForegroundColor Green
+Write-Host "Desktop: http://127.0.0.1:8100/"
+Write-Host "Phone:   $MobileUrl"
+Write-Host "Node:    $($NodeHealth.node_id) · $($NodeHealth.mode)"
+Write-Host "Core:    $($CoreHealth.mode)"
+Write-Host ""
+Write-Warning "Private-LAN prototype only. Never port-forward or publicly expose port 8100."
+Write-Host "If Windows Firewall prompts, allow access only on Private networks."

@@ -1,6 +1,6 @@
 """Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
 
-Nexuss P3 orchestration service with approval, verification, receipts, and rollback.
+Nexuss P4 orchestration service with phone approval and trusted device-node execution.
 """
 
 from __future__ import annotations
@@ -19,9 +19,15 @@ from nexuss.core.managed_notes import InvalidNoteError, ManagedNoteError, Manage
 from nexuss.core.planner import build_plan
 from nexuss.core.policy import evaluate_step
 from nexuss.core.state_machine import validate_transition
+from nexuss.device.client import (
+    DeviceCommandError,
+    DeviceNodeClient,
+    DisabledDeviceNodeClient,
+)
 from nexuss.domain.models import (
     ActionEvent,
     ActionReceipt,
+    ApprovalChannel,
     ApprovalDecision,
     ApprovalDecisionKind,
     ApprovalRequest,
@@ -40,6 +46,7 @@ from nexuss.domain.models import (
     TaskState,
     TaskView,
 )
+from nexuss.mobile.models import MobileApprovalSummary
 
 _APPROVAL_LIFETIME = timedelta(minutes=5)
 
@@ -80,11 +87,17 @@ def _payload_sha256(step: PlanStep) -> str:
 class CoreSimulatorService:
     """Prototype orchestration service; state is process-local until the persistence phase."""
 
-    def __init__(self, *, note_store: ManagedNoteStore | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        note_store: ManagedNoteStore | None = None,
+        device_client: DeviceNodeClient | None = None,
+    ) -> None:
         self._tasks: dict[UUID, TaskView] = {}
         self._request_index: dict[UUID, UUID] = {}
         self._ledger = InMemoryActionLedger()
         self._note_store = note_store or ManagedNoteStore()
+        self._device_client = device_client or DisabledDeviceNodeClient()
         self._lock = RLock()
 
     @staticmethod
@@ -122,7 +135,7 @@ class CoreSimulatorService:
         receipt_version = 1 if previous is None else previous.receipt_version + 1
         verified = task.state in {TaskState.COMPLETED, TaskState.ROLLED_BACK} and bool(task.results)
         reversible = task.state is TaskState.COMPLETED and any(
-            result.capability_id == "workspace.create_note"
+            result.capability_id in {"workspace.create_note", "device.launch_notepad"}
             and result.status is StepStatus.VERIFIED
             for result in task.results
         )
@@ -171,23 +184,47 @@ class CoreSimulatorService:
         now: datetime,
     ) -> ApprovalRequest:
         payload_hash = _payload_sha256(step)
-        filename = str(step.parameters.get("filename", "managed action"))
-        exact_preview = str(step.parameters.get("content", "No content preview available."))
+        if step.capability_id == "device.launch_notepad":
+            target_node_id = str(step.parameters.get("target_node_id", "windows-primary"))
+            action_title = "Launch Notepad on trusted Windows node"
+            action_summary = (
+                "Start only the fixed Windows Notepad executable through the signed "
+                f"device node {target_node_id}."
+            )
+            exact_preview = (
+                f"Capability: {step.capability_id}\n"
+                f"Target node: {target_node_id}\n"
+                "Executable: C:\\Windows\\System32\\notepad.exe\n"
+                "Shell: disabled\nArguments: none"
+            )
+            destination_label = f"Trusted Windows node · {target_node_id}"
+            approval_channel = ApprovalChannel.PHONE
+        else:
+            filename = str(step.parameters.get("filename", "managed action"))
+            action_title = "Create managed note"
+            action_summary = f"Create {filename} without overwriting an existing file."
+            exact_preview = str(
+                step.parameters.get("content", "No content preview available.")
+            )
+            destination_label = "Nexuss Managed Workspace"
+            approval_channel = ApprovalChannel.DESKTOP
+
         return ApprovalRequest(
             approval_id=uuid5(NAMESPACE_URL, f"nexuss:approval:{task_id}:{payload_hash}"),
             task_id=task_id,
             capability_id=step.capability_id,
             status=ApprovalStatus.PENDING,
-            action_title="Create managed note",
-            action_summary=f"Create {filename} without overwriting an existing file.",
+            action_title=action_title,
+            action_summary=action_summary,
             exact_preview=exact_preview,
-            destination_label="Nexuss Managed Workspace",
+            destination_label=destination_label,
             payload_sha256=payload_hash,
             approval_token=secrets.token_urlsafe(32),
             session_id=session_id,
             expires_at=now + _APPROVAL_LIFETIME,
             risk_tier=step.risk_tier,
             reversible=step.reversible,
+            approval_channel=approval_channel,
         )
 
     def _execute_authorized_steps(
@@ -209,7 +246,15 @@ class CoreSimulatorService:
         results: list[CapabilityResult] = []
         try:
             for step in plan.steps:
-                results.append(execute_step(step, observed_at=now, note_store=self._note_store))
+                results.append(
+                    execute_step(
+                        step,
+                        observed_at=now,
+                        note_store=self._note_store,
+                        device_client=self._device_client,
+                        task_id=task_id,
+                    )
+                )
         except ManagedNoteError as exc:
             validate_transition(TaskState.EXECUTING, TaskState.FAILED)
             self._append_event(
@@ -355,6 +400,8 @@ class CoreSimulatorService:
         task_id: UUID,
         decision: ApprovalDecision,
         session: IdentitySession,
+        *,
+        approval_channel: ApprovalChannel = ApprovalChannel.DESKTOP,
     ) -> TaskView:
         with self._lock:
             task = self._tasks.get(task_id)
@@ -365,13 +412,23 @@ class CoreSimulatorService:
                 raise ApprovalValidationError("TASK_IS_NOT_AWAITING_APPROVAL")
 
             approval = task.approval
+            if (
+                decision.decision is ApprovalDecisionKind.APPROVE
+                and approval.approval_channel is not approval_channel
+            ):
+                raise ApprovalValidationError(
+                    "PHONE_APPROVAL_REQUIRED"
+                    if approval.approval_channel is ApprovalChannel.PHONE
+                    else "DESKTOP_APPROVAL_REQUIRED"
+                )
             now = datetime.now(UTC)
             if now >= approval.expires_at:
                 validate_transition(task.state, TaskState.DENIED)
                 expired = approval.model_copy(
                     update={
                         "status": ApprovalStatus.EXPIRED,
-                        "approval_token": None,  # nosec B105
+                        # Security review: clears an ephemeral approval token; no credential literal is stored.
+                        "approval_token": None  # nosec B105
                     }
                 )
                 self._append_event(
@@ -407,7 +464,8 @@ class CoreSimulatorService:
                 rejected = approval.model_copy(
                     update={
                         "status": ApprovalStatus.REJECTED,
-                        "approval_token": None,  # nosec B105
+                        # Security review: clears an ephemeral approval token; no credential literal is stored.
+                        "approval_token": None  # nosec B105
                     }
                 )
                 self._append_event(
@@ -435,14 +493,19 @@ class CoreSimulatorService:
                 task.events,
                 state=TaskState.APPROVED,
                 event_type="approval_granted",
-                detail="The exact payload was approved by the authenticated session.",
+                detail=(
+                    "The exact payload was approved from the paired phone session."
+                    if approval_channel is ApprovalChannel.PHONE
+                    else "The exact payload was approved by the authenticated desktop session."
+                ),
                 occurred_at=now,
             )
             state, results = self._execute_authorized_steps(task_id, task.plan, task.events, now)
             consumed = approval.model_copy(
                 update={
                     "status": ApprovalStatus.CONSUMED,
-                    "approval_token": None,  # nosec B105
+                    # Security review: clears an ephemeral approval token; no credential literal is stored.
+                    "approval_token": None  # nosec B105
                 }
             )
             task = task.model_copy(
@@ -457,6 +520,40 @@ class CoreSimulatorService:
             self._record_receipt(task)
             return task.model_copy(deep=True)
 
+    def list_pending_phone_approvals(
+        self,
+        session_id: UUID,
+    ) -> tuple[MobileApprovalSummary, ...]:
+        with self._lock:
+            summaries: list[MobileApprovalSummary] = []
+            for task in self._tasks.values():
+                approval = task.approval
+                if (
+                    task.user_session_id != session_id
+                    or task.state is not TaskState.AWAITING_APPROVAL
+                    or approval is None
+                    or approval.approval_channel is not ApprovalChannel.PHONE
+                    or approval.status is not ApprovalStatus.PENDING
+                    or approval.approval_token is None
+                ):
+                    continue
+                summaries.append(
+                    MobileApprovalSummary(
+                        task_id=task.task_id,
+                        approval_id=approval.approval_id,
+                        approval_token=approval.approval_token,
+                        payload_sha256=approval.payload_sha256,
+                        action_title=approval.action_title,
+                        action_summary=approval.action_summary,
+                        exact_preview=approval.exact_preview,
+                        destination_label=approval.destination_label,
+                        risk_tier=approval.risk_tier,
+                        reversible=approval.reversible,
+                        expires_at=approval.expires_at,
+                    )
+                )
+            return tuple(sorted(summaries, key=lambda item: item.expires_at))
+
     def rollback_task(self, task_id: UUID, session: IdentitySession) -> TaskView:
         with self._lock:
             task = self._tasks.get(task_id)
@@ -466,22 +563,22 @@ class CoreSimulatorService:
             if task.state is not TaskState.COMPLETED:
                 raise RollbackValidationError("TASK_IS_NOT_ROLLBACK_ELIGIBLE")
 
-            note_result = next(
+            source_result = next(
                 (
                     result
                     for result in task.results
-                    if result.capability_id == "workspace.create_note"
+                    if result.capability_id in {
+                        "workspace.create_note",
+                        "device.launch_notepad",
+                    }
                     and result.status is StepStatus.VERIFIED
                     and result.evidence
                 ),
                 None,
             )
-            if note_result is None:
-                raise RollbackValidationError("NO_RECEIPT_BOUND_NOTE_RESULT")
+            if source_result is None:
+                raise RollbackValidationError("NO_RECEIPT_BOUND_REVERSIBLE_RESULT")
 
-            attributes = note_result.evidence[0].attributes
-            filename = str(attributes.get("filename", ""))
-            expected_sha256 = str(attributes.get("sha256", ""))
             now = datetime.now(UTC)
             validate_transition(task.state, TaskState.ROLLING_BACK)
             self._append_event(
@@ -492,12 +589,19 @@ class CoreSimulatorService:
                 detail="Receipt-bound rollback started after explicit user Undo.",
                 occurred_at=now,
             )
+
             try:
-                removed_path = self._note_store.rollback(
-                    filename=filename,
-                    expected_sha256=expected_sha256,
-                )
-            except ManagedNoteError as exc:
+                if source_result.capability_id == "workspace.create_note":
+                    rollback_result = self._rollback_note(source_result, now)
+                    detail = (
+                        "The receipt-owned note was removed and absence was verified."
+                    )
+                else:
+                    rollback_result = self._rollback_device_command(task_id, source_result, now)
+                    detail = (
+                        "The receipt-bound device process was terminated and absence was verified."
+                    )
+            except (ManagedNoteError, DeviceCommandError, ValueError) as exc:
                 validate_transition(TaskState.ROLLING_BACK, TaskState.FAILED)
                 self._append_event(
                     task_id,
@@ -514,31 +618,13 @@ class CoreSimulatorService:
                 self._record_receipt(failed)
                 raise RollbackValidationError(str(exc)) from exc
 
-            rollback_result = CapabilityResult(
-                step_id=note_result.step_id,
-                capability_id="workspace.rollback_create_note",
-                status=StepStatus.ROLLED_BACK,
-                evidence=[
-                    EvidenceRecord(
-                        source="local:managed_workspace",
-                        observed_at=datetime.now(UTC),
-                        attributes={
-                            "source_mode": "live_local_receipt_bound_rollback",
-                            "filename": filename,
-                            "removed_path": str(removed_path),
-                            "expected_sha256": expected_sha256,
-                            "verified_absent": True,
-                        },
-                    )
-                ],
-            )
             validate_transition(TaskState.ROLLING_BACK, TaskState.ROLLED_BACK)
             self._append_event(
                 task_id,
                 task.events,
                 state=TaskState.ROLLED_BACK,
                 event_type="rollback_verified",
-                detail="The receipt-owned note was removed and absence was verified.",
+                detail=detail,
                 occurred_at=datetime.now(UTC),
             )
             rolled_back = task.model_copy(
@@ -551,6 +637,70 @@ class CoreSimulatorService:
             self._tasks[task_id] = rolled_back
             self._record_receipt(rolled_back)
             return rolled_back.model_copy(deep=True)
+
+    def _rollback_note(
+        self,
+        note_result: CapabilityResult,
+        observed_at: datetime,
+    ) -> CapabilityResult:
+        attributes = note_result.evidence[0].attributes
+        filename = str(attributes.get("filename", ""))
+        expected_sha256 = str(attributes.get("sha256", ""))
+        removed_path = self._note_store.rollback(
+            filename=filename,
+            expected_sha256=expected_sha256,
+        )
+        return CapabilityResult(
+            step_id=note_result.step_id,
+            capability_id="workspace.rollback_create_note",
+            status=StepStatus.ROLLED_BACK,
+            evidence=[
+                EvidenceRecord(
+                    source="local:managed_workspace",
+                    observed_at=observed_at,
+                    attributes={
+                        "source_mode": "live_local_receipt_bound_rollback",
+                        "filename": filename,
+                        "removed_path": str(removed_path),
+                        "expected_sha256": expected_sha256,
+                        "verified_absent": True,
+                    },
+                )
+            ],
+        )
+
+    def _rollback_device_command(
+        self,
+        task_id: UUID,
+        device_result: CapabilityResult,
+        observed_at: datetime,
+    ) -> CapabilityResult:
+        attributes = device_result.evidence[0].attributes
+        command_id = UUID(str(attributes.get("command_id", "")))
+        node_id = str(attributes.get("node_id", ""))
+        evidence = self._device_client.rollback_command(task_id, command_id, node_id)
+        if not evidence.verified_absent:
+            raise DeviceCommandError("DEVICE_ROLLBACK_NOT_VERIFIED")
+        return CapabilityResult(
+            step_id=device_result.step_id,
+            capability_id="device.rollback_launch_notepad",
+            status=StepStatus.ROLLED_BACK,
+            evidence=[
+                EvidenceRecord(
+                    source="device:windows-node",
+                    observed_at=observed_at,
+                    attributes={
+                        "source_mode": evidence.source_mode,
+                        "rollback_id": str(evidence.rollback_id),
+                        "command_id": str(evidence.command_id),
+                        "node_id": evidence.node_id,
+                        "process_id": evidence.process_id,
+                        "terminated": evidence.terminated,
+                        "verified_absent": evidence.verified_absent,
+                    },
+                )
+            ],
+        )
 
     def get_task(self, task_id: UUID) -> TaskView:
         with self._lock:

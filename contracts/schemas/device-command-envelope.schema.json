@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexuss.local/schemas/device-command-envelope.schema.json",
+  "title": "Nexuss Device Command Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "command_id",
+    "task_id",
+    "capability_id",
+    "target_node_id",
+    "issued_at",
+    "expires_at",
+    "nonce",
+    "parameters"
+  ],
+  "properties": {
+    "command_id": {"type": "string", "format": "uuid"},
+    "task_id": {"type": "string", "format": "uuid"},
+    "capability_id": {"type": "string", "const": "device.launch_notepad"},
+    "target_node_id": {"type": "string", "minLength": 1, "maxLength": 120},
+    "issued_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "nonce": {"type": "string", "minLength": 32, "maxLength": 128},
+    "parameters": {"type": "object", "maxProperties": 0}
+  }
+}

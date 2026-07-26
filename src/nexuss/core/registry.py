@@ -1,9 +1,10 @@
 """Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
 
-Explicit capability registry for the Nexuss P3 approved-action platform.
+Explicit capability registry for the Nexuss P4 trusted-device platform.
 """
 
 from nexuss.domain.models import (
+    ApprovalChannel,
     ApprovalPolicy,
     CapabilityManifest,
     CapabilityStatus,
@@ -54,6 +55,35 @@ _MANIFESTS = (
         reversible=False,
         execution_mode="live_local_receipt_bound_rollback",
         status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="device.launch_notepad",
+        version="1.0.0",
+        title="Launch Notepad on trusted Windows node",
+        description=(
+            "Launch only the fixed Windows Notepad executable through a signed, "
+            "loopback-only device-node command envelope."
+        ),
+        risk_tier=RiskTier.HIGH,
+        approval_policy=ApprovalPolicy.EXPLICIT,
+        reversible=True,
+        execution_mode="trusted_device_node",
+        status=CapabilityStatus.ACTIVE,
+        approval_channel=ApprovalChannel.PHONE,
+    ),
+    CapabilityManifest(
+        capability_id="device.rollback_launch_notepad",
+        version="1.0.0",
+        title="Close receipt-bound Notepad process",
+        description=(
+            "Terminate only the process created by the associated signed device command."
+        ),
+        risk_tier=RiskTier.HIGH,
+        approval_policy=ApprovalPolicy.EXPLICIT,
+        reversible=False,
+        execution_mode="trusted_device_node_rollback",
+        status=CapabilityStatus.ACTIVE,
+        approval_channel=ApprovalChannel.PHONE,
     ),
     CapabilityManifest(
         capability_id="calendar.read_summary",

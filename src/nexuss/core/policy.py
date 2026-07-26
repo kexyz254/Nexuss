@@ -1,10 +1,11 @@
 """Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
 
-Fail-closed policy evaluation for the Nexuss P3 capability registry.
+Fail-closed policy evaluation for the Nexuss P4 capability registry.
 """
 
 from nexuss.core.registry import get_capability
 from nexuss.domain.models import (
+    ApprovalChannel,
     ApprovalPolicy,
     CapabilityStatus,
     PlanStep,
@@ -51,14 +52,24 @@ def evaluate_step(step: PlanStep) -> PolicyDecision:
         )
 
     if manifest.approval_policy is ApprovalPolicy.EXPLICIT:
+        phone_required = manifest.approval_channel is ApprovalChannel.PHONE
         return PolicyDecision(
             step_id=step.step_id,
             capability_id=step.capability_id,
             outcome=PolicyOutcome.REQUIRE_APPROVAL,
-            reason_code="EXPLICIT_USER_APPROVAL_REQUIRED",
+            reason_code=(
+                "TRUSTED_PHONE_APPROVAL_REQUIRED"
+                if phone_required
+                else "EXPLICIT_USER_APPROVAL_REQUIRED"
+            ),
             explanation=(
-                "This controlled write is authorized only after the user approves the exact "
-                "payload bound to the current authenticated session."
+                "This trusted-device command requires approval from a paired phone bound to "
+                "the requesting Nexuss session and the exact payload hash."
+                if phone_required
+                else (
+                    "This controlled write is authorized only after the user approves the exact "
+                    "payload bound to the current authenticated session."
+                )
             ),
         )
 

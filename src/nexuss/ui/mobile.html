@@ -1,0 +1,83 @@
+<!-- Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary. -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07111d">
+  <meta name="color-scheme" content="dark">
+  <title>Nexuss Phone Approval</title>
+  <link rel="stylesheet" href="/assets/mobile.css">
+  <script src="/assets/mobile.js" defer></script>
+</head>
+<body>
+  <div class="mobile-aurora" aria-hidden="true"></div>
+  <main class="phone-shell">
+    <header class="phone-header">
+      <div class="mobile-brand"><span>N</span></div>
+      <div>
+        <strong>NEXUSS</strong>
+        <small>Trusted phone approval</small>
+      </div>
+      <div class="connection-state" id="connection-state"><i></i><span>Not paired</span></div>
+    </header>
+
+    <section class="pair-card" id="pair-card">
+      <span class="eyebrow">P4 DEVICE TRUST</span>
+      <h1>Pair this phone.</h1>
+      <p>Enter the eight-digit code shown on the Nexuss desktop. The code is single-use and expires after ten minutes.</p>
+      <form id="pair-form">
+        <label for="pairing-code">Pairing code</label>
+        <input id="pairing-code" name="pairing-code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" pattern="[0-9]{8}" placeholder="00000000" required>
+        <label for="device-label">Phone label</label>
+        <input id="device-label" name="device-label" maxlength="80" value="My phone" required>
+        <button type="submit" id="pair-button">Pair securely</button>
+      </form>
+      <p class="boundary-note">Private-LAN prototype. Do not expose this endpoint to the public internet.</p>
+    </section>
+
+    <section class="approval-stage" id="approval-stage" hidden>
+      <div class="standby" id="standby">
+        <div class="radar"><span></span><i></i></div>
+        <span class="eyebrow">PHONE GUARD ACTIVE</span>
+        <h1>Waiting for an action.</h1>
+        <p>Nexuss will present the exact command, target node, risk, and payload fingerprint before you approve anything.</p>
+      </div>
+
+      <article class="approval-card" id="approval-card" hidden>
+        <div class="approval-topline">
+          <span class="risk-badge" id="risk-badge">HIGH</span>
+          <span class="expiry" id="approval-expiry">Expires soon</span>
+        </div>
+        <span class="eyebrow">APPROVAL REQUEST</span>
+        <h1 id="action-title">Trusted device command</h1>
+        <p id="action-summary">—</p>
+
+        <dl class="approval-facts">
+          <div><dt>Destination</dt><dd id="destination-label">—</dd></div>
+          <div><dt>Reversible</dt><dd id="reversible-label">—</dd></div>
+        </dl>
+
+        <section class="preview-section">
+          <span>Exact action</span>
+          <pre id="exact-preview"></pre>
+        </section>
+
+        <section class="hash-section">
+          <span>Payload SHA-256</span>
+          <code id="payload-hash">—</code>
+        </section>
+
+        <div class="decision-grid">
+          <button type="button" class="deny-button" id="deny-button">Deny</button>
+          <button type="button" class="approve-button" id="approve-button">Approve command</button>
+        </div>
+        <p class="approval-warning">Approval is single-use, time-limited, and bound to this paired phone session.</p>
+      </article>
+    </section>
+
+    <div class="toast" id="toast" hidden></div>
+    <footer>CONFIDENTIAL · NEXUSS AI · kexyz254peter</footer>
+  </main>
+</body>
+</html>

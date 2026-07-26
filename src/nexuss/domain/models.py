@@ -30,6 +30,7 @@ class IntentKind(StrEnum):
     SYSTEM_HEALTH = "system_health"
     LOCAL_WORKSPACE_STATUS = "local_workspace_status"
     CREATE_NOTE = "create_note"
+    LAUNCH_NOTEPAD = "launch_notepad"
     PREPARE_WORKSPACE = "prepare_workspace"
     PLAY_MEDIA = "play_media"
     ATS_READ = "ats_read"
@@ -86,6 +87,11 @@ class ApprovalStatus(StrEnum):
 class ApprovalDecisionKind(StrEnum):
     APPROVE = "approve"
     REJECT = "reject"
+
+
+class ApprovalChannel(StrEnum):
+    DESKTOP = "desktop"
+    PHONE = "phone"
 
 
 class CapabilityStatus(StrEnum):
@@ -206,6 +212,7 @@ class ApprovalRequest(BaseModel):
     expires_at: datetime
     risk_tier: RiskTier
     reversible: bool
+    approval_channel: ApprovalChannel = ApprovalChannel.DESKTOP
 
 
 class ApprovalDecision(BaseModel):
@@ -235,6 +242,7 @@ class CapabilityManifest(BaseModel):
     reversible: bool
     execution_mode: str
     status: CapabilityStatus
+    approval_channel: ApprovalChannel = ApprovalChannel.DESKTOP
 
 
 class ActionReceipt(BaseModel):

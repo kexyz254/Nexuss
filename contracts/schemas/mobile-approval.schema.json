@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexuss.local/schemas/mobile-approval.schema.json",
+  "title": "Nexuss Mobile Approval Summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task_id",
+    "approval_id",
+    "approval_token",
+    "payload_sha256",
+    "action_title",
+    "action_summary",
+    "exact_preview",
+    "destination_label",
+    "risk_tier",
+    "reversible",
+    "expires_at"
+  ],
+  "properties": {
+    "task_id": {"type": "string", "format": "uuid"},
+    "approval_id": {"type": "string", "format": "uuid"},
+    "approval_token": {"type": "string", "minLength": 32, "maxLength": 256},
+    "payload_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "action_title": {"type": "string"},
+    "action_summary": {"type": "string"},
+    "exact_preview": {"type": "string"},
+    "destination_label": {"type": "string"},
+    "risk_tier": {"enum": ["informational", "low", "medium", "high", "critical"]},
+    "reversible": {"type": "boolean"},
+    "expires_at": {"type": "string", "format": "date-time"}
+  }
+}

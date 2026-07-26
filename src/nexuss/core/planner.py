@@ -1,6 +1,6 @@
 """Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
 
-Deterministic task planning for the Nexuss P3 approved-action platform.
+Deterministic task planning for the Nexuss P4 trusted-device platform.
 """
 
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -22,12 +22,13 @@ def _assistant_response(intent: Intent) -> str:
         ),
         IntentKind.ASSISTANT_CAPABILITIES: (
             "I can inspect this Nexuss workspace, run clearly labelled simulations, explain my "
-            "decisions, and create verified notes in the managed workspace after your explicit "
-            "approval. Higher-risk connectors remain disabled until separately reviewed."
+            "decisions, create verified notes, and request phone approval for trusted "
+            "device commands. Higher-risk connectors remain disabled until separately reviewed."
         ),
         IntentKind.ASSISTANT_HELP: (
             "Try: ‘Check my workspace and system status’, ‘Who are you?’, or ‘Create a note "
-            "called Launch checklist with the tasks: verify P3, review the receipt, and test undo’."
+            "called Launch checklist with the tasks: verify P3, review the receipt, and test "
+            "undo’, or ‘Open Notepad on this computer’."
         ),
     }
     return responses[intent.kind]
@@ -63,6 +64,22 @@ def build_plan(task_id: UUID, intent: Intent) -> TaskPlan:
                     "content": prepared.content,
                     "content_sha256": prepared.content_sha256,
                     "byte_count": len(prepared.content_bytes),
+                },
+                True,
+            )
+        ]
+    elif intent.kind is IntentKind.LAUNCH_NOTEPAD:
+        specs = [
+            (
+                "device.launch_notepad",
+                RiskTier.HIGH,
+                ["trusted_node_identity", "process_start_verification"],
+                {
+                    "target_node_id": intent.entities.get(
+                        "target_node_id",
+                        "windows-primary",
+                    ),
+                    "application": "notepad",
                 },
                 True,
             )
@@ -117,6 +134,7 @@ def build_plan(task_id: UUID, intent: Intent) -> TaskPlan:
                 ("nexuss.unsupported", RiskTier.HIGH, ["unsupported_reason"], {}, False),
             ],
             IntentKind.CREATE_NOTE: [],
+            IntentKind.LAUNCH_NOTEPAD: [],
             IntentKind.ASSISTANT_IDENTITY: [],
             IntentKind.ASSISTANT_CAPABILITIES: [],
             IntentKind.ASSISTANT_HELP: [],

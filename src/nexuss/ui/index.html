@@ -31,9 +31,9 @@
     </button>
 
     <div class="topbar-actions">
-      <div class="trust-chip" title="P3 controlled-action boundary">
+      <div class="trust-chip" title="P4 trusted-device boundary">
         <span class="shield" aria-hidden="true">◆</span>
-        <span>Approval guard active</span>
+        <span>Phone approval active</span>
       </div>
       <div class="system-state" id="system-state" role="status">
         <span class="state-dot" aria-hidden="true"></span>
@@ -46,7 +46,7 @@
     <aside class="navigation panel" aria-label="Nexuss capabilities">
       <div class="nav-heading">
         <span class="section-label">CONTROL PLANE</span>
-        <span class="version-pill">P3</span>
+        <span class="version-pill">P4</span>
       </div>
 
       <nav class="nav-list">
@@ -59,6 +59,11 @@
           <span class="nav-icon">＋</span>
           <span><strong>Create managed note</strong><small>Real · approval required</small></span>
           <span class="nav-state approval">R2</span>
+        </button>
+        <button class="nav-item device-action" data-prompt="Open Notepad on this computer.">
+          <span class="nav-icon">▣</span>
+          <span><strong>Launch trusted app</strong><small>Real device · phone approval</small></span>
+          <span class="nav-state approval">R3</span>
         </button>
         <button class="nav-item" data-prompt="Who are you?">
           <span class="nav-icon">N</span>
@@ -81,7 +86,7 @@
         <div class="boundary-icon" aria-hidden="true">◈</div>
         <div>
           <span class="section-label" id="boundary-title">ACTIVE TRUST BOUNDARY</span>
-          <p>Real writes are confined to the Nexuss managed workspace and require exact-payload approval.</p>
+          <p>Real writes remain bounded, and trusted device commands require exact-payload approval from a paired phone.</p>
         </div>
       </section>
 
@@ -90,7 +95,7 @@
           <span class="session-dot"></span>
           <span id="session-label">Session</span>
         </div>
-        <small>Confidential · kexyz254peter</small>
+        <small>Confidential · P4 device trust · kexyz254peter</small>
       </div>
     </aside>
 
@@ -98,12 +103,12 @@
       <header class="conversation-header">
         <div>
           <span class="eyebrow">NEXUSS INTERFACE</span>
-          <h1>Turn intent into verified action.</h1>
-          <p>Every action is planned, policy-checked, approved when required, executed, and evidenced.</p>
+          <h1>Control devices through verified intent.</h1>
+          <p>Every device command is allowlisted, signed, phone-approved, executed by a trusted node, and evidenced.</p>
         </div>
         <div class="mode-stack">
-          <span class="mode-pill"><span></span>P3 · Approved actions</span>
-          <span class="mode-note">Live local + controlled write</span>
+          <span class="mode-pill"><span></span>P4 · Trusted device mesh</span>
+          <span class="mode-note">Phone approval + Windows node</span>
         </div>
       </header>
 
@@ -114,11 +119,11 @@
             <div class="message-content">
               <div class="message-meta"><span>Nexuss</span><time>Now</time></div>
               <div class="bubble">
-                <p>I am online. I can inspect this workspace, explain my capabilities, or create a real managed note after showing you the exact action for approval.</p>
+                <p>I am online. I can inspect this workspace, create controlled notes, or request phone approval before a trusted Windows node launches an allowlisted application.</p>
                 <div class="welcome-features">
                   <span><i class="green-dot"></i>Verified evidence</span>
                   <span><i class="blue-dot"></i>Approval-bound writes</span>
-                  <span><i class="violet-dot"></i>Receipt-based undo</span>
+                  <span><i class="violet-dot"></i>Phone-approved device control</span>
                 </div>
               </div>
             </div>
@@ -127,6 +132,7 @@
 
         <div class="quick-actions" aria-label="Suggested instructions">
           <button data-prompt="Create a note called Nexuss launch checklist with the tasks: verify P3, review the Action Receipt, and test undo."><span>＋</span>Create a verified note</button>
+          <button data-prompt="Open Notepad on this computer."><span>▣</span>Launch Notepad</button>
           <button data-prompt="Check my workspace and system status."><span>⌁</span>Inspect this workspace</button>
           <button data-prompt="What can you do?"><span>◇</span>Show capabilities</button>
         </div>
@@ -253,6 +259,21 @@
       </div>
       <pre class="approval-preview" id="approval-preview"></pre>
       <div class="approval-expiry" id="approval-expiry">Approval expires in 5 minutes.</div>
+
+      <section class="phone-approval-panel" id="phone-approval-panel" hidden>
+        <div class="phone-approval-icon" aria-hidden="true">▣</div>
+        <div class="phone-approval-copy">
+          <span>PAIRED PHONE REQUIRED</span>
+          <strong>Approve this exact command from your phone.</strong>
+          <p>Open the mobile approval client on the same private network and enter the one-time pairing code.</p>
+          <div class="pairing-code-row">
+            <code id="phone-pairing-code">--------</code>
+            <button type="button" class="copy-pairing-button" id="copy-pairing-button">Copy</button>
+          </div>
+          <a id="phone-mobile-url" href="/mobile" target="_blank" rel="noopener">Open phone approval client</a>
+          <small id="phone-approval-status">Waiting for phone pairing and approval…</small>
+        </div>
+      </section>
 
       <footer class="approval-footer">
         <button type="button" class="secondary-button" id="reject-button">Cancel action</button>
