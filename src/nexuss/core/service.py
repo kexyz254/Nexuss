@@ -1,6 +1,6 @@
 """Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
 
-Nexuss P4 orchestration service with phone approval and trusted device-node execution.
+Nexuss P5 orchestration with knowledge, media, and trusted cross-device actions.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 from threading import RLock
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from nexuss.core.executor import execute_step
+from nexuss.core.executor import PhonePairingGateway, execute_step
 from nexuss.core.intents import classify_intent
 from nexuss.core.ledger import InMemoryActionLedger
 from nexuss.core.managed_notes import InvalidNoteError, ManagedNoteError, ManagedNoteStore
@@ -46,9 +46,15 @@ from nexuss.domain.models import (
     TaskState,
     TaskView,
 )
-from nexuss.mobile.models import MobileApprovalSummary
+from nexuss.knowledge.provider import KnowledgeProvider, WikipediaKnowledgeProvider
+from nexuss.media.youtube import YouTubeDataProvider, YouTubeProvider
+from nexuss.mobile.models import MobileApprovalSummary, MobileHandoffSummary
+
+_HANDOFF_FRESHNESS = timedelta(minutes=2)
 
 _APPROVAL_LIFETIME = timedelta(minutes=5)
+# This constant is a JSON schema field name, not a credential value.
+_APPROVAL_TOKEN_FIELD = "approval_token"  # nosec B105
 
 
 class InvalidSessionError(ValueError):
@@ -92,12 +98,18 @@ class CoreSimulatorService:
         *,
         note_store: ManagedNoteStore | None = None,
         device_client: DeviceNodeClient | None = None,
+        knowledge_provider: KnowledgeProvider | None = None,
+        youtube_provider: YouTubeProvider | None = None,
+        pairing_gateway: PhonePairingGateway | None = None,
     ) -> None:
         self._tasks: dict[UUID, TaskView] = {}
         self._request_index: dict[UUID, UUID] = {}
         self._ledger = InMemoryActionLedger()
         self._note_store = note_store or ManagedNoteStore()
         self._device_client = device_client or DisabledDeviceNodeClient()
+        self._knowledge_provider = knowledge_provider or WikipediaKnowledgeProvider()
+        self._youtube_provider = youtube_provider or YouTubeDataProvider()
+        self._pairing_gateway = pairing_gateway
         self._lock = RLock()
 
     @staticmethod
@@ -199,6 +211,34 @@ class CoreSimulatorService:
             )
             destination_label = f"Trusted Windows node · {target_node_id}"
             approval_channel = ApprovalChannel.PHONE
+        elif step.capability_id == "device.open_web_search":
+            launch_url = str(step.parameters.get("launch_url", ""))
+            action_title = "Open approved search in Chrome"
+            action_summary = (
+                "Open one allowlisted HTTPS search URL in Chrome on the "
+                "trusted Windows node."
+            )
+            exact_preview = (
+                f"Capability: {step.capability_id}\n"
+                f"Target node: {step.parameters.get('target_node_id', 'windows-primary')}\n"
+                f"URL: {launch_url}\nShell: disabled\nArguments: fixed --new-tab + approved URL"
+            )
+            destination_label = "Trusted Windows node · Chrome"
+            approval_channel = ApprovalChannel.PHONE
+        elif step.capability_id == "phone.open_youtube":
+            launch_url = str(step.parameters.get("launch_url", ""))
+            action_title = "Open YouTube on paired phone"
+            action_summary = (
+                "Hand the exact allowlisted YouTube HTTPS URL to the paired "
+                "phone after local approval."
+            )
+            exact_preview = (
+                f"Capability: {step.capability_id}\n"
+                f"URL: {launch_url}\n"
+                "Target: paired approval phone"
+            )
+            destination_label = "Paired approval phone · YouTube"
+            approval_channel = ApprovalChannel.PHONE
         else:
             filename = str(step.parameters.get("filename", "managed action"))
             action_title = "Create managed note"
@@ -233,6 +273,7 @@ class CoreSimulatorService:
         plan: TaskPlan,
         events: list[ActionEvent],
         now: datetime,
+        session_id: UUID,
     ) -> tuple[TaskState, list[CapabilityResult]]:
         validate_transition(events[-1].state, TaskState.EXECUTING)
         self._append_event(
@@ -253,6 +294,10 @@ class CoreSimulatorService:
                         note_store=self._note_store,
                         device_client=self._device_client,
                         task_id=task_id,
+                        knowledge_provider=self._knowledge_provider,
+                        youtube_provider=self._youtube_provider,
+                        session_id=session_id,
+                        pairing_gateway=self._pairing_gateway,
                     )
                 )
         except ManagedNoteError as exc:
@@ -374,7 +419,9 @@ class CoreSimulatorService:
                     occurred_at=now,
                 )
             else:
-                state, results = self._execute_authorized_steps(task_id, plan, events, now)
+                state, results = self._execute_authorized_steps(
+                    task_id, plan, events, now, request.user_session_id
+                )
 
             task = TaskView(
                 task_id=task_id,
@@ -427,8 +474,7 @@ class CoreSimulatorService:
                 expired = approval.model_copy(
                     update={
                         "status": ApprovalStatus.EXPIRED,
-                        # Security review: clears an ephemeral approval token; no credential literal is stored.
-                        "approval_token": None  # nosec B105
+                        _APPROVAL_TOKEN_FIELD: None,
                     }
                 )
                 self._append_event(
@@ -464,8 +510,7 @@ class CoreSimulatorService:
                 rejected = approval.model_copy(
                     update={
                         "status": ApprovalStatus.REJECTED,
-                        # Security review: clears an ephemeral approval token; no credential literal is stored.
-                        "approval_token": None  # nosec B105
+                        _APPROVAL_TOKEN_FIELD: None,
                     }
                 )
                 self._append_event(
@@ -500,12 +545,13 @@ class CoreSimulatorService:
                 ),
                 occurred_at=now,
             )
-            state, results = self._execute_authorized_steps(task_id, task.plan, task.events, now)
+            state, results = self._execute_authorized_steps(
+                task_id, task.plan, task.events, now, task.user_session_id
+            )
             consumed = approval.model_copy(
                 update={
                     "status": ApprovalStatus.CONSUMED,
-                    # Security review: clears an ephemeral approval token; no credential literal is stored.
-                    "approval_token": None  # nosec B105
+                    _APPROVAL_TOKEN_FIELD: None,
                 }
             )
             task = task.model_copy(
@@ -553,6 +599,54 @@ class CoreSimulatorService:
                     )
                 )
             return tuple(sorted(summaries, key=lambda item: item.expires_at))
+
+    def list_phone_handoffs(
+        self,
+        session_id: UUID,
+        *,
+        now: datetime | None = None,
+    ) -> tuple[MobileHandoffSummary, ...]:
+        """Return handoffs the phone should still act on.
+
+        Handoffs are bounded by a freshness window. Without it a phone paired
+        at any later point claims the entire history at once and opens the
+        oldest link in the list, which is never what the person asked for.
+        """
+        checked_at = now or datetime.now(UTC)
+        cutoff = checked_at - _HANDOFF_FRESHNESS
+        with self._lock:
+            handoffs: list[MobileHandoffSummary] = []
+            for task in self._tasks.values():
+                if task.user_session_id != session_id or task.state is not TaskState.COMPLETED:
+                    continue
+                if task.created_at < cutoff:
+                    continue
+                result = next(
+                    (
+                        item
+                        for item in task.results
+                        if item.capability_id == "phone.open_youtube"
+                        and item.status is StepStatus.VERIFIED
+                        and item.evidence
+                    ),
+                    None,
+                )
+                if result is None:
+                    continue
+                attributes = result.evidence[0].attributes
+                launch_url = str(attributes.get("launch_url", ""))
+                query = str(attributes.get("query", ""))
+                if not launch_url:
+                    continue
+                handoffs.append(
+                    MobileHandoffSummary(
+                        task_id=task.task_id,
+                        launch_url=launch_url,
+                        query=query,
+                        created_at=task.created_at,
+                    )
+                )
+            return tuple(sorted(handoffs, key=lambda item: item.created_at))
 
     def rollback_task(self, task_id: UUID, session: IdentitySession) -> TaskView:
         with self._lock:

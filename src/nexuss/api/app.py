@@ -1,6 +1,6 @@
 """Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
 
-FastAPI surface for the Nexuss P4 trusted-device mesh and phone approval client.
+FastAPI surface for the Nexuss P5 knowledge, media, and mobile action plane.
 """
 
 from __future__ import annotations
@@ -8,6 +8,7 @@ from __future__ import annotations
 import ipaddress
 import os
 from collections import defaultdict, deque
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import RLock
@@ -15,7 +16,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import FastAPI, Header, HTTPException, Request, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from nexuss.core.registry import list_capabilities
@@ -43,27 +44,61 @@ from nexuss.mobile.models import (
     MobileApprovalSummary,
     MobileDecisionRequest,
     MobileDeviceSession,
+    MobileHandoffSummary,
+    MobilePairedDevice,
     MobilePairingChallenge,
     MobilePairRequest,
+    MobileRebindResult,
 )
+from nexuss.mobile.store import device_store_from_environment
 
 _UI_DIRECTORY = Path(__file__).resolve().parents[1] / "ui"
 _MOBILE_URL = os.getenv("NEXUSS_MOBILE_PUBLIC_URL", "http://127.0.0.1:8100/mobile")
 
 app = FastAPI(
     title="Nexuss Core API",
-    version="0.4.0",
+    version="0.5.1",
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
 )
 app.mount("/assets", StaticFiles(directory=_UI_DIRECTORY), name="nexuss-ui-assets")
-service = CoreSimulatorService(device_client=HttpDeviceNodeClient.from_environment())
-mobile_gateway = MobileApprovalGateway(mobile_url=_MOBILE_URL)
+mobile_gateway = MobileApprovalGateway(
+    mobile_url=_MOBILE_URL,
+    store=device_store_from_environment(),
+)
+service = CoreSimulatorService(
+    device_client=HttpDeviceNodeClient.from_environment(),
+    pairing_gateway=mobile_gateway,
+)
 _PAIR_ATTEMPT_WINDOW = timedelta(minutes=5)
 _PAIR_ATTEMPT_LIMIT = 5
 _pair_attempts: dict[str, deque[datetime]] = defaultdict(deque)
 _pair_attempt_lock = RLock()
+
+_SECURITY_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self' https://www.youtube.com https://s.ytimg.com; "
+    "frame-src https://www.youtube.com https://www.youtube-nocookie.com; "
+    "img-src 'self' data: https://i.ytimg.com https://yt3.ggpht.com; "
+    "style-src 'self'; connect-src 'self'; media-src 'self'; "
+    "object-src 'none'; base-uri 'self'; form-action 'self'; "
+    "frame-ancestors 'none'"
+)
+
+
+@app.middleware("http")
+async def add_security_headers(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = _SECURITY_POLICY
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Permissions-Policy"] = "microphone=(self), camera=()"
+    return response
 
 
 def _client_host(request: Request) -> str:
@@ -143,7 +178,7 @@ def health_live() -> dict[str, str]:
     return {
         "status": "alive",
         "service": "nexuss-core-api",
-        "version": "0.4.0",
+        "version": "0.5.1",
     }
 
 
@@ -151,7 +186,7 @@ def health_live() -> dict[str, str]:
 def health_ready() -> dict[str, str]:
     return {
         "status": "ready",
-        "mode": "p4_trusted_device_mesh",
+        "mode": "p5_knowledge_media_mobile",
         "phone_approval": "enabled",
     }
 
@@ -283,6 +318,66 @@ def pair_mobile_device(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
+@app.get("/v1/mobile/devices", response_model=list[MobilePairedDevice])
+def list_mobile_devices(
+    request: Request,
+    session_id: Annotated[UUID, Header(alias="X-Nexuss-Session-ID")],
+    session_authenticated: Annotated[bool, Header(alias="X-Nexuss-Session-Authenticated")],
+) -> list[MobilePairedDevice]:
+    """List paired phones. Token digests are never exposed."""
+    del session_id
+    _require_local_control(request)
+    if not session_authenticated:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="SESSION_NOT_AUTHENTICATED",
+        )
+    return list(mobile_gateway.list_devices())
+
+
+@app.delete("/v1/mobile/devices/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_mobile_device(
+    device_id: UUID,
+    request: Request,
+    session_id: Annotated[UUID, Header(alias="X-Nexuss-Session-ID")],
+    session_authenticated: Annotated[bool, Header(alias="X-Nexuss-Session-Authenticated")],
+) -> None:
+    """Unpair a phone immediately and irreversibly."""
+    del session_id
+    _require_local_control(request)
+    if not session_authenticated:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="SESSION_NOT_AUTHENTICATED",
+        )
+    mobile_gateway.revoke(device_id)
+
+
+@app.post("/v1/mobile/devices/rebind", response_model=MobileRebindResult)
+def rebind_mobile_devices(
+    request: Request,
+    session_id: Annotated[UUID, Header(alias="X-Nexuss-Session-ID")],
+    session_authenticated: Annotated[bool, Header(alias="X-Nexuss-Session-Authenticated")],
+) -> MobileRebindResult:
+    """Rebind already-paired phones to the caller's desktop session.
+
+    Loopback-only and authenticated, so this grants nothing that creating a
+    task from the same origin does not already grant.
+    """
+    _require_local_control(request)
+    if not session_authenticated:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="SESSION_NOT_AUTHENTICATED",
+        )
+    paired, rebound = mobile_gateway.rebind_sessions(session_id)
+    return MobileRebindResult(
+        session_id=session_id,
+        paired_devices=paired,
+        rebound_devices=rebound,
+    )
+
+
 @app.get("/v1/mobile/pending", response_model=list[MobileApprovalSummary])
 def get_mobile_pending_approvals(
     device_id: Annotated[UUID, Header(alias="X-Nexuss-Mobile-Device-ID")],
@@ -290,6 +385,22 @@ def get_mobile_pending_approvals(
 ) -> list[MobileApprovalSummary]:
     identity = _mobile_identity(device_id, device_token)
     return list(service.list_pending_phone_approvals(identity.session_id))
+
+
+@app.get("/v1/mobile/handoffs", response_model=list[MobileHandoffSummary])
+def get_mobile_handoffs(
+    device_id: Annotated[UUID, Header(alias="X-Nexuss-Mobile-Device-ID")],
+    device_token: Annotated[str, Header(alias="X-Nexuss-Mobile-Token")],
+) -> list[MobileHandoffSummary]:
+    identity = _mobile_identity(device_id, device_token)
+    handoffs = service.list_phone_handoffs(identity.session_id)
+    try:
+        return list(mobile_gateway.claim_handoffs(device_id, handoffs))
+    except MobilePairingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        ) from exc
 
 
 @app.post("/v1/mobile/tasks/{task_id}/decision", response_model=TaskView)

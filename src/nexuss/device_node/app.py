@@ -1,6 +1,6 @@
 """Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
 
-Loopback-only FastAPI service for the P4 trusted Windows device node.
+Loopback-only FastAPI service for the P5 trusted Windows device node.
 """
 
 from __future__ import annotations
@@ -19,10 +19,12 @@ from nexuss.device.models import (
     DeviceRollbackEvidence,
 )
 from nexuss.device.signing import DeviceSignatureError, verify_signature
+from nexuss.device_node.browser_executor import WindowsChromeExecutor
 from nexuss.device_node.executor import NodeExecutionError, WindowsNotepadExecutor
 
-app = FastAPI(title="Nexuss Windows Device Node", version="0.4.0")
+app = FastAPI(title="Nexuss Windows Device Node", version="0.5.1")
 executor = WindowsNotepadExecutor()
+browser_executor = WindowsChromeExecutor()
 _seen_nonces: dict[str, datetime] = {}
 _nonce_lock = RLock()
 
@@ -69,7 +71,7 @@ def _authorize(envelope: DeviceCommandEnvelope | DeviceRollbackEnvelope, signatu
 def health_ready() -> dict[str, str]:
     return {
         "status": "ready",
-        "mode": "p4_trusted_windows_node",
+        "mode": "p5_trusted_windows_node",
         "node_id": executor.node_id,
     }
 
@@ -80,16 +82,24 @@ def execute_command(
     signature: Annotated[str, Header(alias="X-Nexuss-Node-Signature")],
 ) -> DeviceCommandEvidence:
     _authorize(envelope, signature)
-    if envelope.capability_id != "device.launch_notepad":
+    try:
+        if envelope.capability_id == "device.launch_notepad":
+            return executor.launch(
+                task_id=envelope.task_id,
+                command_id=envelope.command_id,
+                target_node_id=envelope.target_node_id,
+            )
+        if envelope.capability_id == "device.open_web_search":
+            launch_url = str(envelope.parameters.get("launch_url", ""))
+            return browser_executor.launch(
+                task_id=envelope.task_id,
+                command_id=envelope.command_id,
+                target_node_id=envelope.target_node_id,
+                launch_url=launch_url,
+            )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="CAPABILITY_NOT_ALLOWLISTED",
-        )
-    try:
-        return executor.launch(
-            task_id=envelope.task_id,
-            command_id=envelope.command_id,
-            target_node_id=envelope.target_node_id,
         )
     except NodeExecutionError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc

@@ -6,6 +6,7 @@ from uuid import UUID
 import pytest
 
 from nexuss.mobile.gateway import MobileApprovalGateway, MobilePairingError
+from nexuss.mobile.models import MobileHandoffSummary
 
 SESSION_ID = UUID("00000000-0000-0000-0000-000000000750")
 NOW = datetime(2026, 7, 25, 18, 0, tzinfo=UTC)
@@ -32,3 +33,24 @@ def test_expired_pairing_and_bad_tokens_fail_closed() -> None:
     paired = gateway.pair(fresh.pairing_code, "Phone", now=NOW)
     with pytest.raises(MobilePairingError, match="MOBILE_DEVICE_TOKEN_INVALID"):
         gateway.authenticate(paired.device_id, "wrong-token", now=NOW)
+
+
+def test_phone_handoffs_are_claimed_once_per_paired_device() -> None:
+    gateway = MobileApprovalGateway()
+    challenge = gateway.create_pairing(SESSION_ID, now=NOW)
+    paired = gateway.pair(challenge.pairing_code, "Phone", now=NOW)
+    handoff = MobileHandoffSummary(
+        task_id=UUID("00000000-0000-0000-0000-000000000751"),
+        launch_url=(
+            "https://www.youtube.com/results?search_query="
+            "Silence+by+Popcaan"
+        ),
+        query="Silence by Popcaan",
+        created_at=NOW,
+    )
+
+    first = gateway.claim_handoffs(paired.device_id, (handoff,))
+    second = gateway.claim_handoffs(paired.device_id, (handoff,))
+
+    assert first == (handoff,)
+    assert second == ()

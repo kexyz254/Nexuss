@@ -1,0 +1,18 @@
+Metadata-Version: 2.4
+Name: nexuss-ai-os
+Version: 0.5.0
+Summary: Confidential Nexuss AI OS prototype foundation
+Requires-Python: >=3.12
+License-File: LICENSE
+Requires-Dist: fastapi<1,>=0.115
+Requires-Dist: pydantic<3,>=2.8
+Requires-Dist: uvicorn<1,>=0.30
+Requires-Dist: httpx<1,>=0.27
+Provides-Extra: dev
+Requires-Dist: pytest<9,>=8.2; extra == "dev"
+Requires-Dist: pytest-cov<6,>=5; extra == "dev"
+Requires-Dist: mypy<2,>=1.10; extra == "dev"
+Requires-Dist: ruff<1,>=0.6; extra == "dev"
+Requires-Dist: bandit<2,>=1.7; extra == "dev"
+Requires-Dist: httpx<1,>=0.27; extra == "dev"
+Dynamic: license-file

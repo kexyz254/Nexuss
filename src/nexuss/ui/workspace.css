@@ -1,0 +1,306 @@
+/* Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary. */
+/*
+ * P5.2 adaptive workspace surface.
+ * Load after styles.css. Overrides the fixed .p5-workspace overlay.
+ */
+
+:root {
+  --ws-topbar: 70px;
+  --ws-reserve-left: 0px;
+  --ws-reserve-right: 0px;
+  --ws-reserve-bottom: 0px;
+  --ws-card-line: rgba(114, 221, 255, 0.24);
+}
+
+/* The shell reflows around docked cards instead of being covered by them.
+   This is the fix for the media plane sitting on top of the action controls. */
+body.ws-active .shell {
+  padding-left: calc(clamp(14px, 1.7vw, 28px) + var(--ws-reserve-left));
+  padding-right: calc(clamp(14px, 1.7vw, 28px) + var(--ws-reserve-right));
+  padding-bottom: calc(14px + var(--ws-reserve-bottom));
+  transition: padding 0.16s ease;
+}
+
+body.ws-active .shell,
+body.ws-active .panel {
+  min-width: 0;
+}
+
+/* Below the stacking breakpoint the inspector column is dropped rather than
+   crushed, so the conversation keeps a usable width. */
+@media (max-width: 1240px) {
+  body.ws-active .shell { grid-template-columns: 250px minmax(0, 1fr); }
+  body.ws-active .inspector { display: none; }
+}
+
+/* --------------------------------------------------------------- canvas */
+
+.p5-workspace,
+.ws-canvas {
+  position: fixed;
+  inset: var(--ws-topbar) 0 0 0;
+  z-index: 35;
+  width: auto;
+  right: 0;
+  bottom: 0;
+  display: block;
+  pointer-events: none;
+}
+
+.ws-canvas[hidden] { display: none; }
+
+.ws-drop-hint {
+  position: absolute;
+  top: 16px;
+  bottom: 16px;
+  width: clamp(180px, 22vw, 420px);
+  border: 1px dashed rgba(112, 227, 255, 0.55);
+  border-radius: 18px;
+  background: rgba(112, 227, 255, 0.07);
+  pointer-events: none;
+}
+
+.ws-drop-hint[data-zone="left"] { left: 16px; }
+.ws-drop-hint[data-zone="right"] { right: 16px; }
+.ws-drop-hint[hidden] { display: none; }
+
+/* ----------------------------------------------------------------- cards */
+
+.ws-card {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--ws-card-line);
+  border-radius: 18px;
+  background: linear-gradient(165deg, rgba(11, 27, 43, 0.96), rgba(7, 18, 30, 0.94));
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(18px);
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.ws-card[hidden] { display: none; }
+
+.ws-floating {
+  left: var(--ws-x, 16px);
+  top: var(--ws-y, 16px);
+  width: var(--ws-w, 640px);
+  height: var(--ws-h, 480px);
+  max-height: none;
+}
+
+.ws-theater {
+  left: var(--ws-x, 16px);
+  top: var(--ws-y, 16px);
+  width: var(--ws-w, 640px);
+  height: var(--ws-h, 480px);
+  border-color: rgba(112, 227, 255, 0.4);
+}
+
+.ws-docked {
+  top: 0;
+  bottom: 0;
+  height: auto;
+  width: var(--ws-dock-size, 560px);
+  max-height: none;
+  border-radius: 0;
+}
+
+.ws-docked[data-ws-dock="right"] {
+  right: 0;
+  border-right: 0;
+  border-top: 0;
+  border-bottom: 0;
+}
+
+.ws-docked[data-ws-dock="left"] {
+  left: 0;
+  border-left: 0;
+  border-top: 0;
+  border-bottom: 0;
+}
+
+.ws-dragging,
+.ws-resizing {
+  user-select: none;
+  border-color: rgba(112, 227, 255, 0.55);
+  box-shadow: 0 34px 90px rgba(0, 0, 0, 0.6);
+}
+
+.ws-dragging { cursor: grabbing; }
+
+/* Fullscreen is the browser's state, not ours; drop our geometry entirely. */
+.ws-card:fullscreen {
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  max-height: 100vh;
+  border: 0;
+  border-radius: 0;
+  background: #03080e;
+}
+
+.ws-card:fullscreen .ws-chrome,
+.ws-card:fullscreen .ws-resize { display: none; }
+
+/* ---------------------------------------------------------------- chrome */
+
+.ws-chrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 0 0 auto;
+  padding: 8px 10px 8px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(4, 13, 23, 0.94);
+  cursor: grab;
+  touch-action: none;
+}
+
+.ws-chrome-title {
+  color: #7f9ab0;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.ws-chrome-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.ws-chrome-button {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(145, 201, 235, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #a9c2d4;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ws-chrome-button:hover {
+  border-color: rgba(112, 227, 255, 0.4);
+  color: #dff7ff;
+}
+
+/* --------------------------------------------------------------- resizing */
+
+.ws-resize {
+  position: absolute;
+  touch-action: none;
+  z-index: 2;
+}
+
+.ws-resize-n, .ws-resize-s { left: 12px; right: 12px; height: 7px; cursor: ns-resize; }
+.ws-resize-e, .ws-resize-w { top: 12px; bottom: 12px; width: 7px; cursor: ew-resize; }
+.ws-resize-n { top: 0; }
+.ws-resize-s { bottom: 0; }
+.ws-resize-e { right: 0; }
+.ws-resize-w { left: 0; }
+
+.ws-resize-ne, .ws-resize-se, .ws-resize-sw, .ws-resize-nw {
+  width: 15px;
+  height: 15px;
+}
+
+.ws-resize-nw { top: 0; left: 0; cursor: nwse-resize; }
+.ws-resize-ne { top: 0; right: 0; cursor: nesw-resize; }
+.ws-resize-se { bottom: 0; right: 0; cursor: nwse-resize; }
+.ws-resize-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+
+.ws-resize-se::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid rgba(145, 201, 235, 0.4);
+  border-bottom: 2px solid rgba(145, 201, 235, 0.4);
+}
+
+/* Docked cards resize only on the edge that faces the shell. */
+.ws-docked .ws-resize { display: none; }
+.ws-docked[data-ws-dock="right"] .ws-resize-w,
+.ws-docked[data-ws-dock="left"] .ws-resize-e { display: block; }
+
+.ws-theater .ws-resize { display: none; }
+
+/* ---------------------------------------------- media card inner layout */
+
+/* The card is now a sized container, so the media plane fills it instead of
+   overflowing. Result cards get room by dropping to a single column when the
+   card is narrow, using container queries rather than viewport breakpoints. */
+/* #media-dock IS the card element, not a child of it. This block must never
+   set width or height: geometry belongs to .ws-docked / .ws-floating /
+   .ws-theater, which are single-class selectors and lose to anything here. */
+.ws-card.media-dock {
+  max-height: none;
+}
+
+.ws-card .media-main {
+  flex: 1;
+  min-height: 0;
+  container-type: inline-size;
+  grid-template-columns: minmax(0, 1.3fr) minmax(300px, 0.9fr);
+}
+
+@container (max-width: 900px) {
+  .media-main { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .media-player-panel { border-right: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+}
+
+@container (max-width: 620px) {
+  .media-result-card { grid-template-columns: minmax(0, 1fr); }
+  .media-result-thumbnail { max-width: 260px; }
+}
+
+.ws-card .media-toolbar { touch-action: none; }
+.ws-card .media-toolbar input,
+.ws-card .media-toolbar button { touch-action: auto; }
+
+/* ------------------------------------------------------- stacked / mobile */
+
+body.ws-stacked .ws-canvas {
+  position: fixed;
+  inset: var(--ws-topbar) 0 0 0;
+  overflow-y: auto;
+  padding: 12px;
+  background: rgba(3, 8, 14, 0.96);
+  pointer-events: auto;
+}
+
+body.ws-stacked .ws-card {
+  position: relative;
+  left: auto;
+  top: auto;
+  width: 100%;
+  height: auto;
+  min-height: 60vh;
+  margin-bottom: 12px;
+  border-radius: 16px;
+}
+
+body.ws-stacked .ws-resize { display: none; }
+body.ws-stacked .ws-chrome { cursor: default; }
+body.ws-stacked .ws-chrome-actions { display: none; }
+body.ws-stacked .shell { padding-left: 14px; padding-right: 14px; }
+
+@media (prefers-reduced-motion: reduce) {
+  body.ws-active .shell { transition: none; }
+}
+
+/* The legacy mini-player class must not fight workspace geometry. Keep its
+   compact inner layout; let the workspace own width and placement. */
+.ws-floating.minimized,
+.ws-theater.minimized { width: var(--ws-w); margin-left: 0; }
+.ws-docked.minimized { width: var(--ws-dock-size); margin-left: 0; }

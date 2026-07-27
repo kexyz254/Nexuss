@@ -54,9 +54,30 @@ const elements = {
   toast: document.querySelector("#toast"),
 };
 
-const sessionId = sessionStorage.getItem("nexuss-session-id") || crypto.randomUUID();
-sessionStorage.setItem("nexuss-session-id", sessionId);
+/*
+ * The desktop session identity binds paired phones to this browser. It must
+ * outlive the tab: sessionStorage is cleared on close, which silently orphans
+ * every paired phone because handoffs are filed under the session that
+ * created them.
+ */
+const sessionId = localStorage.getItem("nexuss-session-id") || crypto.randomUUID();
+localStorage.setItem("nexuss-session-id", sessionId);
 elements.sessionLabel.textContent = `Session ${sessionId.slice(0, 8)}`;
+
+/*
+ * Heal any phone that was paired against a previous desktop identity. Without
+ * this the phone stays "Paired" while every poll returns an empty list.
+ */
+void fetch("/v1/mobile/devices/rebind", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-Nexuss-Session-ID": sessionId,
+    "X-Nexuss-Session-Authenticated": "true",
+  },
+}).catch(() => {
+  /* Core not up yet; the next task submission surfaces the real error. */
+});
 
 let lastInputChannel = "text";
 let recognition = null;
@@ -290,6 +311,7 @@ function renderTask(task, receipt) {
   elements.evidenceSummary.textContent = `${evidenceCount} record${evidenceCount === 1 ? "" : "s"}`;
   elements.reviewApproval.hidden = task.state !== "awaiting_approval" || !task.approval;
   renderReceipt(receipt);
+  window.NexussP5?.renderTask(task, receipt);
 }
 
 function assistantResponse(task) {
@@ -298,6 +320,8 @@ function assistantResponse(task) {
 }
 
 function summarizeTask(task) {
+  const p5Summary = window.NexussP5?.summarizeTask(task);
+  if (p5Summary) return p5Summary;
   const conversational = assistantResponse(task);
   if (conversational) return String(conversational);
 
@@ -430,7 +454,7 @@ async function executeInstruction(utterance, channel = "text") {
     user_session_id: sessionId,
     target_devices: [],
     requested_at: new Date().toISOString(),
-    client_context: { interface: "p4-web-ui", browser_voice: channel === "voice" },
+    client_context: { interface: "p5-web-ui", browser_voice: channel === "voice" },
   };
 
   try {
@@ -531,6 +555,15 @@ elements.form.addEventListener("submit", (event) => {
   lastInputChannel = "text";
   elements.input.value = "";
   elements.input.style.height = "auto";
+
+  const contextualResponse = window.NexussP5?.handleContextCommand?.(utterance);
+  if (contextualResponse) {
+    addMessage("user", utterance);
+    addMessage("assistant", contextualResponse);
+    elements.input.focus();
+    return;
+  }
+
   void executeInstruction(utterance, channel);
 });
 

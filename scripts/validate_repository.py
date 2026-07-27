@@ -50,6 +50,16 @@ REQUIRED = [
     "src/nexuss/ui/mobile.js",
     "src/nexuss/ui/mobile.css",
     "scripts/start_p4.ps1",
+    "docs/adr/ADR-0007-p5-knowledge-media-mobile.md",
+    "docs/requirements/p5-knowledge-media-mobile-v0.1.md",
+    "docs/security/p5-web-media-mobile-threat-model.md",
+    "src/nexuss/core/web_actions.py",
+    "src/nexuss/device_node/browser_executor.py",
+    "src/nexuss/knowledge/provider.py",
+    "src/nexuss/media/youtube.py",
+    "src/nexuss/ui/p5.js",
+    "scripts/start_p5.ps1",
+    "scripts/stop_p5.ps1",
 ]
 
 FORBIDDEN_NAMES = {
@@ -119,6 +129,13 @@ def main() -> int:
 
     if "__pycache__" in manifest or ".pyc" in manifest or ".pyo" in manifest:
         errors.append("FILE_MANIFEST.txt contains generated Python artifacts")
+
+    env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+    for line in env_example.splitlines():
+        if line.startswith("NEXUSS_YOUTUBE_API_KEY=") and line.strip() != (
+            "NEXUSS_YOUTUBE_API_KEY="
+        ):
+            errors.append(".env.example must not contain a YouTube API key")
 
     if errors:
         print("Repository validation failed:")

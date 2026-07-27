@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nexuss.local/schemas/mobile-handoff.schema.json",
+  "title": "Nexuss Paired-Phone YouTube Handoff",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task_id",
+    "launch_url",
+    "query",
+    "created_at"
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "launch_url": {
+      "type": "string",
+      "format": "uri",
+      "maxLength": 2048,
+      "pattern": "^https://(www\\.)?youtube\\.com/"
+    },
+    "query": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "x-copyright": "Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary."
+}

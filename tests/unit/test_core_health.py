@@ -7,13 +7,13 @@ def test_health_live() -> None:
     assert health_live() == {
         "status": "alive",
         "service": "nexuss-core-api",
-        "version": "0.4.0",
+        "version": "0.5.1",
     }
 
 
 def test_health_ready() -> None:
     assert health_ready() == {
         "status": "ready",
-        "mode": "p4_trusted_device_mesh",
+        "mode": "p5_knowledge_media_mobile",
         "phone_approval": "enabled",
     }

@@ -1,6 +1,6 @@
 """Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
 
-Typed contracts for the confidential P4 phone-approval client.
+Typed contracts for the confidential P5.1 paired-phone client.
 """
 
 from __future__ import annotations
@@ -52,6 +52,36 @@ class MobileApprovalSummary(BaseModel):
     risk_tier: RiskTier
     reversible: bool
     expires_at: datetime
+
+
+class MobileHandoffSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: UUID
+    launch_url: str
+    query: str
+    created_at: datetime
+
+
+class MobilePairedDevice(BaseModel):
+    """A paired phone as shown on the desktop control plane."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    device_id: UUID
+    device_label: str
+    session_id: UUID
+    paired_at: datetime
+    last_seen_at: datetime
+    expires_at: datetime
+
+
+class MobileRebindResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: UUID
+    paired_devices: int
+    rebound_devices: int
 
 
 class MobileDecisionRequest(BaseModel):

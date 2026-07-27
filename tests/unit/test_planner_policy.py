@@ -29,7 +29,7 @@ def test_ats_write_is_denied_before_execution() -> None:
     decision = evaluate_step(plan.steps[0])
 
     assert decision.outcome is PolicyOutcome.DENY
-    assert decision.reason_code == "CAPABILITY_PROHIBITED_IN_P3"
+    assert decision.reason_code == "CAPABILITY_PROHIBITED_BY_POLICY"
 
 
 def test_unreleased_workspace_preparation_is_denied() -> None:
@@ -59,3 +59,17 @@ def test_identity_response_is_allowed_without_side_effect() -> None:
     assert plan.steps[0].capability_id == "assistant.respond"
     assert decision.outcome is PolicyOutcome.ALLOW
     assert decision.reason_code == "INFORMATIONAL_NO_SIDE_EFFECT"
+
+
+def test_youtube_phone_handoff_is_low_risk_and_requires_no_approval() -> None:
+    plan = build_plan(
+        TASK_ID,
+        classify_intent(
+            "Open YouTube on my phone and search Silence by Popcaan"
+        ),
+    )
+    decision = evaluate_step(plan.steps[0])
+
+    assert plan.steps[0].capability_id == "phone.open_youtube"
+    assert plan.steps[0].risk_tier.value == "low"
+    assert decision.outcome is PolicyOutcome.ALLOW

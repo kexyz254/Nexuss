@@ -33,17 +33,24 @@ def _headers() -> dict[str, str]:
 def test_premium_ui_and_assets_are_served_same_origin() -> None:
     page = client.get("/")
     script = client.get("/assets/app.js")
+    media_script = client.get("/assets/p5.js")
     stylesheet = client.get("/assets/styles.css")
 
     assert page.status_code == 200
-    assert "Control devices through verified intent" in page.text
+    assert "Research, watch, and act across devices" in page.text
     assert "approval-overlay" in page.text
     assert "rollback-button" in page.text
     assert script.status_code == 200
     assert "SpeechRecognition" in script.text
     assert "decideApproval" in script.text
+    assert "handleContextCommand" in script.text
+    assert media_script.status_code == 200
+    assert "requestFullscreen" in media_script.text
+    assert "media-result-card" in media_script.text
+    assert "media-fullscreen" in page.text
     assert stylesheet.status_code == 200
     assert ".approval-dialog" in stylesheet.text
+    assert ".media-result-card" in stylesheet.text
 
 
 def test_workspace_status_runs_live_readonly_lifecycle() -> None:
@@ -81,3 +88,13 @@ def test_capability_registry_is_available_to_the_ui() -> None:
     manifests = {item["capability_id"]: item for item in response.json()}
     assert manifests["workspace.create_note"]["approval_policy"] == "explicit"
     assert manifests["workspace.create_note"]["reversible"] is True
+
+
+def test_p5_ui_has_restrictive_security_headers() -> None:
+    response = client.get("/")
+    assert response.status_code == 200
+    policy = response.headers["content-security-policy"]
+    assert "object-src 'none'" in policy
+    assert "frame-ancestors 'none'" in policy
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["referrer-policy"] == "strict-origin-when-cross-origin"

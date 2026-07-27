@@ -1,12 +1,23 @@
 """Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
 
-Deterministic task planning for the Nexuss P4 trusted-device platform.
+Deterministic task planning for the Nexuss P5 knowledge, media, and mobile plane.
 """
+
+from __future__ import annotations
 
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from nexuss.core.managed_notes import prepare_note
+from nexuss.core.web_actions import google_search_url, youtube_search_url
 from nexuss.domain.models import Intent, IntentKind, PlanStep, RiskTier, TaskPlan
+
+StepSpec = tuple[
+    str,
+    RiskTier,
+    list[str],
+    dict[str, object],
+    bool,
+]
 
 
 def _step_id(task_id: UUID, order: int, capability_id: str) -> UUID:
@@ -16,33 +27,31 @@ def _step_id(task_id: UUID, order: int, capability_id: str) -> UUID:
 def _assistant_response(intent: Intent) -> str:
     responses = {
         IntentKind.ASSISTANT_IDENTITY: (
-            "I am Nexuss, your personal cognitive control plane. I interpret requests, apply "
-            "safety policy, coordinate approved capabilities, verify results, and preserve "
-            "auditable Action Receipts."
+            "I am Nexuss, your personal cognitive control plane. I interpret "
+            "requests, apply safety policy, coordinate approved capabilities, "
+            "verify results, and preserve auditable Action Receipts."
         ),
         IntentKind.ASSISTANT_CAPABILITIES: (
-            "I can inspect this Nexuss workspace, run clearly labelled simulations, explain my "
-            "decisions, create verified notes, and request phone approval for trusted "
-            "device commands. Higher-risk connectors remain disabled until separately reviewed."
+            "I can inspect this workspace, research bounded public sources, "
+            "discover and rank YouTube media, create verified notes, and use "
+            "governed device actions with approval only where policy requires it."
         ),
         IntentKind.ASSISTANT_HELP: (
-            "Try: ‘Check my workspace and system status’, ‘Who are you?’, or ‘Create a note "
-            "called Launch checklist with the tasks: verify P3, review the receipt, and test "
-            "undo’, or ‘Open Notepad on this computer’."
+            "Try: ‘Research the fundamentals of forex’, ‘Play Silence by "
+            "Popcaan’, ‘Open YouTube on my phone and search Silence by Popcaan’, "
+            "or ‘Open Chrome and search forex risk management’."
         ),
     }
     return responses[intent.kind]
 
 
-def build_plan(task_id: UUID, intent: Intent) -> TaskPlan:
-    specs: list[tuple[str, RiskTier, list[str], dict[str, object], bool]]
-
+def _direct_specs(intent: Intent) -> list[StepSpec] | None:
     if intent.kind in {
         IntentKind.ASSISTANT_IDENTITY,
         IntentKind.ASSISTANT_CAPABILITIES,
         IntentKind.ASSISTANT_HELP,
     }:
-        specs = [
+        return [
             (
                 "assistant.respond",
                 RiskTier.INFORMATIONAL,
@@ -51,9 +60,13 @@ def build_plan(task_id: UUID, intent: Intent) -> TaskPlan:
                 False,
             )
         ]
-    elif intent.kind is IntentKind.CREATE_NOTE:
-        prepared = prepare_note(intent.entities["title"], intent.entities["content"])
-        specs = [
+
+    if intent.kind is IntentKind.CREATE_NOTE:
+        prepared = prepare_note(
+            intent.entities["title"],
+            intent.entities["content"],
+        )
+        return [
             (
                 "workspace.create_note",
                 RiskTier.MEDIUM,
@@ -68,8 +81,95 @@ def build_plan(task_id: UUID, intent: Intent) -> TaskPlan:
                 True,
             )
         ]
-    elif intent.kind is IntentKind.LAUNCH_NOTEPAD:
-        specs = [
+
+    query = intent.entities.get("query", intent.normalized_text)
+
+    if intent.kind is IntentKind.WEB_RESEARCH:
+        return [
+            (
+                "knowledge.web_research",
+                RiskTier.LOW,
+                ["public_sources", "cited_brief"],
+                {"query": query},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.YOUTUBE_SEARCH:
+        return [
+            (
+                "media.youtube.discover",
+                RiskTier.LOW,
+                ["youtube_discovery_state"],
+                {"query": query},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.PAIR_PHONE:
+        return [
+            (
+                "device.pair_phone",
+                RiskTier.LOW,
+                ["mobile_pairing_challenge"],
+                {},
+                True,
+            )
+        ]
+
+    if intent.kind is IntentKind.LIST_PAIRED_DEVICES:
+        return [
+            (
+                "device.list_phones",
+                RiskTier.LOW,
+                ["paired_device_inventory"],
+                {},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.UNPAIR_PHONE:
+        return [
+            (
+                "device.unpair_phone",
+                RiskTier.HIGH,
+                ["paired_device_revocation"],
+                {"device_label": intent.entities.get("device_label", "")},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.PHONE_OPEN_YOUTUBE:
+        return [
+            (
+                "phone.open_youtube",
+                RiskTier.LOW,
+                ["paired_phone_youtube_handoff"],
+                {
+                    "query": query,
+                    "launch_url": youtube_search_url(query),
+                },
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.OPEN_WEB_SEARCH:
+        return [
+            (
+                "device.open_web_search",
+                RiskTier.HIGH,
+                ["trusted_node_identity", "browser_launch_handoff"],
+                {
+                    "query": query,
+                    "launch_url": google_search_url(query),
+                    "target_node_id": "windows-primary",
+                },
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.LAUNCH_NOTEPAD:
+        return [
             (
                 "device.launch_notepad",
                 RiskTier.HIGH,
@@ -84,62 +184,131 @@ def build_plan(task_id: UUID, intent: Intent) -> TaskPlan:
                 True,
             )
         ]
-    else:
-        capability_specs: dict[
-            IntentKind, list[tuple[str, RiskTier, list[str], dict[str, object], bool]]
-        ] = {
-            IntentKind.DAILY_BRIEFING: [
-                ("calendar.read_summary", RiskTier.LOW, ["calendar_snapshot"], {}, False),
-                ("email.read_summary", RiskTier.LOW, ["email_snapshot"], {}, False),
-                ("github.read_summary", RiskTier.LOW, ["repository_snapshot"], {}, False),
-                ("ats.read_health", RiskTier.LOW, ["ats_health_snapshot"], {}, False),
-            ],
-            IntentKind.SYSTEM_HEALTH: [
-                ("nexuss.read_health", RiskTier.LOW, ["health_snapshot"], {}, False),
-            ],
-            IntentKind.LOCAL_WORKSPACE_STATUS: [
-                (
-                    "workspace.read_status",
-                    RiskTier.LOW,
-                    ["workspace_status_snapshot"],
-                    {},
-                    False,
-                ),
-            ],
-            IntentKind.PREPARE_WORKSPACE: [
-                ("device.workspace.prepare", RiskTier.MEDIUM, ["workspace_state"], {}, True),
-            ],
-            IntentKind.PLAY_MEDIA: [
-                ("media.prepare_playback", RiskTier.LOW, ["playback_state"], {}, False),
-            ],
-            IntentKind.ATS_READ: [
-                (
-                    "ats.read_intelligence",
-                    RiskTier.LOW,
-                    ["ats_intelligence_snapshot"],
-                    {},
-                    False,
-                ),
-            ],
-            IntentKind.ATS_WRITE: [
-                ("ats.write_order", RiskTier.CRITICAL, ["trade_confirmation"], {}, False),
-            ],
-            IntentKind.FINANCIAL_TRANSFER: [
-                ("finance.transfer", RiskTier.CRITICAL, ["transaction_receipt"], {}, False),
-            ],
-            IntentKind.SOCIAL_PUBLISH: [
-                ("social.publish", RiskTier.HIGH, ["published_post"], {}, False),
-            ],
-            IntentKind.UNKNOWN: [
-                ("nexuss.unsupported", RiskTier.HIGH, ["unsupported_reason"], {}, False),
-            ],
-            IntentKind.CREATE_NOTE: [],
-            IntentKind.LAUNCH_NOTEPAD: [],
-            IntentKind.ASSISTANT_IDENTITY: [],
-            IntentKind.ASSISTANT_CAPABILITIES: [],
-            IntentKind.ASSISTANT_HELP: [],
-        }
-        specs = capability_specs[intent.kind]
+
+    return None
+
+
+def _fallback_specs(intent: Intent) -> list[StepSpec]:
+    capability_specs: dict[IntentKind, list[StepSpec]] = {
+        IntentKind.DAILY_BRIEFING: [
+            (
+                "calendar.read_summary",
+                RiskTier.LOW,
+                ["calendar_snapshot"],
+                {},
+                False,
+            ),
+            (
+                "email.read_summary",
+                RiskTier.LOW,
+                ["email_snapshot"],
+                {},
+                False,
+            ),
+            (
+                "github.read_summary",
+                RiskTier.LOW,
+                ["repository_snapshot"],
+                {},
+                False,
+            ),
+            (
+                "ats.read_health",
+                RiskTier.LOW,
+                ["ats_health_snapshot"],
+                {},
+                False,
+            ),
+        ],
+        IntentKind.SYSTEM_HEALTH: [
+            (
+                "nexuss.read_health",
+                RiskTier.LOW,
+                ["health_snapshot"],
+                {},
+                False,
+            )
+        ],
+        IntentKind.LOCAL_WORKSPACE_STATUS: [
+            (
+                "workspace.read_status",
+                RiskTier.LOW,
+                ["workspace_status_snapshot"],
+                {},
+                False,
+            )
+        ],
+        IntentKind.PREPARE_WORKSPACE: [
+            (
+                "device.workspace.prepare",
+                RiskTier.MEDIUM,
+                ["workspace_state"],
+                {},
+                True,
+            )
+        ],
+        IntentKind.PLAY_MEDIA: [
+            (
+                "media.prepare_playback",
+                RiskTier.LOW,
+                ["playback_state"],
+                {},
+                False,
+            )
+        ],
+        IntentKind.ATS_READ: [
+            (
+                "ats.read_intelligence",
+                RiskTier.LOW,
+                ["ats_intelligence_snapshot"],
+                {},
+                False,
+            )
+        ],
+        IntentKind.ATS_WRITE: [
+            (
+                "ats.write_order",
+                RiskTier.CRITICAL,
+                ["trade_confirmation"],
+                {},
+                False,
+            )
+        ],
+        IntentKind.FINANCIAL_TRANSFER: [
+            (
+                "finance.transfer",
+                RiskTier.CRITICAL,
+                ["transaction_receipt"],
+                {},
+                False,
+            )
+        ],
+        IntentKind.SOCIAL_PUBLISH: [
+            (
+                "social.publish",
+                RiskTier.HIGH,
+                ["published_post"],
+                {},
+                False,
+            )
+        ],
+        IntentKind.UNKNOWN: [
+            (
+                "nexuss.unsupported",
+                RiskTier.HIGH,
+                ["unsupported_reason"],
+                {},
+                False,
+            )
+        ],
+    }
+    return capability_specs.get(intent.kind, [])
+
+
+def build_plan(task_id: UUID, intent: Intent) -> TaskPlan:
+    specs = _direct_specs(intent)
+    if specs is None:
+        specs = _fallback_specs(intent)
 
     steps = [
         PlanStep(
@@ -151,9 +320,18 @@ def build_plan(task_id: UUID, intent: Intent) -> TaskPlan:
             parameters=parameters,
             reversible=reversible,
         )
-        for order, (capability_id, risk, evidence, parameters, reversible) in enumerate(
-            specs, start=1
-        )
+        for order, (
+            capability_id,
+            risk,
+            evidence,
+            parameters,
+            reversible,
+        ) in enumerate(specs, start=1)
     ]
     plan_id = uuid5(NAMESPACE_URL, f"nexuss:{task_id}:plan:{intent.kind}")
-    return TaskPlan(plan_id=plan_id, task_id=task_id, intent=intent, steps=steps)
+    return TaskPlan(
+        plan_id=plan_id,
+        task_id=task_id,
+        intent=intent,
+        steps=steps,
+    )

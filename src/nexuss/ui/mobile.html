@@ -22,8 +22,12 @@
       <div class="connection-state" id="connection-state"><i></i><span>Not paired</span></div>
     </header>
 
+    <div class="link-state" id="link-state" role="status" hidden>
+      <span id="link-state-message">Reconnecting to Nexuss…</span>
+    </div>
+
     <section class="pair-card" id="pair-card">
-      <span class="eyebrow">P4 DEVICE TRUST</span>
+      <span class="eyebrow">P5 MOBILE ACTION PLANE</span>
       <h1>Pair this phone.</h1>
       <p>Enter the eight-digit code shown on the Nexuss desktop. The code is single-use and expires after ten minutes.</p>
       <form id="pair-form">
@@ -43,6 +47,15 @@
         <h1>Waiting for an action.</h1>
         <p>Nexuss will present the exact command, target node, risk, and payload fingerprint before you approve anything.</p>
       </div>
+
+      <article class="handoff-card" id="handoff-card" hidden>
+        <span class="eyebrow">SENT FROM DESKTOP</span>
+        <p class="handoff-query" id="handoff-query">—</p>
+        <small class="handoff-url" id="handoff-url">—</small>
+        <a class="handoff-open" id="handoff-open" href="#" rel="noopener">Open in YouTube</a>
+        <button type="button" class="handoff-dismiss" id="handoff-dismiss">Dismiss</button>
+        <p class="handoff-countdown" id="handoff-countdown" hidden></p>
+      </article>
 
       <article class="approval-card" id="approval-card" hidden>
         <div class="approval-topline">

@@ -1,117 +1,123 @@
 # Nexuss AI OS
 
-> **CONFIDENTIAL - NEXUSS AI - kexyz254peter - Unauthorized distribution prohibited**
+> **CONFIDENTIAL — NEXUSS AI — kexyz254peter — Unauthorized distribution prohibited**
 
-Nexuss is a user-owned Personal Cognitive Operating System that converts natural-language intent into secure, policy-governed, verifiable digital action.
+Nexuss is a user-owned Personal Cognitive Operating System that converts natural-language intent into policy-governed, verifiable digital action.
 
 ## Current stage
 
-Prototype Increment P4: Trusted Device Mesh and Phone Approval.
+Prototype Increment P5.1: Intent-Aware YouTube Workspace and Direct Paired-Phone Handoffs.
 
-P4 extends the premium browser control surface with the first real trusted-device command. A user can type or dictate “Open Notepad on this computer,” inspect the deterministic plan and exact payload, pair a phone on the same private network, approve the command from that phone, watch the Windows node execute the allowlisted command, inspect verified process evidence, and reverse only the receipt-bound process.
+P5.1 extends the verified P5 media plane with:
 
-### Live capabilities
+- context-aware media intent normalization and structured title/artist extraction;
+- official YouTube search plus public video-detail enrichment and deterministic ranking;
+- a rich result catalog, queue, theater mode, and native browser fullscreen;
+- direct desktop YouTube navigation and direct allowlisted handoff to an already paired phone;
+- approval retained for higher-risk browser, device, write, and destructive capabilities.
 
-- `workspace.read_status`: bounded, live, local, read-only repository and runtime metadata.
-- `workspace.create_note`: real Markdown note creation inside the Nexuss managed workspace after exact-payload desktop approval.
-- `workspace.rollback_create_note`: receipt-bound removal of only an unchanged note created by Nexuss.
-- `device.launch_notepad`: real launch of the fixed Windows Notepad executable after paired-phone approval.
-- `device.rollback_launch_notepad`: receipt-bound termination of only the process created by the trusted node.
-- `assistant.respond`: deterministic identity, capability, and help responses without side effects.
+### P5.1 capabilities
 
-### Simulated capabilities
+- `media.youtube.discover`: retrieve and rank embeddable public videos using the official YouTube Data API;
+- `phone.open_youtube`: queue an exact allowlisted YouTube search to a paired phone without an additional approval prompt;
+- contextual media controls: pause, resume, previous, next, mute, unmute, minimize, maximize, fullscreen, close, and result selection;
+- rich result cards: thumbnail, title, channel, description, duration, publication date, view count, and match evidence;
+- `knowledge.web_research`: retain the bounded public-research plane as a separate provider capability;
+- `device.open_web_search`: retain phone approval for general Chrome or Google searches.
 
-Calendar, email, GitHub summary, and ATS intelligence remain explicitly simulated. The UI and receipts never present simulation as live data.
+P1–P4 capabilities remain available, including local workspace intelligence, managed notes, phone-approved Notepad launch, Action Receipts, and receipt-bound rollback.
 
-## P4 device-trust boundary
+## Trust boundary
 
-P4 enforces:
+P5.1 enforces:
 
-- explicit capability registration and fail-closed policy evaluation;
-- phone-only approval for trusted-device commands;
-- single-use eight-digit pairing codes bound to the desktop session;
-- high-entropy phone bearer sessions with eight-hour expiry;
-- exact approval ID, one-time token, and SHA-256 payload matching;
-- a separately running Windows node bound to loopback only;
-- HMAC-SHA256 signed, 30-second command envelopes;
-- nonce replay protection and exact target-node validation;
-- one fixed absolute executable path with no shell and no arguments;
-- verified node, hostname, executable, process, and running-state evidence;
-- append-only Action Receipts;
-- receipt-bound process rollback;
-- private-network startup checks;
-- loopback-only desktop control and task APIs;
-- per-client pairing rate limits;
-- loopback-only device-client URL enforcement with ambient proxies disabled;
-- no automatic firewall changes and no internet relay.
+- external webpage text is untrusted evidence, never executable instruction;
+- provider credentials remain server-side and are excluded from Git, browser storage, logs, and receipts;
+- public research is bounded, read-only, time-limited, and source-labelled;
+- no automatic promotion of research into long-term memory;
+- YouTube search uses the official Data API when configured;
+- playback uses the official YouTube IFrame Player API;
+- YouTube phone handoffs and outbound links accept HTTPS URLs only from an explicit YouTube hostname allowlist;
+- Chrome execution uses a fixed executable and fixed `--new-tab` argument shape with no shell;
+- higher-risk phone and device actions retain exact-payload approval; the paired-phone YouTube handoff is the only no-approval mobile exception in P5.1;
+- the device node remains loopback-only and signed envelopes remain expiring and replay-protected;
+- no arbitrary app, URL, script, executable, intent component, or shell command is accepted.
 
-## Start P4 on Windows
+## Configure official YouTube discovery
 
-First stop any earlier Nexuss process using ports 8100 or 8200. Then run:
+Create a restricted API key for the YouTube Data API and provide it only to the current private runtime environment:
+
+```powershell
+$env:NEXUSS_YOUTUBE_API_KEY = "<private-runtime-key>"
+```
+
+Do not place the key in `.env.example`, source files, screenshots, receipts, or Git. Without the key, Nexuss reports `YOUTUBE_API_KEY_NOT_CONFIGURED` and offers approved phone or Chrome search handoffs. A direct user-supplied YouTube video URL can still be loaded without search.
+
+## Start P5 on Windows
 
 ```powershell
 Set-Location C:\NexussWorkspace\Nexuss-P0
-powershell.exe -ExecutionPolicy Bypass -File .\scripts\start_p4.ps1
+powershell.exe -ExecutionPolicy Bypass -File .\scripts\start_p5.ps1
 ```
 
 The script starts:
 
-- Nexuss Core and desktop UI on `0.0.0.0:8100` so the phone can reach the approval page on the private LAN;
-- the trusted Windows node on `127.0.0.1:8200` only;
-- an ephemeral shared secret inherited through child-process environment variables and omitted from command-line arguments.
+- Nexuss Core and the desktop/mobile UI on private-LAN port `8100`;
+- the trusted Windows node on loopback port `8200`;
+- a process-local cryptographic device secret inherited by child processes and omitted from command-line arguments.
 
-The console prints the desktop and phone URLs. If Windows Firewall prompts, allow access only on **Private networks**.
+If Windows Firewall prompts, allow access only on **Private networks**. Never port-forward or publicly expose port `8100`.
 
-Recommended P4 demonstration:
+Recommended P5.1 demonstrations:
 
 ```text
-Open Notepad on this computer.
+Research the fundamentals of forex and prepare a cited beginner brief.
+Play Silence by Popcaan.
+Open YouTube on my phone and search Silence by Popcaan.
+Open Chrome and search forex risk management.
 ```
 
-The desktop must remain in `awaiting_approval` until the paired phone approves the exact command. After execution, use **Undo action** to close only the receipt-bound Notepad process.
+## Honest YouTube and mobile limitations
 
-## Existing P3 managed workspace
+P5.1 provides public YouTube search, public metadata, an official embedded player, a local queue, and outbound YouTube links. It does not reproduce personalized home recommendations, subscriptions, comments, account history, likes, or uploads. Those features require a separately reviewed OAuth connector and narrowly scoped user consent.
 
-The default managed-note workspace remains:
+The paired private-LAN mobile web client can claim a YouTube-only handoff without an additional approval prompt. Android may route that URL to the installed YouTube app, but Nexuss records `app_open_verified: false` because a signed native Android companion node is not yet present. Hardware-backed enrollment, push delivery, native app attestation, and MediaSession control remain later increments.
+
+## Existing managed workspace
+
+The default managed-note workspace is:
 
 ```text
 ~/.nexuss/workspace
 ```
 
-It can be changed for a private development environment using `NEXUSS_MANAGED_WORKSPACE` before startup.
+It can be changed in a private development environment through `NEXUSS_MANAGED_WORKSPACE` before startup.
 
 ## Current prohibitions
 
 This repository does **not** authorize:
 
-- arbitrary command or shell execution;
-- user-controlled executables, arguments, scripts, or system paths;
-- public-internet exposure of the phone approval endpoint;
-- real-money transfers;
-- autonomous trading or betting;
-- production ATS modification;
-- unrestricted file access or deletion;
-- unattended social publishing;
-- credential recovery;
-- undisclosed voice impersonation.
+- arbitrary browsing, URL opening, command, shell, script, or executable execution;
+- webpage-driven tool calls or prompt-injection instructions;
+- scraping or downloading YouTube media;
+- public-internet exposure of the phone approval surface;
+- unrestricted Android UI automation or AccessibilityService control;
+- real-money transfers, autonomous trading, or ATS writes;
+- unrestricted file access, deletion, or unattended publishing;
+- credential recovery or undisclosed voice impersonation.
 
 ## Engineering principles
 
 - contract-first interfaces;
-- zero implicit trust;
-- explicit capability manifests;
-- read-only-first integrations;
-- independent approval for consequential actions;
-- signed and expiring execution envelopes;
-- verifiable results before completion;
+- fail-closed capability registry;
+- least privilege and explicit approval;
+- deterministic plans before side effects;
+- verified evidence before completion;
 - append-only Action Receipts;
 - reversible actions where technically safe;
-- reproducible builds;
-- no secrets in source control.
-
-## Prototype limitation
-
-P4 phone pairing, task, approval, nonce, process, and receipt state is process-local. The mobile approval page must remain open or active to poll for requests; P4 does not yet provide an operating-system push notification. The phone client uses a private-LAN browser bearer session and must not be exposed to the public internet. Native Android hardware-backed identity, mutual TLS, encrypted durable persistence, secure push notifications, and remote revocation are required before production deployment.
+- private-branch review and green CI before merge;
+- no secrets in source control;
+- all proprietary artifacts marked for `kexyz254peter`.
 
 ## Ownership
 

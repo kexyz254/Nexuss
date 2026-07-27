@@ -1,8 +1,9 @@
 openapi: 3.1.0
+x-copyright: Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
 info:
   title: Nexuss Core API
-  version: 0.4.0
-  description: Confidential P4 trusted-device mesh and phone approval contract - kexyz254peter
+  version: 0.5.1
+  description: Confidential P5.1 intent-aware media, paired-phone, and trusted-device contract - kexyz254peter
 paths:
   /health/live:
     get:
@@ -18,13 +19,13 @@ paths:
                 properties:
                   status: {type: string, const: alive}
                   service: {type: string, const: nexuss-core-api}
-                  version: {type: string, const: 0.4.0}
+                  version: {type: string, const: 0.5.1}
   /health/ready:
     get:
       operationId: healthReady
       responses:
         '200':
-          description: P4 UI, phone approval gateway, and trusted-device client are ready
+          description: P5.1 UI, media provider, paired-phone gateway, and trusted-device client are ready
           content:
             application/json:
               schema:
@@ -32,7 +33,7 @@ paths:
                 required: [status, mode, phone_approval]
                 properties:
                   status: {type: string, const: ready}
-                  mode: {type: string, const: p4_trusted_device_mesh}
+                  mode: {type: string, const: p5_knowledge_media_mobile}
                   phone_approval: {type: string, const: enabled}
   /v1/capabilities:
     get:
@@ -140,6 +141,28 @@ paths:
                 type: array
                 items:
                   $ref: '../schemas/mobile-approval.schema.json'
+        '401': {description: Phone session invalid or expired}
+  /v1/mobile/handoffs:
+    get:
+      operationId: claimPairedPhoneHandoffs
+      parameters:
+        - in: header
+          name: X-Nexuss-Mobile-Device-ID
+          required: true
+          schema: {type: string, format: uuid}
+        - in: header
+          name: X-Nexuss-Mobile-Token
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Once-only allowlisted YouTube handoffs for the paired phone
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '../schemas/mobile-handoff.schema.json'
         '401': {description: Phone session invalid or expired}
   /v1/mobile/tasks/{task_id}/decision:
     post:

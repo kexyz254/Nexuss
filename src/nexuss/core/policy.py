@@ -1,6 +1,6 @@
 """Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
 
-Fail-closed policy evaluation for the Nexuss P4 capability registry.
+Fail-closed policy evaluation for the Nexuss P5 capability registry.
 """
 
 from nexuss.core.registry import get_capability
@@ -28,8 +28,8 @@ def evaluate_step(step: PlanStep) -> PolicyDecision:
             step_id=step.step_id,
             capability_id=step.capability_id,
             outcome=PolicyOutcome.DENY,
-            reason_code="CAPABILITY_PROHIBITED_IN_P3",
-            explanation="This capability is outside the approved P3 execution boundary.",
+            reason_code="CAPABILITY_PROHIBITED_BY_POLICY",
+            explanation="This capability is outside the approved P5 execution boundary.",
         )
 
     manifest = get_capability(step.capability_id)

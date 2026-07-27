@@ -30,7 +30,18 @@ class DeviceCommandError(RuntimeError):
 
 
 class DeviceNodeClient(Protocol):
-    def launch_notepad(self, task_id: UUID, target_node_id: str) -> DeviceCommandEvidence: ...
+    def launch_notepad(
+        self,
+        task_id: UUID,
+        target_node_id: str,
+    ) -> DeviceCommandEvidence: ...
+
+    def open_web_search(
+        self,
+        task_id: UUID,
+        target_node_id: str,
+        launch_url: str,
+    ) -> DeviceCommandEvidence: ...
 
     def rollback_command(
         self,
@@ -41,10 +52,23 @@ class DeviceNodeClient(Protocol):
 
 
 class DisabledDeviceNodeClient:
-    """Fail-closed client used when the P4 node has not been configured."""
+    """Fail-closed client used when the device node is not configured."""
 
-    def launch_notepad(self, task_id: UUID, target_node_id: str) -> DeviceCommandEvidence:
+    def launch_notepad(
+        self,
+        task_id: UUID,
+        target_node_id: str,
+    ) -> DeviceCommandEvidence:
         del task_id, target_node_id
+        raise DeviceCommandError("TRUSTED_DEVICE_NODE_NOT_CONFIGURED")
+
+    def open_web_search(
+        self,
+        task_id: UUID,
+        target_node_id: str,
+        launch_url: str,
+    ) -> DeviceCommandEvidence:
+        del task_id, target_node_id, launch_url
         raise DeviceCommandError("TRUSTED_DEVICE_NODE_NOT_CONFIGURED")
 
     def rollback_command(
@@ -60,9 +84,17 @@ class DisabledDeviceNodeClient:
 class HttpDeviceNodeClient:
     """Send short-lived signed envelopes to the loopback-only Windows node."""
 
-    def __init__(self, *, base_url: str, shared_secret: str, timeout_seconds: float = 5.0) -> None:
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        shared_secret: str,
+        timeout_seconds: float = 5.0,
+    ) -> None:
         if len(shared_secret) < 32:
-            raise ValueError("Device-node shared secret must contain at least 32 characters")
+            raise ValueError(
+                "Device-node shared secret must contain at least 32 characters"
+            )
         parsed = urlparse(base_url)
         if (
             parsed.scheme != "http"
@@ -70,7 +102,9 @@ class HttpDeviceNodeClient:
             or parsed.username is not None
             or parsed.password is not None
         ):
-            raise ValueError("Device-node URL must be an unauthenticated loopback HTTP endpoint")
+            raise ValueError(
+                "Device-node URL must be an unauthenticated loopback HTTP endpoint"
+            )
         self._base_url = base_url.rstrip("/")
         self._shared_secret = shared_secret
         self._timeout_seconds = timeout_seconds
@@ -105,17 +139,26 @@ class HttpDeviceNodeClient:
         except httpx.HTTPError as exc:
             raise DeviceCommandError("TRUSTED_DEVICE_NODE_UNREACHABLE") from exc
         if response.status_code != 200:
-            raise DeviceCommandError(f"TRUSTED_DEVICE_NODE_REJECTED_{response.status_code}")
+            raise DeviceCommandError(
+                f"TRUSTED_DEVICE_NODE_REJECTED_{response.status_code}"
+            )
         payload: object = response.json()
         if not isinstance(payload, dict):
             raise DeviceCommandError("TRUSTED_DEVICE_NODE_RESPONSE_INVALID")
         return {str(key): value for key, value in payload.items()}
 
-    def launch_notepad(self, task_id: UUID, target_node_id: str) -> DeviceCommandEvidence:
+    def launch_notepad(
+        self,
+        task_id: UUID,
+        target_node_id: str,
+    ) -> DeviceCommandEvidence:
         now = datetime.now(UTC)
         command_id = uuid5(
             NAMESPACE_URL,
-            f"nexuss:device-command:{task_id}:device.launch_notepad:{target_node_id}",
+            (
+                "nexuss:device-command:"
+                f"{task_id}:device.launch_notepad:{target_node_id}"
+            ),
         )
         envelope = DeviceCommandEnvelope(
             command_id=command_id,
@@ -127,7 +170,37 @@ class HttpDeviceNodeClient:
             nonce=secrets.token_urlsafe(32),
             parameters={},
         )
-        return DeviceCommandEvidence.model_validate(self._post("/v1/commands", envelope))
+        return DeviceCommandEvidence.model_validate(
+            self._post("/v1/commands", envelope)
+        )
+
+    def open_web_search(
+        self,
+        task_id: UUID,
+        target_node_id: str,
+        launch_url: str,
+    ) -> DeviceCommandEvidence:
+        now = datetime.now(UTC)
+        command_id = uuid5(
+            NAMESPACE_URL,
+            (
+                "nexuss:device-command:"
+                f"{task_id}:device.open_web_search:{target_node_id}:{launch_url}"
+            ),
+        )
+        envelope = DeviceCommandEnvelope(
+            command_id=command_id,
+            task_id=task_id,
+            capability_id="device.open_web_search",
+            target_node_id=target_node_id,
+            issued_at=now,
+            expires_at=now + _DEVICE_COMMAND_LIFETIME,
+            nonce=secrets.token_urlsafe(32),
+            parameters={"launch_url": launch_url},
+        )
+        return DeviceCommandEvidence.model_validate(
+            self._post("/v1/commands", envelope)
+        )
 
     def rollback_command(
         self,
@@ -148,4 +221,6 @@ class HttpDeviceNodeClient:
             expires_at=now + _DEVICE_COMMAND_LIFETIME,
             nonce=secrets.token_urlsafe(32),
         )
-        return DeviceRollbackEvidence.model_validate(self._post("/v1/rollbacks", envelope))
+        return DeviceRollbackEvidence.model_validate(
+            self._post("/v1/rollbacks", envelope)
+        )

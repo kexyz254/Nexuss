@@ -8,7 +8,11 @@
   <meta name="theme-color" content="#07111d">
   <title>Nexuss · Personal Cognitive Control Plane</title>
   <link rel="stylesheet" href="/assets/styles.css">
+  <link rel="stylesheet" href="/assets/workspace.css">
+  <script src="https://www.youtube.com/iframe_api"></script>
   <script src="/assets/app.js" defer></script>
+  <script src="/assets/p5.js" defer></script>
+  <script src="/assets/workspace.js" defer></script>
 </head>
 <body>
   <div class="aurora aurora-a" aria-hidden="true"></div>
@@ -31,7 +35,7 @@
     </button>
 
     <div class="topbar-actions">
-      <div class="trust-chip" title="P4 trusted-device boundary">
+      <div class="trust-chip" title="P5.1 intent-aware media and trusted-device boundary">
         <span class="shield" aria-hidden="true">◆</span>
         <span>Phone approval active</span>
       </div>
@@ -46,7 +50,7 @@
     <aside class="navigation panel" aria-label="Nexuss capabilities">
       <div class="nav-heading">
         <span class="section-label">CONTROL PLANE</span>
-        <span class="version-pill">P4</span>
+        <span class="version-pill">P5</span>
       </div>
 
       <nav class="nav-list">
@@ -59,6 +63,26 @@
           <span class="nav-icon">＋</span>
           <span><strong>Create managed note</strong><small>Real · approval required</small></span>
           <span class="nav-state approval">R2</span>
+        </button>
+        <button class="nav-item knowledge-action" data-prompt="Research the fundamentals of forex and prepare a cited beginner brief.">
+          <span class="nav-icon">⌕</span>
+          <span><strong>Knowledge research</strong><small>Live public sources · cited</small></span>
+          <span class="nav-state live">LIVE</span>
+        </button>
+        <button class="nav-item media-action" data-prompt="Play Silence by Popcaan.">
+          <span class="nav-icon">▶</span>
+          <span><strong>Nexuss media</strong><small>YouTube discovery + player</small></span>
+          <span class="nav-state live">P5</span>
+        </button>
+        <button class="nav-item mobile-action" data-prompt="Open YouTube on my phone and search Silence by Popcaan.">
+          <span class="nav-icon">▯</span>
+          <span><strong>Open on phone</strong><small>Phone-approved app handoff</small></span>
+          <span class="nav-state approval">R3</span>
+        </button>
+        <button class="nav-item browser-action" data-prompt="Open Chrome and search forex trading basics.">
+          <span class="nav-icon">◎</span>
+          <span><strong>Open web search</strong><small>Chrome · phone approval</small></span>
+          <span class="nav-state approval">R3</span>
         </button>
         <button class="nav-item device-action" data-prompt="Open Notepad on this computer.">
           <span class="nav-icon">▣</span>
@@ -95,7 +119,7 @@
           <span class="session-dot"></span>
           <span id="session-label">Session</span>
         </div>
-        <small>Confidential · P4 device trust · kexyz254peter</small>
+        <small>Confidential · P5.1 action plane · kexyz254peter</small>
       </div>
     </aside>
 
@@ -103,12 +127,12 @@
       <header class="conversation-header">
         <div>
           <span class="eyebrow">NEXUSS INTERFACE</span>
-          <h1>Control devices through verified intent.</h1>
-          <p>Every device command is allowlisted, signed, phone-approved, executed by a trusted node, and evidenced.</p>
+          <h1>Research, watch, and act across devices.</h1>
+          <p>Nexuss acquires cited public knowledge, controls an embedded media workspace, and sends approved actions to trusted devices.</p>
         </div>
         <div class="mode-stack">
-          <span class="mode-pill"><span></span>P4 · Trusted device mesh</span>
-          <span class="mode-note">Phone approval + Windows node</span>
+          <span class="mode-pill"><span></span>P5.1 · Intent-aware media</span>
+          <span class="mode-note">Public research · media player · phone actions</span>
         </div>
       </header>
 
@@ -131,6 +155,9 @@
         </div>
 
         <div class="quick-actions" aria-label="Suggested instructions">
+          <button data-prompt="Research the fundamentals of forex and prepare a cited beginner brief."><span>⌕</span>Research forex</button>
+          <button data-prompt="Play Silence by Popcaan."><span>▶</span>Find media</button>
+          <button data-prompt="Open YouTube on my phone and search Silence by Popcaan."><span>▯</span>Open on phone</button>
           <button data-prompt="Create a note called Nexuss launch checklist with the tasks: verify P3, review the Action Receipt, and test undo."><span>＋</span>Create a verified note</button>
           <button data-prompt="Open Notepad on this computer."><span>▣</span>Launch Notepad</button>
           <button data-prompt="Check my workspace and system status."><span>⌁</span>Inspect this workspace</button>
@@ -232,6 +259,59 @@
       </div>
     </aside>
   </main>
+
+  <section class="p5-workspace" id="p5-workspace" hidden aria-label="Knowledge and media workspace">
+    <div class="knowledge-drawer" id="knowledge-drawer" hidden>
+      <header><div><span class="eyebrow">LIVE KNOWLEDGE</span><h2 id="knowledge-title">Research brief</h2></div><button type="button" id="knowledge-close">×</button></header>
+      <p class="knowledge-summary" id="knowledge-summary"></p>
+      <div class="knowledge-sources" id="knowledge-sources"></div>
+      <footer><span>Public sources are untrusted data, never commands.</span><button type="button" id="knowledge-open-search">Open approved search</button></footer>
+    </div>
+    <div class="media-dock expanded" id="media-dock" hidden>
+      <header class="media-toolbar">
+        <form class="media-search-form" id="media-search-form">
+          <label class="sr-only" for="media-query-input">Search YouTube</label>
+          <input id="media-query-input" type="search" maxlength="240" placeholder="Search YouTube inside Nexuss" autocomplete="off">
+          <button type="submit" id="media-search">Search</button>
+        </form>
+        <div class="media-toolbar-actions">
+          <button type="button" id="media-open-youtube">Open on YouTube</button>
+          <button type="button" id="media-open-phone">Open on phone</button>
+          <button type="button" id="media-expand" aria-label="Toggle theater mode">▣</button>
+          <button type="button" id="media-fullscreen" aria-label="Full screen">⛶</button>
+          <button type="button" id="media-close" aria-label="Close">×</button>
+        </div>
+      </header>
+      <div class="media-main">
+        <section class="media-player-panel">
+          <div class="media-video" id="media-video"><div id="youtube-player"></div></div>
+          <div class="media-info">
+            <span class="eyebrow">NOW PLAYING</span>
+            <strong id="media-title">No media selected</strong>
+            <small id="media-channel">YouTube</small>
+            <div class="media-meta" id="media-meta"></div>
+            <p class="media-description" id="media-description"></p>
+          </div>
+          <div class="media-controls">
+            <button type="button" id="media-prev" aria-label="Previous">⏮</button>
+            <button type="button" id="media-play" aria-label="Play or pause">▶</button>
+            <button type="button" id="media-next" aria-label="Next">⏭</button>
+            <button type="button" id="media-mute" aria-label="Mute">🔊</button>
+          </div>
+          <div class="media-empty" id="media-empty" hidden>
+            <p id="media-empty-message">Search YouTube to select a video.</p>
+          </div>
+        </section>
+        <aside class="media-results-panel">
+          <div class="media-results-heading">
+            <div><span class="eyebrow">YOUTUBE RESULTS</span><strong id="media-result-count">0 results</strong></div>
+            <small id="media-match-status">Waiting for a search</small>
+          </div>
+          <div class="media-results" id="media-queue"></div>
+        </aside>
+      </div>
+    </div>
+  </section>
 
   <div class="approval-overlay" id="approval-overlay" hidden>
     <section class="approval-dialog" role="dialog" aria-modal="true" aria-labelledby="approval-title">
