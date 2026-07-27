@@ -1,4 +1,5 @@
 1aa73daa9afabaf2b1dd467742ab0e7b82f6aa905b173acc066a96297eaa7333  ./.env.example
+e2cbceb7d72b72314f17cd5f4c11fdac74c9e6c25094b3b0690fa978fbb2a55f  ./.gitattributes
 5c2dff0ef8ae26265fad3df01725deaee4e0387e88f25caeee50278839e44a67  ./.github/workflows/ci.yml
 2e49bb756ee484e1a991e0c2e56320bbe80f9d9943e2b6d1141565cd06ff7319  ./.gitignore
 95bcf7538fced4a23a0db8c6e74dd2435e37452ae004e89f82d01bf58156eb70  ./apps/android-companion/README.md

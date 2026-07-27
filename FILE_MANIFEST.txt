@@ -1,4 +1,5 @@
 ./.env.example
+./.gitattributes
 ./.github/workflows/ci.yml
 ./.gitignore
 ./apps/android-companion/README.md
