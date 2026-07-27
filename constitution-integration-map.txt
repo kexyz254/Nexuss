@@ -1,0 +1,3178 @@
+NEXUSS CONSTITUTION INTEGRATION MAP
+================================================================================
+
+IDENTITY INTENTS
+----------------
+
+FILE: src\nexuss\constitution\loader.py
+  0143: 
+  0144:     required_responses = {
+> 0145:         "who_are_you",
+  0146:         "who_is_your_founder",
+  0147:         "who_developed_you",
+  0148:         "who_is_your_boss",
+
+  0149:         "user_claims_to_be_peter",
+
+
+FILE: src\nexuss\core\intents.py
+  0424: 
+  0425: 
+> 0426: def _identity_recall_query(normalized: str) -> str:
+  0427:     if "boss" in normalized or "owner" in normalized or "owns" in normalized:
+  0428:         return "boss owner"
+  0429:     return "developed created built made developer creator"
+
+  0449:         # contains the substring "who are you", the same collision class as
+  0450:         # "unpair my phone" containing "pair my phone".
+> 0451:         kind = IntentKind.IDENTITY_RECALL
+  0452:         confidence = 0.97
+  0453:         entities = {"query": _identity_query(identity_subject.group("subject"))}
+  0454:     elif (identity_verb := _IDENTITY_VERB_PATTERN.match(display_text)) is not None:
+
+> 0455:         kind = IntentKind.IDENTITY_RECALL
+  0456:         confidence = 0.96
+  0457:         entities = {"query": _identity_query(identity_verb.group("verb"))}
+  0458:     elif _contains_any(
+
+  0460:         ("who are you", "what are you", "introduce yourself"),
+  0461:     ):
+> 0462:         kind = IntentKind.ASSISTANT_IDENTITY
+  0463:         confidence = 0.99
+  0464:     elif _contains_any(
+  0465:         normalized,
+
+  0477:         len(user_claim.group("claim").split()) <= 6
+  0478:     ):
+> 0479:         kind = IntentKind.USER_IDENTITY_CLAIM
+  0480:         confidence = 0.95
+  0481:         entities = {"claim": user_claim.group("claim").strip(" \"'.")}
+  0482:     elif (memory_match := _match_memory(display_text)) is not None:
+
+
+FILE: src\nexuss\core\planner.py
+  0028: def _assistant_response(intent: Intent) -> str:
+  0029:     responses = {
+> 0030:         IntentKind.ASSISTANT_IDENTITY: (
+  0031:             "I am Nexuss, your personal cognitive control plane. I interpret "
+  0032:             "requests, apply safety policy, coordinate approved capabilities, "
+  0033:             "verify results, and preserve auditable Action Receipts."
+
+  0049: def _direct_specs(intent: Intent) -> list[StepSpec] | None:
+  0050:     if intent.kind in {
+> 0051:         IntentKind.ASSISTANT_IDENTITY,
+  0052:         IntentKind.ASSISTANT_CAPABILITIES,
+  0053:         IntentKind.ASSISTANT_HELP,
+  0054:     }:
+
+  0108:         ]
+  0109: 
+> 0110:     if intent.kind is IntentKind.IDENTITY_RECALL:
+  0111:         return [
+  0112:             (
+  0113:                 "memory.recall",
+
+  0119:         ]
+  0120: 
+> 0121:     if intent.kind is IntentKind.USER_IDENTITY_CLAIM:
+  0122:         claim = intent.entities.get("claim", "")
+  0123:         return [
+  0124:             (
+
+
+FILE: src\nexuss\domain\models.py
+  0024: 
+  0025: class IntentKind(StrEnum):
+> 0026:     ASSISTANT_IDENTITY = "assistant_identity"
+  0027:     ASSISTANT_CAPABILITIES = "assistant_capabilities"
+  0028:     ASSISTANT_HELP = "assistant_help"
+  0029:     DAILY_BRIEFING = "daily_briefing"
+
+  0041:     MEMORY_RECALL = "memory_recall"
+  0042:     MEMORY_FORGET = "memory_forget"
+> 0043:     IDENTITY_RECALL = "identity_recall"
+  0044:     USER_IDENTITY_CLAIM = "user_identity_claim"
+  0045:     OPEN_WEB_SEARCH = "open_web_search"
+  0046:     PREPARE_WORKSPACE = "prepare_workspace"
+
+  0047:     PLAY_MEDIA = "play_media"
+
+
+CAPABILITY REGISTRY
+-------------------
+
+FILE: src\nexuss\api\app.py
+  0034:     ApprovalDecision,
+  0035:     AssuranceLevel,
+> 0036:     CapabilityManifest,
+  0037:     IdentitySession,
+  0038:     RollbackRequest,
+  0039:     TaskRequest,
+
+  0194: 
+  0195: 
+> 0196: @app.get("/v1/capabilities", response_model=list[CapabilityManifest])
+  0197: def get_capabilities(request: Request) -> list[CapabilityManifest]:
+  0198:     _require_local_control(request)
+  0199:     return list(list_capabilities())
+
+  0200: 
+
+
+FILE: src\nexuss\core\executor.py
+  0056:     return CapabilityResult(
+  0057:         step_id=step.step_id,
+> 0058:         capability_id=step.capability_id,
+  0059:         status=StepStatus.FAILED,
+  0060:         evidence=[],
+  0061:         error_code=error_code,
+
+  0072:     return CapabilityResult(
+  0073:         step_id=step.step_id,
+> 0074:         capability_id=step.capability_id,
+  0075:         status=StepStatus.VERIFIED,
+  0076:         evidence=[
+  0077:             EvidenceRecord(
+
+  0103:     return CapabilityResult(
+  0104:         step_id=step.step_id,
+> 0105:         capability_id=step.capability_id,
+  0106:         status=StepStatus.VERIFIED,
+  0107:         evidence=[
+  0108:             EvidenceRecord(
+
+  0138:     return CapabilityResult(
+  0139:         step_id=step.step_id,
+> 0140:         capability_id=step.capability_id,
+  0141:         status=(
+  0142:             StepStatus.VERIFIED
+  0143:             if evidence.verified_running
+
+  0182:     return CapabilityResult(
+  0183:         step_id=step.step_id,
+> 0184:         capability_id=step.capability_id,
+  0185:         status=StepStatus.VERIFIED,
+  0186:         evidence=[
+  0187:             EvidenceRecord(
+
+  0207:     return CapabilityResult(
+  0208:         step_id=step.step_id,
+> 0209:         capability_id=step.capability_id,
+  0210:         status=StepStatus.VERIFIED,
+  0211:         evidence=[
+  0212:             EvidenceRecord(
+
+  0232:     return CapabilityResult(
+  0233:         step_id=step.step_id,
+> 0234:         capability_id=step.capability_id,
+  0235:         status=StepStatus.VERIFIED,
+  0236:         evidence=[
+  0237:             EvidenceRecord(
+
+  0272:     return CapabilityResult(
+  0273:         step_id=step.step_id,
+> 0274:         capability_id=step.capability_id,
+  0275:         status=StepStatus.VERIFIED,
+  0276:         evidence=[
+  0277:             EvidenceRecord(
+
+  0314:     return CapabilityResult(
+  0315:         step_id=step.step_id,
+> 0316:         capability_id=step.capability_id,
+  0317:         status=StepStatus.VERIFIED,
+  0318:         evidence=[
+  0319:             EvidenceRecord(
+
+  0340:     return CapabilityResult(
+  0341:         step_id=step.step_id,
+> 0342:         capability_id=step.capability_id,
+  0343:         status=StepStatus.VERIFIED,
+  0344:         evidence=[
+  0345:             EvidenceRecord(
+
+  0402:     return CapabilityResult(
+  0403:         step_id=step.step_id,
+> 0404:         capability_id=step.capability_id,
+  0405:         status=StepStatus.VERIFIED,
+  0406:         evidence=[
+  0407:             EvidenceRecord(
+
+  0448:     return CapabilityResult(
+  0449:         step_id=step.step_id,
+> 0450:         capability_id=step.capability_id,
+  0451:         status=StepStatus.VERIFIED,
+  0452:         evidence=[
+  0453:             EvidenceRecord(
+
+  0477:     return CapabilityResult(
+  0478:         step_id=step.step_id,
+> 0479:         capability_id=step.capability_id,
+  0480:         status=StepStatus.VERIFIED,
+  0481:         evidence=[
+  0482:             EvidenceRecord(
+
+  0516:     return CapabilityResult(
+  0517:         step_id=step.step_id,
+> 0518:         capability_id=step.capability_id,
+  0519:         status=StepStatus.VERIFIED,
+  0520:         evidence=[
+  0521:             EvidenceRecord(
+
+  0547:     timestamp = observed_at or datetime.now(UTC)
+  0548: 
+> 0549:     if step.capability_id in {"memory.remember", "memory.recall", "memory.forget"}:
+  0550:         if memory_store is None:
+  0551:             return _failed(step, "MEMORY_STORE_NOT_CONFIGURED")
+  0552:         if step.capability_id == "memory.remember":
+
+  0553:             return _execute_memory_remember(step, timestamp, memory_store)
+  0554:         if step.capability_id == "memory.recall":
+  0555:             return _execute_memory_recall(step, timestamp, memory_store)
+
+  0556:         return _execute_memory_forget(step, timestamp, memory_store)
+  0557: 
+
+> 0558:     if step.capability_id == "device.pair_phone":
+  0559:         if pairing_gateway is None or session_id is None:
+  0560:             return _failed(step, "MOBILE_PAIRING_GATEWAY_NOT_CONFIGURED")
+  0561:         return _execute_pair_phone(step, timestamp, session_id, pairing_gateway)
+
+  0562: 
+> 0563:     if step.capability_id == "device.list_phones":
+  0564:         if pairing_gateway is None:
+  0565:             return _failed(step, "MOBILE_PAIRING_GATEWAY_NOT_CONFIGURED")
+  0566:         return _execute_list_phones(step, timestamp, pairing_gateway)
+
+  0567: 
+> 0568:     if step.capability_id == "device.unpair_phone":
+  0569:         if pairing_gateway is None:
+  0570:             return _failed(step, "MOBILE_PAIRING_GATEWAY_NOT_CONFIGURED")
+  0571:         return _execute_unpair_phone(step, timestamp, pairing_gateway)
+
+  0572: 
+> 0573:     if step.capability_id == "assistant.respond":
+  0574:         return _execute_assistant_response(step, timestamp)
+  0575: 
+  0576:     if step.capability_id == "workspace.create_note":
+
+  0577:         if note_store is None:
+  0578:             raise RuntimeError(
+  0579:                 "ManagedNoteStore is required for controlled writes"
+
+  0581:         return _execute_create_note(step, timestamp, note_store)
+  0582: 
+> 0583:     if step.capability_id == "device.launch_notepad":
+  0584:         if task_id is None or device_client is None:
+  0585:             return _failed(step, "TRUSTED_DEVICE_NODE_NOT_CONFIGURED")
+  0586:         return _execute_launch_notepad(
+
+  0591:         )
+  0592: 
+> 0593:     if step.capability_id == "knowledge.web_research":
+  0594:         if knowledge_provider is None:
+  0595:             return _failed(step, "KNOWLEDGE_PROVIDER_NOT_CONFIGURED")
+  0596:         return _execute_web_research(
+
+  0600:         )
+  0601: 
+> 0602:     if step.capability_id == "media.youtube.discover":
+  0603:         if youtube_provider is None:
+  0604:             return _failed(step, "YOUTUBE_PROVIDER_NOT_CONFIGURED")
+  0605:         return _execute_youtube_discovery(
+
+  0609:         )
+  0610: 
+> 0611:     if step.capability_id == "phone.open_youtube":
+  0612:         return _execute_phone_handoff(step, timestamp)
+  0613: 
+  0614:     if step.capability_id == "device.open_web_search":
+
+  0615:         if task_id is None or device_client is None:
+  0616:             return _failed(step, "TRUSTED_DEVICE_NODE_NOT_CONFIGURED")
+  0617:         return _execute_web_search(
+
+  0622:         )
+  0623: 
+> 0624:     if step.capability_id == "workspace.read_status":
+  0625:         try:
+  0626:             attributes = collect_local_workspace_status(
+  0627:                 observed_at=timestamp
+
+  0634:         return CapabilityResult(
+  0635:             step_id=step.step_id,
+> 0636:             capability_id=step.capability_id,
+  0637:             status=StepStatus.VERIFIED,
+  0638:             evidence=[
+  0639:                 EvidenceRecord(
+
+
+FILE: src\nexuss\core\planner.py
+  0022: 
+  0023: 
+> 0024: def _step_id(task_id: UUID, order: int, capability_id: str) -> UUID:
+  0025:     return uuid5(NAMESPACE_URL, f"nexuss:{task_id}:{order}:{capability_id}")
+  0026: 
+  0027: 
+
+  0028: def _assistant_response(intent: Intent) -> str:
+
+  0089:         return [
+  0090:             (
+> 0091:                 "knowledge.web_research",
+  0092:                 RiskTier.LOW,
+  0093:                 ["sources", "brief"],
+  0094:                 {"query": query},
+
+  0111:         return [
+  0112:             (
+> 0113:                 "memory.recall",
+  0114:                 RiskTier.INFORMATIONAL,
+  0115:                 ["memory_recall_results"],
+  0116:                 {"query": intent.entities.get("query", "")},
+
+  0151:         return [
+  0152:             (
+> 0153:                 "memory.recall",
+  0154:                 RiskTier.INFORMATIONAL,
+  0155:                 ["memory_recall_results"],
+  0156:                 {"query": intent.entities.get("query", "")},
+
+  0412:     steps = [
+  0413:         PlanStep(
+> 0414:             step_id=_step_id(task_id, order, capability_id),
+  0415:             order=order,
+  0416:             capability_id=capability_id,
+  0417:             risk_tier=risk,
+
+  0418:             expected_evidence=evidence,
+  0419:             parameters=parameters,
+
+  0421:         )
+  0422:         for order, (
+> 0423:             capability_id,
+  0424:             risk,
+  0425:             evidence,
+  0426:             parameters,
+
+
+FILE: src\nexuss\core\policy.py
+  0024: 
+  0025: def evaluate_step(step: PlanStep) -> PolicyDecision:
+> 0026:     if step.capability_id in _PROHIBITED_CAPABILITIES:
+  0027:         return PolicyDecision(
+  0028:             step_id=step.step_id,
+  0029:             capability_id=step.capability_id,
+
+  0030:             outcome=PolicyOutcome.DENY,
+  0031:             reason_code="CAPABILITY_PROHIBITED_BY_POLICY",
+  0032:             explanation="This capability is outside the approved P5 execution boundary.",
+
+  0033:         )
+  0034: 
+> 0035:     manifest = get_capability(step.capability_id)
+  0036:     if manifest is None:
+  0037:         return PolicyDecision(
+  0038:             step_id=step.step_id,
+
+> 0039:             capability_id=step.capability_id,
+  0040:             outcome=PolicyOutcome.DENY,
+  0041:             reason_code="CAPABILITY_NOT_REGISTERED",
+  0042:             explanation="Unregistered capabilities cannot execute in Nexuss.",
+
+  0046:         return PolicyDecision(
+  0047:             step_id=step.step_id,
+> 0048:             capability_id=step.capability_id,
+  0049:             outcome=PolicyOutcome.DENY,
+  0050:             reason_code="CAPABILITY_REGISTRY_PROHIBITED",
+  0051:             explanation="The capability registry marks this capability as prohibited.",
+
+  0056:         return PolicyDecision(
+  0057:             step_id=step.step_id,
+> 0058:             capability_id=step.capability_id,
+  0059:             outcome=PolicyOutcome.REQUIRE_APPROVAL,
+  0060:             reason_code=(
+  0061:                 "TRUSTED_PHONE_APPROVAL_REQUIRED"
+
+  0082:         return PolicyDecision(
+  0083:             step_id=step.step_id,
+> 0084:             capability_id=step.capability_id,
+  0085:             outcome=PolicyOutcome.ALLOW,
+  0086:             reason_code=reason_code,
+  0087:             explanation="The registered capability has no approved external side effect.",
+
+  0090:     return PolicyDecision(
+  0091:         step_id=step.step_id,
+> 0092:         capability_id=step.capability_id,
+  0093:         outcome=PolicyOutcome.DENY,
+  0094:         reason_code="FAIL_CLOSED_POLICY_CONFIGURATION",
+  0095:         explanation="No explicit policy outcome authorizes this capability.",
+
+
+FILE: src\nexuss\core\registry.py
+  0007:     ApprovalChannel,
+  0008:     ApprovalPolicy,
+> 0009:     CapabilityManifest,
+  0010:     CapabilityStatus,
+  0011:     RiskTier,
+  0012: )
+
+  0013: 
+  0014: _MANIFESTS = (
+> 0015:     CapabilityManifest(
+  0016:         capability_id="memory.remember",
+  0017:         version="1.0.0",
+  0018:         title="Remember",
+
+  0019:         description=(
+
+  0027:         status=CapabilityStatus.ACTIVE,
+  0028:     ),
+> 0029:     CapabilityManifest(
+  0030:         capability_id="memory.recall",
+  0031:         version="1.0.0",
+  0032:         title="Recall",
+
+  0033:         description=(
+
+  0041:         status=CapabilityStatus.ACTIVE,
+  0042:     ),
+> 0043:     CapabilityManifest(
+  0044:         capability_id="memory.forget",
+  0045:         version="1.0.0",
+  0046:         title="Forget a topic",
+
+  0047:         description=(
+
+  0056:         approval_channel=ApprovalChannel.DESKTOP,
+  0057:     ),
+> 0058:     CapabilityManifest(
+  0059:         capability_id="device.pair_phone",
+  0060:         version="1.0.0",
+  0061:         title="Pair a phone",
+
+  0062:         description=(
+
+  0070:         status=CapabilityStatus.ACTIVE,
+  0071:     ),
+> 0072:     CapabilityManifest(
+  0073:         capability_id="device.list_phones",
+  0074:         version="1.0.0",
+  0075:         title="List paired phones",
+
+  0076:         description="Read the paired-device inventory without exposing token digests.",
+
+  0081:         status=CapabilityStatus.ACTIVE,
+  0082:     ),
+> 0083:     CapabilityManifest(
+  0084:         capability_id="device.unpair_phone",
+  0085:         version="1.0.0",
+  0086:         title="Unpair a phone",
+
+  0087:         description=(
+
+  0096:         approval_channel=ApprovalChannel.DESKTOP,
+  0097:     ),
+> 0098:     CapabilityManifest(
+  0099:         capability_id="assistant.respond",
+  0100:         version="1.0.0",
+  0101:         title="Nexuss conversation",
+
+  0102:         description="Answer identity, help, and capability questions without side effects.",
+
+  0107:         status=CapabilityStatus.ACTIVE,
+  0108:     ),
+> 0109:     CapabilityManifest(
+  0110:         capability_id="workspace.read_status",
+  0111:         version="1.0.0",
+  0112:         title="Workspace status",
+
+  0113:         description="Read bounded local repository and runtime metadata.",
+
+  0118:         status=CapabilityStatus.ACTIVE,
+  0119:     ),
+> 0120:     CapabilityManifest(
+  0121:         capability_id="workspace.create_note",
+  0122:         version="1.0.0",
+  0123:         title="Create managed note",
+
+  0124:         description="Create a verified Markdown note in the Nexuss managed workspace.",
+
+  0129:         status=CapabilityStatus.ACTIVE,
+  0130:     ),
+> 0131:     CapabilityManifest(
+  0132:         capability_id="workspace.rollback_create_note",
+  0133:         version="1.0.0",
+  0134:         title="Undo note creation",
+
+  0135:         description="Remove only the unchanged note created by the associated receipt.",
+
+  0140:         status=CapabilityStatus.ACTIVE,
+  0141:     ),
+> 0142:     CapabilityManifest(
+  0143:         capability_id="device.launch_notepad",
+  0144:         version="1.0.0",
+  0145:         title="Launch Notepad on trusted Windows node",
+
+  0146:         description=(
+
+  0155:         approval_channel=ApprovalChannel.PHONE,
+  0156:     ),
+> 0157:     CapabilityManifest(
+  0158:         capability_id="device.rollback_launch_notepad",
+  0159:         version="1.0.0",
+  0160:         title="Close receipt-bound Notepad process",
+
+  0161:         description=(
+
+  0169:         approval_channel=ApprovalChannel.PHONE,
+  0170:     ),
+> 0171:     CapabilityManifest(
+  0172:         capability_id="knowledge.web_research",
+  0173:         version="1.0.0",
+  0174:         title="Public web research",
+
+  0175:         description="Retrieve bounded public reference sources and prepare a cited brief.",
+
+  0180:         status=CapabilityStatus.ACTIVE,
+  0181:     ),
+> 0182:     CapabilityManifest(
+  0183:         capability_id="media.youtube.discover",
+  0184:         version="1.0.0",
+  0185:         title="YouTube discovery",
+
+  0186:         description="Search through the official YouTube Data API or return a safe handoff state.",
+
+  0191:         status=CapabilityStatus.ACTIVE,
+  0192:     ),
+> 0193:     CapabilityManifest(
+  0194:         capability_id="phone.open_youtube",
+  0195:         version="1.1.0",
+  0196:         title="Open YouTube on paired phone",
+
+  0197:         description=(
+
+  0205:         status=CapabilityStatus.ACTIVE,
+  0206:     ),
+> 0207:     CapabilityManifest(
+  0208:         capability_id="device.open_web_search",
+  0209:         version="1.0.0",
+  0210:         title="Open approved web search",
+
+  0211:         description="Open an allowlisted HTTPS search URL in Chrome on the trusted Windows node.",
+
+  0217:         approval_channel=ApprovalChannel.PHONE,
+  0218:     ),
+> 0219:     CapabilityManifest(
+  0220:         capability_id="calendar.read_summary",
+  0221:         version="0.1.0",
+  0222:         title="Calendar summary",
+
+  0223:         description="P1 deterministic simulation only.",
+
+  0228:         status=CapabilityStatus.SIMULATED,
+  0229:     ),
+> 0230:     CapabilityManifest(
+  0231:         capability_id="email.read_summary",
+  0232:         version="0.1.0",
+  0233:         title="Email summary",
+
+  0234:         description="P1 deterministic simulation only.",
+
+  0239:         status=CapabilityStatus.SIMULATED,
+  0240:     ),
+> 0241:     CapabilityManifest(
+  0242:         capability_id="github.read_summary",
+  0243:         version="0.1.0",
+  0244:         title="GitHub summary",
+
+  0245:         description="P1 deterministic simulation only.",
+
+  0250:         status=CapabilityStatus.SIMULATED,
+  0251:     ),
+> 0252:     CapabilityManifest(
+  0253:         capability_id="ats.read_health",
+  0254:         version="0.1.0",
+  0255:         title="ATS health",
+
+  0256:         description="Protected read-only simulation; no live ATS connection.",
+
+  0261:         status=CapabilityStatus.SIMULATED,
+  0262:     ),
+> 0263:     CapabilityManifest(
+  0264:         capability_id="ats.read_intelligence",
+  0265:         version="0.1.0",
+  0266:         title="ATS intelligence",
+
+  0267:         description="Protected read-only simulation; no live market data.",
+
+  0274: )
+  0275: 
+> 0276: _BY_ID = {manifest.capability_id: manifest for manifest in _MANIFESTS}
+  0277: 
+  0278: 
+  0279: def list_capabilities() -> tuple[CapabilityManifest, ...]:
+
+  0280:     return _MANIFESTS
+  0281: 
+  0282: 
+
+> 0283: def get_capability(capability_id: str) -> CapabilityManifest | None:
+  0284:     return _BY_ID.get(capability_id)
+
+
+
+FILE: src\nexuss\core\service.py
+  0077: def _payload_sha256(step: PlanStep) -> str:
+  0078:     payload = {
+> 0079:         "capability_id": step.capability_id,
+  0080:         "parameters": step.parameters,
+  0081:         "reversible": step.reversible,
+  0082:         "risk_tier": step.risk_tier,
+
+  0151:         verified = task.state in {TaskState.COMPLETED, TaskState.ROLLED_BACK} and bool(task.results)
+  0152:         reversible = task.state is TaskState.COMPLETED and any(
+> 0153:             result.capability_id in {"workspace.create_note", "device.launch_notepad"}
+  0154:             and result.status is StepStatus.VERIFIED
+  0155:             for result in task.results
+  0156:         )
+
+  0175:     @staticmethod
+  0176:     def _invalid_note_plan(task_id: UUID, intent: Intent, error_code: str) -> TaskPlan:
+> 0177:         capability_id = "workspace.create_note"
+  0178:         step = PlanStep(
+  0179:             step_id=uuid5(NAMESPACE_URL, f"nexuss:{task_id}:1:{capability_id}"),
+  0180:             order=1,
+
+  0181:             capability_id=capability_id,
+  0182:             risk_tier=RiskTier.MEDIUM,
+
+  0183:             expected_evidence=["validation_error"],
+  0184:             parameters={"validation_error": error_code},
+
+  0200:     ) -> ApprovalRequest:
+  0201:         payload_hash = _payload_sha256(step)
+> 0202:         if step.capability_id == "device.launch_notepad":
+  0203:             target_node_id = str(step.parameters.get("target_node_id", "windows-primary"))
+  0204:             action_title = "Launch Notepad on trusted Windows node"
+  0205:             action_summary = (
+
+  0208:             )
+  0209:             exact_preview = (
+> 0210:                 f"Capability: {step.capability_id}\n"
+  0211:                 f"Target node: {target_node_id}\n"
+  0212:                 "Executable: C:\\Windows\\System32\\notepad.exe\n"
+  0213:                 "Shell: disabled\nArguments: none"
+
+  0215:             destination_label = f"Trusted Windows node · {target_node_id}"
+  0216:             approval_channel = ApprovalChannel.PHONE
+> 0217:         elif step.capability_id == "device.open_web_search":
+  0218:             launch_url = str(step.parameters.get("launch_url", ""))
+  0219:             action_title = "Open approved search in Chrome"
+  0220:             action_summary = (
+
+  0223:             )
+  0224:             exact_preview = (
+> 0225:                 f"Capability: {step.capability_id}\n"
+  0226:                 f"Target node: {step.parameters.get('target_node_id', 'windows-primary')}\n"
+  0227:                 f"URL: {launch_url}\nShell: disabled\nArguments: fixed --new-tab + approved URL"
+  0228:             )
+
+  0229:             destination_label = "Trusted Windows node · Chrome"
+  0230:             approval_channel = ApprovalChannel.PHONE
+> 0231:         elif step.capability_id == "phone.open_youtube":
+  0232:             launch_url = str(step.parameters.get("launch_url", ""))
+  0233:             action_title = "Open YouTube on paired phone"
+  0234:             action_summary = (
+
+  0237:             )
+  0238:             exact_preview = (
+> 0239:                 f"Capability: {step.capability_id}\n"
+  0240:                 f"URL: {launch_url}\n"
+  0241:                 "Target: paired approval phone"
+  0242:             )
+
+  0256:             approval_id=uuid5(NAMESPACE_URL, f"nexuss:approval:{task_id}:{payload_hash}"),
+  0257:             task_id=task_id,
+> 0258:             capability_id=step.capability_id,
+  0259:             status=ApprovalStatus.PENDING,
+  0260:             action_title=action_title,
+  0261:             action_summary=action_summary,
+
+  0386:                     PolicyDecision(
+  0387:                         step_id=plan.steps[0].step_id,
+> 0388:                         capability_id=plan.steps[0].capability_id,
+  0389:                         outcome=PolicyOutcome.DENY,
+  0390:                         reason_code="INVALID_MANAGED_NOTE_REQUEST",
+  0391:                         explanation=str(invalid_note_error),
+
+  0630:                         item
+  0631:                         for item in task.results
+> 0632:                         if item.capability_id == "phone.open_youtube"
+  0633:                         and item.status is StepStatus.VERIFIED
+  0634:                         and item.evidence
+  0635:                     ),
+
+  0666:                     result
+  0667:                     for result in task.results
+> 0668:                     if result.capability_id in {
+  0669:                         "workspace.create_note",
+  0670:                         "device.launch_notepad",
+  0671:                     }
+
+  0690: 
+  0691:             try:
+> 0692:                 if source_result.capability_id == "workspace.create_note":
+  0693:                     rollback_result = self._rollback_note(source_result, now)
+  0694:                     detail = (
+  0695:                         "The receipt-owned note was removed and absence was verified."
+
+  0751:         return CapabilityResult(
+  0752:             step_id=note_result.step_id,
+> 0753:             capability_id="workspace.rollback_create_note",
+  0754:             status=StepStatus.ROLLED_BACK,
+  0755:             evidence=[
+  0756:                 EvidenceRecord(
+
+  0782:         return CapabilityResult(
+  0783:             step_id=device_result.step_id,
+> 0784:             capability_id="device.rollback_launch_notepad",
+  0785:             status=StepStatus.ROLLED_BACK,
+  0786:             evidence=[
+  0787:                 EvidenceRecord(
+
+
+FILE: src\nexuss\core\simulator.py
+  0022: def execute_step(step: PlanStep, observed_at: datetime | None = None) -> CapabilityResult:
+  0023:     timestamp = observed_at or datetime.now(UTC)
+> 0024:     attributes = _SIMULATED_ATTRIBUTES.get(step.capability_id)
+  0025:     if attributes is None:
+  0026:         return CapabilityResult(
+  0027:             step_id=step.step_id,
+
+> 0028:             capability_id=step.capability_id,
+  0029:             status=StepStatus.FAILED,
+  0030:             evidence=[],
+  0031:             error_code="SIMULATOR_CAPABILITY_NOT_FOUND",
+
+  0033: 
+  0034:     evidence = EvidenceRecord(
+> 0035:         source=f"simulator:{step.capability_id}",
+  0036:         observed_at=timestamp,
+  0037:         attributes=attributes,
+  0038:     )
+
+  0039:     return CapabilityResult(
+  0040:         step_id=step.step_id,
+> 0041:         capability_id=step.capability_id,
+  0042:         status=StepStatus.VERIFIED,
+  0043:         evidence=[evidence],
+  0044:     )
+
+
+FILE: src\nexuss\device\client.py
+  0164:             command_id=command_id,
+  0165:             task_id=task_id,
+> 0166:             capability_id="device.launch_notepad",
+  0167:             target_node_id=target_node_id,
+  0168:             issued_at=now,
+  0169:             expires_at=now + _DEVICE_COMMAND_LIFETIME,
+
+  0192:             command_id=command_id,
+  0193:             task_id=task_id,
+> 0194:             capability_id="device.open_web_search",
+  0195:             target_node_id=target_node_id,
+  0196:             issued_at=now,
+  0197:             expires_at=now + _DEVICE_COMMAND_LIFETIME,
+
+
+FILE: src\nexuss\device\models.py
+  0017:     command_id: UUID
+  0018:     task_id: UUID
+> 0019:     capability_id: str = Field(pattern=r"^device\.[a-z0-9_.-]+$")
+  0020:     target_node_id: str = Field(min_length=1, max_length=120)
+  0021:     issued_at: datetime
+  0022:     expires_at: datetime
+
+  0031:     node_id: str
+  0032:     node_hostname: str
+> 0033:     capability_id: str
+  0034:     executable: str
+  0035:     process_id: int = Field(gt=0)
+  0036:     started_at: datetime
+
+
+FILE: src\nexuss\device_node\app.py
+  0084:     _authorize(envelope, signature)
+  0085:     try:
+> 0086:         if envelope.capability_id == "device.launch_notepad":
+  0087:             return executor.launch(
+  0088:                 task_id=envelope.task_id,
+  0089:                 command_id=envelope.command_id,
+
+  0090:                 target_node_id=envelope.target_node_id,
+  0091:             )
+> 0092:         if envelope.capability_id == "device.open_web_search":
+  0093:             launch_url = str(envelope.parameters.get("launch_url", ""))
+  0094:             return browser_executor.launch(
+  0095:                 task_id=envelope.task_id,
+
+
+FILE: src\nexuss\device_node\browser_executor.py
+  0095:             node_id=self._node_id,
+  0096:             node_hostname=socket.gethostname(),
+> 0097:             capability_id="device.open_web_search",
+  0098:             executable=str(self._executable),
+  0099:             process_id=process.pid,
+  0100:             started_at=datetime.now(UTC),
+
+
+FILE: src\nexuss\device_node\executor.py
+  0119:             node_id=self._node_id,
+  0120:             node_hostname=socket.gethostname(),
+> 0121:             capability_id="device.launch_notepad",
+  0122:             executable=str(record.executable),
+  0123:             process_id=record.process.pid,
+  0124:             started_at=record.started_at,
+
+
+FILE: src\nexuss\domain\models.py
+  0153:     step_id: UUID
+  0154:     order: int = Field(ge=1)
+> 0155:     capability_id: CapabilityId
+  0156:     risk_tier: RiskTier
+  0157:     expected_evidence: list[str] = Field(min_length=1)
+  0158:     parameters: dict[str, object] = Field(default_factory=dict)
+
+  0173: 
+  0174:     step_id: UUID
+> 0175:     capability_id: CapabilityId
+  0176:     outcome: PolicyOutcome
+  0177:     reason_code: str
+  0178:     explanation: str
+
+  0191: 
+  0192:     step_id: UUID
+> 0193:     capability_id: CapabilityId
+  0194:     status: StepStatus
+  0195:     evidence: list[EvidenceRecord]
+  0196:     error_code: str | None = None
+
+  0213:     approval_id: UUID
+  0214:     task_id: UUID
+> 0215:     capability_id: CapabilityId
+  0216:     status: ApprovalStatus
+  0217:     action_title: str
+  0218:     action_summary: str
+
+  0243: 
+  0244: 
+> 0245: class CapabilityManifest(BaseModel):
+  0246:     model_config = ConfigDict(extra="forbid")
+  0247: 
+  0248:     capability_id: CapabilityId
+
+  0249:     version: str
+  0250:     title: str
+  0251:     description: str
+
+
+FILE: src\nexuss\memory\models.py
+  0065:     utterance: str = Field(min_length=1, max_length=10_000)
+  0066:     intent: str = Field(min_length=1, max_length=100)
+> 0067:     capability_id: str = Field(min_length=1, max_length=100)
+  0068:     outcome: str = Field(min_length=1, max_length=100)
+  0069:     occurred_at: datetime
+  0070: 
+
+
+FILE: src\nexuss\memory\store.py
+  0050:     utterance     TEXT NOT NULL,
+  0051:     intent        TEXT NOT NULL,
+> 0052:     capability_id TEXT NOT NULL,
+  0053:     outcome       TEXT NOT NULL,
+  0054:     occurred_at   TEXT NOT NULL
+  0055: );
+
+  0481:             connection.execute(
+  0482:                 "INSERT OR REPLACE INTO episodes (episode_id, session_id, "
+> 0483:                 "task_id, utterance, intent, capability_id, outcome, occurred_at) "
+  0484:                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  0485:                 (
+  0486:                     str(episode.episode_id),
+
+  0489:                     episode.utterance,
+  0490:                     episode.intent,
+> 0491:                     episode.capability_id,
+  0492:                     episode.outcome,
+  0493:                     episode.occurred_at.isoformat(),
+  0494:                 ),
+
+  0501:             rows = connection.execute(
+  0502:                 "SELECT episode_id, session_id, task_id, utterance, intent, "
+> 0503:                 "capability_id, outcome, occurred_at FROM episodes "
+  0504:                 "WHERE session_id = ? ORDER BY occurred_at DESC LIMIT ?",
+  0505:                 (str(session_id), limit),
+  0506:             ).fetchall()
+
+  0512:                 utterance=str(row[3]),
+  0513:                 intent=str(row[4]),
+> 0514:                 capability_id=str(row[5]),
+  0515:                 outcome=str(row[6]),
+  0516:                 occurred_at=datetime.fromisoformat(str(row[7])),
+  0517:             )
+
+
+FILE: src\nexuss\ui\app.js
+  0281: 
+  0282: function evidenceFor(task, capabilityId) {
+> 0283:   const result = task.results.find((item) => item.capability_id === capabilityId);
+  0284:   return result?.evidence?.[0]?.attributes || null;
+  0285: }
+  0286: 
+
+  0291:  */
+  0292: function contentAnswer(task) {
+> 0293:   const recall = evidenceFor(task, "memory.recall");
+  0294:   if (recall) {
+  0295:     const matches = Array.isArray(recall.matches) ? recall.matches : [];
+  0296:     if (!matches.length) {
+
+  0472:     if (decision?.outcome in policyCounts) policyCounts[decision.outcome] += 1;
+  0473:     elements.planList.append(createDetailCard(
+> 0474:       `${step.order}. ${step.capability_id}`,
+  0475:       decision?.outcome || "unknown",
+  0476:       {
+  0477:         risk: step.risk_tier,
+
+  0490:     if (!result.evidence.length) {
+  0491:       elements.evidenceList.append(createDetailCard(
+> 0492:         result.capability_id,
+  0493:         result.status,
+  0494:         { error_code: result.error_code || "No evidence returned" },
+  0495:       ));
+
+  0500:       if (record.attributes.managed_path) currentNotePath = String(record.attributes.managed_path);
+  0501:       elements.evidenceList.append(createDetailCard(
+> 0502:         result.capability_id,
+  0503:         result.status,
+  0504:         { source: record.source, observed_at: record.observed_at, ...record.attributes },
+  0505:       ));
+
+  0519: 
+  0520: function assistantResponse(task) {
+> 0521:   const result = task.results.find((item) => item.capability_id === "assistant.respond");
+  0522:   return result?.evidence?.[0]?.attributes?.response || null;
+  0523: }
+  0524: 
+
+  0533: 
+  0534:   if (task.state === "completed") {
+> 0535:     const deviceResult = task.results.find((result) => result.capability_id === "device.launch_notepad");
+  0536:     if (deviceResult?.evidence?.[0]) {
+  0537:       const data = deviceResult.evidence[0].attributes;
+  0538:       return `Phone approval verified. ${data.executable} was launched on trusted node ${data.node_id} as process ${data.process_id}, and the Action Receipt can close only that receipt-bound process.`;
+
+  0539:     }
+> 0540:     const noteResult = task.results.find((result) => result.capability_id === "workspace.create_note");
+  0541:     if (noteResult?.evidence?.[0]) {
+  0542:       const data = noteResult.evidence[0].attributes;
+  0543:       return `Created and verified ${data.filename}. The SHA-256 evidence matches the real file, and this receipt can undo the action while the file remains unchanged.`;
+
+  0544:     }
+> 0545:     const liveResult = task.results.find((result) => result.capability_id === "workspace.read_status");
+  0546:     if (liveResult?.evidence?.[0]) {
+  0547:       const data = liveResult.evidence[0].attributes;
+  0548:       const cleanText = data.git_clean ? "clean" : `${data.git_changed_entries} changed entries`;
+
+  0558:   }
+  0559:   if (task.state === "rolled_back") {
+> 0560:     const deviceRollback = task.results.some((result) => result.capability_id === "device.rollback_launch_notepad");
+  0561:     return deviceRollback
+  0562:       ? "Undo completed. The receipt-bound device process was terminated and verified absent."
+  0563:       : "Undo completed. The receipt-owned note was removed and its absence was verified.";
+
+  0577:       return {
+  0578:         text: `I stopped without acting. ${failureExplanation(String(failure.error_code))}`,
+> 0579:         blocks: [{ type: "note", text: `Capability ${failure.capability_id} reported ${failure.error_code}.` }],
+  0580:       };
+  0581:     }
+  0582:     return "The action failed closed, and no capability recorded a reason. The lifecycle panel has the event trail.";
+
+
+FILE: src\nexuss\ui\p5.js
+  0043: function resultFor(task, capability) {
+  0044:   const result = task.results?.find(
+> 0045:     (item) => item.capability_id === capability,
+  0046:   );
+  0047:   return result?.evidence?.[0]?.attributes || null;
+  0048: }
+
+  0518:   handleContextCommand,
+  0519:   renderTask(task) {
+> 0520:     const knowledge = resultFor(task, "knowledge.web_research");
+  0521:     const media = resultFor(task, "media.youtube.discover");
+  0522:     if (knowledge) {
+  0523:       renderKnowledge(knowledge);
+
+  0528:   },
+  0529:   summarizeTask(task) {
+> 0530:     const knowledge = resultFor(task, "knowledge.web_research");
+  0531:     if (knowledge) {
+  0532:       const count = Number(knowledge.source_count || 0);
+  0533:       const suffix = count === 1 ? "" : "s";
+
+
+EXECUTION ROUTING
+-----------------
+
+FILE: src\nexuss\core\executor.py
+  0015: )
+  0016: from nexuss.core.managed_notes import ManagedNoteStore, PreparedNote
+> 0017: from nexuss.core.simulator import execute_step as execute_simulated_step
+  0018: from nexuss.core.web_actions import (
+  0019:     WebActionValidationError,
+  0020:     validate_youtube_handoff_url,
+
+  0035: 
+  0036: class PhonePairingGateway(Protocol):
+> 0037:     """The slice of the mobile gateway the executor depends on.
+  0038: 
+  0039:     Declared as a port so the executor does not import the concrete gateway
+  0040:     and the tests can drive it with a stub.
+
+  0041:     """
+  0042: 
+
+  0532: 
+  0533: 
+> 0534: def execute_step(
+  0535:     step: PlanStep,
+  0536:     observed_at: datetime | None = None,
+  0537:     *,
+
+
+FILE: src\nexuss\core\intents.py
+  0323:     the first word of a real label: "unpair Phone A" yielded "A".
+  0324: 
+> 0325:     An empty result means "the only paired device", which the executor
+  0326:     resolves. It refuses rather than guessing when several are paired.
+  0327:     """
+  0328:     match = _UNPAIR_VERB_PATTERN.search(display_text)
+
+
+FILE: src\nexuss\core\registry.py
+  0196:         title="Open YouTube on paired phone",
+  0197:         description=(
+> 0198:             "Dispatch only an allowlisted HTTPS YouTube search to the paired phone "
+  0199:             "from an authenticated user request."
+  0200:         ),
+  0201:         risk_tier=RiskTier.LOW,
+
+
+FILE: src\nexuss\core\service.py
+  0013: from uuid import NAMESPACE_URL, UUID, uuid5
+  0014: 
+> 0015: from nexuss.core.executor import PhonePairingGateway, execute_step
+  0016: from nexuss.core.intents import classify_intent
+  0017: from nexuss.core.ledger import InMemoryActionLedger
+  0018: from nexuss.core.managed_notes import InvalidNoteError, ManagedNoteError, ManagedNoteStore
+
+  0292:             for step in plan.steps:
+  0293:                 results.append(
+> 0294:                     execute_step(
+  0295:                         step,
+  0296:                         observed_at=now,
+  0297:                         note_store=self._note_store,
+
+
+FILE: src\nexuss\core\simulator.py
+  0020: 
+  0021: 
+> 0022: def execute_step(step: PlanStep, observed_at: datetime | None = None) -> CapabilityResult:
+  0023:     timestamp = observed_at or datetime.now(UTC)
+  0024:     attributes = _SIMULATED_ATTRIBUTES.get(step.capability_id)
+  0025:     if attributes is None:
+
+
+FILE: src\nexuss\device_node\app.py
+  0020: )
+  0021: from nexuss.device.signing import DeviceSignatureError, verify_signature
+> 0022: from nexuss.device_node.browser_executor import WindowsChromeExecutor
+  0023: from nexuss.device_node.executor import NodeExecutionError, WindowsNotepadExecutor
+  0024: 
+  0025: app = FastAPI(title="Nexuss Windows Device Node", version="0.5.1")
+
+  0026: executor = WindowsNotepadExecutor()
+
+  0027: browser_executor = WindowsChromeExecutor()
+  0028: _seen_nonces: dict[str, datetime] = {}
+  0029: _nonce_lock = RLock()
+
+  0030: 
+
+  0073:         "status": "ready",
+  0074:         "mode": "p5_trusted_windows_node",
+> 0075:         "node_id": executor.node_id,
+  0076:     }
+  0077: 
+  0078: 
+
+  0085:     try:
+  0086:         if envelope.capability_id == "device.launch_notepad":
+> 0087:             return executor.launch(
+  0088:                 task_id=envelope.task_id,
+  0089:                 command_id=envelope.command_id,
+  0090:                 target_node_id=envelope.target_node_id,
+
+  0092:         if envelope.capability_id == "device.open_web_search":
+  0093:             launch_url = str(envelope.parameters.get("launch_url", ""))
+> 0094:             return browser_executor.launch(
+  0095:                 task_id=envelope.task_id,
+  0096:                 command_id=envelope.command_id,
+  0097:                 target_node_id=envelope.target_node_id,
+
+  0113:     _authorize(envelope, signature)
+  0114:     try:
+> 0115:         return executor.rollback(
+  0116:             rollback_id=envelope.rollback_id,
+  0117:             task_id=envelope.task_id,
+  0118:             command_id=envelope.command_id,
+
+
+FILE: src\nexuss\device_node\browser_executor.py
+  0019: )
+  0020: from nexuss.device.models import DeviceCommandEvidence
+> 0021: from nexuss.device_node.executor import NodeExecutionError, ProcessHandle
+  0022: 
+  0023: 
+  0024: class BrowserRunner(Protocol):
+
+  0048: 
+  0049: 
+> 0050: class WindowsChromeExecutor:
+  0051:     """Open one validated URL through a fixed Chrome executable."""
+  0052: 
+  0053:     def __init__(
+
+
+FILE: src\nexuss\device_node\executor.py
+  0055: 
+  0056: 
+> 0057: class WindowsNotepadExecutor:
+  0058:     """Launch and receipt-bind only the fixed Windows Notepad executable."""
+  0059: 
+  0060:     def __init__(
+
+
+FILE: src\nexuss\ui\app.js
+  0753:   elements.input.value = prompt;
+  0754:   elements.input.focus();
+> 0755:   elements.input.dispatchEvent(new Event("input"));
+  0756: }
+  0757: 
+  0758: document.querySelectorAll("[data-prompt]").forEach((button) => {
+
+  0845:     for (let index = event.resultIndex; index < event.results.length; index += 1) transcript += event.results[index][0].transcript;
+  0846:     elements.input.value = transcript.trim();
+> 0847:     elements.input.dispatchEvent(new Event("input"));
+  0848:     if (event.results[event.results.length - 1].isFinal) lastInputChannel = "voice";
+  0849:   });
+  0850:   recognition.addEventListener("end", () => {
+
+
+FILE: src\nexuss\ui\p5.js
+  0061:   }
+  0062:   input.value = prompt;
+> 0063:   input.dispatchEvent(new Event("input"));
+  0064:   form.requestSubmit();
+  0065: }
+  0066: 
+
+  0143:          * 101 and 150 both mean the uploader disabled embedding. 2 is a
+  0144:          * malformed id, 5 an HTML5 playback failure, 100 a removed or
+> 0145:          * private video. Without this handler the iframe shows its own
+  0146:          * placeholder and Nexuss reports the video as playing.
+  0147:          */
+  0148:         const reasons = {
+
+
+FILE: src\nexuss\ui\workspace.js
+  0538:       /* Fullscreen refused: stay where we are and say so, rather than
+  0539:          silently substituting theater mode. */
+> 0540:       card.element.dispatchEvent(
+  0541:         new CustomEvent("ws:fullscreen-denied", { bubbles: true }),
+  0542:       );
+  0543:     });
+
+
+HEALTH AND API
+--------------
+
+FILE: src\nexuss\api\app.py
+  0001: """Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
+  0002: 
+> 0003: FastAPI surface for the Nexuss P5 knowledge, media, and mobile action plane.
+  0004: """
+  0005: 
+  0006: from __future__ import annotations
+
+  0016: from uuid import UUID
+  0017: 
+> 0018: from fastapi import FastAPI, Header, HTTPException, Request, status
+  0019: from fastapi.responses import FileResponse, Response
+  0020: from fastapi.staticfiles import StaticFiles
+  0021: 
+
+  0022: from nexuss.core.registry import list_capabilities
+
+  0023: from nexuss.core.service import (
+
+  0057: _MOBILE_URL = os.getenv("NEXUSS_MOBILE_PUBLIC_URL", "http://127.0.0.1:8100/mobile")
+  0058: 
+> 0059: app = FastAPI(
+  0060:     title="Nexuss Core API",
+  0061:     version="0.5.1",
+  0062:     docs_url=None,
+
+  0090: 
+  0091: 
+> 0092: @app.middleware("http")
+  0093: async def add_security_headers(
+  0094:     request: Request,
+  0095:     call_next: Callable[[Request], Awaitable[Response]],
+
+  0159: 
+  0160: 
+> 0161: @app.get("/", include_in_schema=False)
+  0162: def ui_index(request: Request) -> FileResponse:
+  0163:     _require_local_control(request)
+  0164:     return FileResponse(
+
+  0168: 
+  0169: 
+> 0170: @app.get("/mobile", include_in_schema=False)
+  0171: def mobile_index() -> FileResponse:
+  0172:     return FileResponse(
+  0173:         _UI_DIRECTORY / "mobile.html",
+
+  0176: 
+  0177: 
+> 0178: @app.get("/health/live")
+  0179: def health_live() -> dict[str, str]:
+  0180:     return {
+  0181:         "status": "alive",
+
+  0185: 
+  0186: 
+> 0187: @app.get("/health/ready")
+  0188: def health_ready() -> dict[str, str]:
+  0189:     return {
+  0190:         "status": "ready",
+
+  0191:         "mode": "p5_knowledge_media_mobile",
+
+  0194: 
+  0195: 
+> 0196: @app.get("/v1/capabilities", response_model=list[CapabilityManifest])
+  0197: def get_capabilities(request: Request) -> list[CapabilityManifest]:
+  0198:     _require_local_control(request)
+  0199:     return list(list_capabilities())
+
+  0200: 
+  0201: 
+> 0202: @app.post("/v1/tasks", response_model=TaskView, status_code=status.HTTP_202_ACCEPTED)
+  0203: def create_task(
+  0204:     request: TaskRequest,
+  0205:     http_request: Request,
+
+  0214: 
+  0215: 
+> 0216: @app.post("/v1/tasks/{task_id}/approval", response_model=TaskView)
+  0217: def decide_task_approval(
+  0218:     task_id: UUID,
+  0219:     decision: ApprovalDecision,
+
+  0238: 
+  0239: 
+> 0240: @app.post("/v1/tasks/{task_id}/rollback", response_model=TaskView)
+  0241: def rollback_task(
+  0242:     task_id: UUID,
+  0243:     rollback_request: RollbackRequest,
+
+  0258: 
+  0259: 
+> 0260: @app.get("/v1/tasks/{task_id}", response_model=TaskView)
+  0261: def get_task(task_id: UUID, request: Request) -> TaskView:
+  0262:     _require_local_control(request)
+  0263:     try:
+
+  0267: 
+  0268: 
+> 0269: @app.get("/v1/tasks/{task_id}/receipt", response_model=ActionReceipt)
+  0270: def get_task_receipt(task_id: UUID, request: Request) -> ActionReceipt:
+  0271:     _require_local_control(request)
+  0272:     try:
+
+  0279: 
+  0280: 
+> 0281: @app.get("/v1/tasks/{task_id}/receipts", response_model=list[ActionReceipt])
+  0282: def get_task_receipt_history(task_id: UUID, request: Request) -> list[ActionReceipt]:
+  0283:     _require_local_control(request)
+  0284:     try:
+
+  0291: 
+  0292: 
+> 0293: @app.post("/v1/mobile/pairing", response_model=MobilePairingChallenge)
+  0294: def create_mobile_pairing(
+  0295:     request: Request,
+  0296:     session_id: Annotated[UUID, Header(alias="X-Nexuss-Session-ID")],
+
+  0309: 
+  0310: 
+> 0311: @app.post("/v1/mobile/pair", response_model=MobileDeviceSession)
+  0312: def pair_mobile_device(
+  0313:     pair_request: MobilePairRequest,
+  0314:     request: Request,
+
+  0321: 
+  0322: 
+> 0323: @app.get("/v1/mobile/devices", response_model=list[MobilePairedDevice])
+  0324: def list_mobile_devices(
+  0325:     request: Request,
+  0326:     session_id: Annotated[UUID, Header(alias="X-Nexuss-Session-ID")],
+
+  0338: 
+  0339: 
+> 0340: @app.delete("/v1/mobile/devices/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
+  0341: def revoke_mobile_device(
+  0342:     device_id: UUID,
+  0343:     request: Request,
+
+  0356: 
+  0357: 
+> 0358: @app.post("/v1/mobile/devices/rebind", response_model=MobileRebindResult)
+  0359: def rebind_mobile_devices(
+  0360:     request: Request,
+  0361:     session_id: Annotated[UUID, Header(alias="X-Nexuss-Session-ID")],
+
+  0381: 
+  0382: 
+> 0383: @app.get("/v1/mobile/pending", response_model=list[MobileApprovalSummary])
+  0384: def get_mobile_pending_approvals(
+  0385:     device_id: Annotated[UUID, Header(alias="X-Nexuss-Mobile-Device-ID")],
+  0386:     device_token: Annotated[str, Header(alias="X-Nexuss-Mobile-Token")],
+
+  0390: 
+  0391: 
+> 0392: @app.get("/v1/mobile/handoffs", response_model=list[MobileHandoffSummary])
+  0393: def get_mobile_handoffs(
+  0394:     device_id: Annotated[UUID, Header(alias="X-Nexuss-Mobile-Device-ID")],
+  0395:     device_token: Annotated[str, Header(alias="X-Nexuss-Mobile-Token")],
+
+  0406: 
+  0407: 
+> 0408: @app.post("/v1/mobile/tasks/{task_id}/decision", response_model=TaskView)
+  0409: def decide_mobile_approval(
+  0410:     task_id: UUID,
+  0411:     request: MobileDecisionRequest,
+
+
+FILE: src\nexuss\device_node\app.py
+  0001: """Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
+  0002: 
+> 0003: Loopback-only FastAPI service for the P5 trusted Windows device node.
+  0004: """
+  0005: 
+  0006: from __future__ import annotations
+
+  0011: from typing import Annotated
+  0012: 
+> 0013: from fastapi import FastAPI, Header, HTTPException, status
+  0014: 
+  0015: from nexuss.device.models import (
+  0016:     DeviceCommandEnvelope,
+
+  0023: from nexuss.device_node.executor import NodeExecutionError, WindowsNotepadExecutor
+  0024: 
+> 0025: app = FastAPI(title="Nexuss Windows Device Node", version="0.5.1")
+  0026: executor = WindowsNotepadExecutor()
+  0027: browser_executor = WindowsChromeExecutor()
+  0028: _seen_nonces: dict[str, datetime] = {}
+
+  0068: 
+  0069: 
+> 0070: @app.get("/health/ready")
+  0071: def health_ready() -> dict[str, str]:
+  0072:     return {
+  0073:         "status": "ready",
+
+  0074:         "mode": "p5_trusted_windows_node",
+
+  0077: 
+  0078: 
+> 0079: @app.post("/v1/commands", response_model=DeviceCommandEvidence)
+  0080: def execute_command(
+  0081:     envelope: DeviceCommandEnvelope,
+  0082:     signature: Annotated[str, Header(alias="X-Nexuss-Node-Signature")],
+
+  0106: 
+  0107: 
+> 0108: @app.post("/v1/rollbacks", response_model=DeviceRollbackEvidence)
+  0109: def rollback_command(
+  0110:     envelope: DeviceRollbackEnvelope,
+  0111:     signature: Annotated[str, Header(alias="X-Nexuss-Node-Signature")],
+
+
+FILE: src\nexuss\ui\app.js
+  0113: async function checkHealth() {
+  0114:   try {
+> 0115:     const response = await fetch("/health/ready", { cache: "no-store" });
+  0116:     if (!response.ok) throw new Error(`Health check returned ${response.status}`);
+  0117:     const body = await response.json();
+  0118:     setHealth("ready", `${body.status} · ${body.mode}`);
+
+
+RECEIPTS AND RESULTS
+--------------------
+
+FILE: src\nexuss\api\app.py
+  0030: from nexuss.device.client import HttpDeviceNodeClient
+  0031: from nexuss.domain.models import (
+> 0032:     ActionReceipt,
+  0033:     ApprovalChannel,
+  0034:     ApprovalDecision,
+  0035:     AssuranceLevel,
+
+  0267: 
+  0268: 
+> 0269: @app.get("/v1/tasks/{task_id}/receipt", response_model=ActionReceipt)
+  0270: def get_task_receipt(task_id: UUID, request: Request) -> ActionReceipt:
+  0271:     _require_local_control(request)
+  0272:     try:
+
+  0273:         return service.get_receipt(task_id)
+
+  0274:     except TaskNotFoundError as exc:
+  0275:         raise HTTPException(
+  0276:             status_code=status.HTTP_404_NOT_FOUND,
+
+> 0277:             detail="Receipt not found",
+  0278:         ) from exc
+  0279: 
+  0280: 
+
+> 0281: @app.get("/v1/tasks/{task_id}/receipts", response_model=list[ActionReceipt])
+  0282: def get_task_receipt_history(task_id: UUID, request: Request) -> list[ActionReceipt]:
+  0283:     _require_local_control(request)
+  0284:     try:
+
+  0285:         return list(service.get_receipt_history(task_id))
+
+  0286:     except TaskNotFoundError as exc:
+  0287:         raise HTTPException(
+  0288:             status_code=status.HTTP_404_NOT_FOUND,
+
+> 0289:             detail="Receipt history not found",
+  0290:         ) from exc
+  0291: 
+  0292: 
+
+
+FILE: src\nexuss\core\executor.py
+  0011: 
+  0012: from nexuss.core.local_workspace import (
+> 0013:     LocalWorkspaceEvidenceError,
+  0014:     collect_local_workspace_status,
+  0015: )
+  0016: from nexuss.core.managed_notes import ManagedNoteStore, PreparedNote
+
+  0022: from nexuss.device.client import DeviceCommandError, DeviceNodeClient
+  0023: from nexuss.domain.models import (
+> 0024:     CapabilityResult,
+  0025:     EvidenceRecord,
+  0026:     PlanStep,
+  0027:     StepStatus,
+
+  0028: )
+
+  0053: 
+  0054: 
+> 0055: def _failed(step: PlanStep, error_code: str) -> CapabilityResult:
+  0056:     return CapabilityResult(
+  0057:         step_id=step.step_id,
+  0058:         capability_id=step.capability_id,
+
+  0059:         status=StepStatus.FAILED,
+
+> 0060:         evidence=[],
+  0061:         error_code=error_code,
+  0062:     )
+  0063: 
+
+  0066:     step: PlanStep,
+  0067:     timestamp: datetime,
+> 0068: ) -> CapabilityResult:
+  0069:     response = str(step.parameters.get("response", ""))
+  0070:     if not response:
+  0071:         return _failed(step, "ASSISTANT_RESPONSE_MISSING")
+
+> 0072:     return CapabilityResult(
+  0073:         step_id=step.step_id,
+  0074:         capability_id=step.capability_id,
+  0075:         status=StepStatus.VERIFIED,
+
+> 0076:         evidence=[
+  0077:             EvidenceRecord(
+  0078:                 source="nexuss:deterministic_response",
+  0079:                 observed_at=timestamp,
+
+  0080:                 attributes={
+
+  0091:     timestamp: datetime,
+  0092:     note_store: ManagedNoteStore,
+> 0093: ) -> CapabilityResult:
+  0094:     content = str(step.parameters["content"])
+  0095:     prepared = PreparedNote(
+  0096:         title=str(step.parameters["title"]),
+
+  0101:     )
+  0102:     created = note_store.create(prepared)
+> 0103:     return CapabilityResult(
+  0104:         step_id=step.step_id,
+  0105:         capability_id=step.capability_id,
+  0106:         status=StepStatus.VERIFIED,
+
+> 0107:         evidence=[
+  0108:             EvidenceRecord(
+  0109:                 source="local:managed_workspace",
+  0110:                 observed_at=timestamp,
+
+  0111:                 attributes={
+
+  0128:     task_id: UUID,
+  0129:     device_client: DeviceNodeClient,
+> 0130: ) -> CapabilityResult:
+  0131:     target_node_id = str(
+  0132:         step.parameters.get("target_node_id", "windows-primary")
+  0133:     )
+
+  0134:     try:
+> 0135:         evidence = device_client.launch_notepad(task_id, target_node_id)
+  0136:     except DeviceCommandError:
+  0137:         return _failed(step, "TRUSTED_DEVICE_COMMAND_FAILED")
+  0138:     return CapabilityResult(
+
+  0139:         step_id=step.step_id,
+  0140:         capability_id=step.capability_id,
+  0141:         status=(
+
+  0142:             StepStatus.VERIFIED
+> 0143:             if evidence.verified_running
+  0144:             else StepStatus.FAILED
+  0145:         ),
+  0146:         evidence=[
+
+  0147:             EvidenceRecord(
+  0148:                 source="device:windows-node",
+  0149:                 observed_at=timestamp,
+
+  0150:                 attributes={
+
+> 0151:                     "source_mode": evidence.source_mode,
+  0152:                     "command_id": str(evidence.command_id),
+  0153:                     "node_id": evidence.node_id,
+  0154:                     "node_hostname": evidence.node_hostname,
+
+  0155:                     "executable": evidence.executable,
+
+  0156:                     "process_id": evidence.process_id,
+
+  0157:                     "started_at": evidence.started_at.isoformat(),
+
+  0158:                     "verified_running": evidence.verified_running,
+
+  0159:                     "reversible": True,
+
+  0160:                 },
+
+  0161:             )
+
+  0163:         error_code=(
+  0164:             None
+> 0165:             if evidence.verified_running
+  0166:             else "DEVICE_PROCESS_NOT_RUNNING"
+  0167:         ),
+  0168:     )
+
+  0173:     timestamp: datetime,
+  0174:     provider: KnowledgeProvider,
+> 0175: ) -> CapabilityResult:
+  0176:     try:
+  0177:         attributes = provider.research(
+  0178:             str(step.parameters.get("query", ""))
+
+  0180:     except KnowledgeProviderError as exc:
+  0181:         return _failed(step, str(exc))
+> 0182:     return CapabilityResult(
+  0183:         step_id=step.step_id,
+  0184:         capability_id=step.capability_id,
+  0185:         status=StepStatus.VERIFIED,
+
+> 0186:         evidence=[
+  0187:             EvidenceRecord(
+  0188:                 source="web:wikipedia",
+  0189:                 observed_at=timestamp,
+
+  0190:                 attributes=attributes,
+
+  0198:     timestamp: datetime,
+  0199:     provider: YouTubeProvider,
+> 0200: ) -> CapabilityResult:
+  0201:     try:
+  0202:         attributes = provider.discover(
+  0203:             str(step.parameters.get("query", ""))
+
+  0205:     except MediaProviderError as exc:
+  0206:         return _failed(step, str(exc))
+> 0207:     return CapabilityResult(
+  0208:         step_id=step.step_id,
+  0209:         capability_id=step.capability_id,
+  0210:         status=StepStatus.VERIFIED,
+
+> 0211:         evidence=[
+  0212:             EvidenceRecord(
+  0213:                 source="media:youtube",
+  0214:                 observed_at=timestamp,
+
+  0215:                 attributes=attributes,
+
+  0222:     step: PlanStep,
+  0223:     timestamp: datetime,
+> 0224: ) -> CapabilityResult:
+  0225:     try:
+  0226:         launch_url = validate_youtube_handoff_url(
+  0227:             str(step.parameters.get("launch_url", ""))
+
+  0230:         return _failed(step, "PHONE_YOUTUBE_URL_NOT_ALLOWLISTED")
+  0231: 
+> 0232:     return CapabilityResult(
+  0233:         step_id=step.step_id,
+  0234:         capability_id=step.capability_id,
+  0235:         status=StepStatus.VERIFIED,
+
+> 0236:         evidence=[
+  0237:             EvidenceRecord(
+  0238:                 source="mobile:paired_phone",
+  0239:                 observed_at=timestamp,
+
+  0240:                 attributes={
+
+  0256:     task_id: UUID,
+  0257:     device_client: DeviceNodeClient,
+> 0258: ) -> CapabilityResult:
+  0259:     try:
+  0260:         evidence = device_client.open_web_search(
+  0261:             task_id,
+
+  0262:             str(
+  0263:                 step.parameters.get(
+
+  0270:     except DeviceCommandError:
+  0271:         return _failed(step, "TRUSTED_BROWSER_HANDOFF_FAILED")
+> 0272:     return CapabilityResult(
+  0273:         step_id=step.step_id,
+  0274:         capability_id=step.capability_id,
+  0275:         status=StepStatus.VERIFIED,
+
+> 0276:         evidence=[
+  0277:             EvidenceRecord(
+  0278:                 source="device:windows-node",
+  0279:                 observed_at=timestamp,
+
+  0280:                 attributes={
+
+  0282:                         "live_trusted_device_browser_handoff"
+  0283:                     ),
+> 0284:                     "node_id": evidence.node_id,
+  0285:                     "executable": evidence.executable,
+  0286:                     "process_id": evidence.process_id,
+  0287:                     "launch_url": str(
+
+  0288:                         step.parameters.get("launch_url", "")
+
+  0289:                     ),
+
+> 0290:                     "verified_handoff": evidence.verified_running,
+  0291:                     "reversible": False,
+  0292:                 },
+  0293:             )
+
+  0301:     session_id: UUID,
+  0302:     gateway: PhonePairingGateway,
+> 0303: ) -> CapabilityResult:
+  0304:     """Issue a pairing challenge.
+  0305: 
+  0306:     Issuing a code grants nothing on its own. Trust transfers only when the
+
+  0312:     pair_url = f"{challenge.mobile_url}{separator}pair={challenge.pairing_code}"
+  0313: 
+> 0314:     return CapabilityResult(
+  0315:         step_id=step.step_id,
+  0316:         capability_id=step.capability_id,
+  0317:         status=StepStatus.VERIFIED,
+
+> 0318:         evidence=[
+  0319:             EvidenceRecord(
+  0320:                 source="local:mobile_pairing_gateway",
+  0321:                 observed_at=timestamp,
+
+  0322:                 attributes={
+
+  0336:     timestamp: datetime,
+  0337:     gateway: PhonePairingGateway,
+> 0338: ) -> CapabilityResult:
+  0339:     devices = gateway.list_devices()
+  0340:     return CapabilityResult(
+  0341:         step_id=step.step_id,
+
+  0342:         capability_id=step.capability_id,
+  0343:         status=StepStatus.VERIFIED,
+
+> 0344:         evidence=[
+  0345:             EvidenceRecord(
+  0346:                 source="local:mobile_pairing_gateway",
+  0347:                 observed_at=timestamp,
+
+  0348:                 attributes={
+
+  0369:     timestamp: datetime,
+  0370:     gateway: PhonePairingGateway,
+> 0371: ) -> CapabilityResult:
+  0372:     """Revoke one paired phone.
+  0373: 
+  0374:     Refuses rather than guessing when the target is ambiguous. Revocation is
+
+  0400:     gateway.revoke(target.device_id)
+  0401: 
+> 0402:     return CapabilityResult(
+  0403:         step_id=step.step_id,
+  0404:         capability_id=step.capability_id,
+  0405:         status=StepStatus.VERIFIED,
+
+> 0406:         evidence=[
+  0407:             EvidenceRecord(
+  0408:                 source="local:mobile_pairing_gateway",
+  0409:                 observed_at=timestamp,
+
+  0410:                 attributes={
+
+  0423:     timestamp: datetime,
+  0424:     memory_store: MemoryStore,
+> 0425: ) -> CapabilityResult:
+  0426:     """Store a user-asserted claim.
+  0427: 
+  0428:     Everything entering through this capability is USER_ASSERTED by
+
+  0446:     except MemoryWriteRefused as exc:
+  0447:         return _failed(step, str(exc).split(":", maxsplit=1)[0])
+> 0448:     return CapabilityResult(
+  0449:         step_id=step.step_id,
+  0450:         capability_id=step.capability_id,
+  0451:         status=StepStatus.VERIFIED,
+
+> 0452:         evidence=[
+  0453:             EvidenceRecord(
+  0454:                 source="local:memory_store",
+  0455:                 observed_at=timestamp,
+
+  0456:                 attributes={
+
+  0470:     timestamp: datetime,
+  0471:     memory_store: MemoryStore,
+> 0472: ) -> CapabilityResult:
+  0473:     query = str(step.parameters.get("query", "")).strip()
+  0474:     if not query:
+  0475:         return _failed(step, "MEMORY_QUERY_MISSING")
+
+  0476:     matches = memory_store.recall(query, limit=5, now=timestamp)
+> 0477:     return CapabilityResult(
+  0478:         step_id=step.step_id,
+  0479:         capability_id=step.capability_id,
+  0480:         status=StepStatus.VERIFIED,
+
+> 0481:         evidence=[
+  0482:             EvidenceRecord(
+  0483:                 source="local:memory_store",
+  0484:                 observed_at=timestamp,
+
+  0485:                 attributes={
+
+  0509:     timestamp: datetime,
+  0510:     memory_store: MemoryStore,
+> 0511: ) -> CapabilityResult:
+  0512:     topic = str(step.parameters.get("topic", "")).strip()
+  0513:     if not topic:
+  0514:         return _failed(step, "MEMORY_TOPIC_MISSING")
+
+  0515:     removed = memory_store.forget_topic(topic)
+> 0516:     return CapabilityResult(
+  0517:         step_id=step.step_id,
+  0518:         capability_id=step.capability_id,
+  0519:         status=StepStatus.VERIFIED,
+
+> 0520:         evidence=[
+  0521:             EvidenceRecord(
+  0522:                 source="local:memory_store",
+  0523:                 observed_at=timestamp,
+
+  0524:                 attributes={
+
+  0544:     pairing_gateway: PhonePairingGateway | None = None,
+  0545:     memory_store: MemoryStore | None = None,
+> 0546: ) -> CapabilityResult:
+  0547:     timestamp = observed_at or datetime.now(UTC)
+  0548: 
+  0549:     if step.capability_id in {"memory.remember", "memory.recall", "memory.forget"}:
+
+  0627:                 observed_at=timestamp
+  0628:             )
+> 0629:         except LocalWorkspaceEvidenceError:
+  0630:             return _failed(
+  0631:                 step,
+  0632:                 "LOCAL_WORKSPACE_EVIDENCE_UNAVAILABLE",
+
+  0633:             )
+  0634:         return CapabilityResult(
+  0635:             step_id=step.step_id,
+
+  0636:             capability_id=step.capability_id,
+  0637:             status=StepStatus.VERIFIED,
+
+> 0638:             evidence=[
+  0639:                 EvidenceRecord(
+  0640:                     source="local:workspace",
+  0641:                     observed_at=timestamp,
+
+  0642:                     attributes=attributes,
+
+
+FILE: src\nexuss\core\ledger.py
+  0001: """Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
+  0002: 
+> 0003: In-memory append-only Action Receipt ledger for the P3 prototype.
+  0004: """
+  0005: 
+  0006: from collections.abc import Iterable
+
+  0007: from uuid import UUID
+  0008: 
+> 0009: from nexuss.domain.models import ActionReceipt
+  0010: 
+  0011: 
+  0012: class InMemoryActionLedger:
+
+  0013:     def __init__(self) -> None:
+> 0014:         self._receipts: dict[UUID, list[ActionReceipt]] = {}
+  0015: 
+  0016:     def append(self, receipt: ActionReceipt) -> None:
+  0017:         history = self._receipts.setdefault(receipt.task_id, [])
+
+  0018:         expected_version = len(history) + 1
+  0019:         if receipt.receipt_version != expected_version:
+
+  0020:             raise ValueError(
+
+  0021:                 f"Receipt version {receipt.receipt_version} does not match {expected_version}"
+  0022:             )
+
+  0023:         history.append(receipt.model_copy(deep=True))
+  0024: 
+
+  0025:     def get(self, task_id: UUID) -> ActionReceipt | None:
+  0026:         history = self._receipts.get(task_id)
+
+  0027:         if not history:
+  0028:             return None
+
+  0029:         return history[-1].model_copy(deep=True)
+
+  0030: 
+> 0031:     def history(self, task_id: UUID) -> tuple[ActionReceipt, ...]:
+  0032:         return tuple(receipt.model_copy(deep=True) for receipt in self._receipts.get(task_id, []))
+  0033: 
+  0034:     def values(self) -> Iterable[ActionReceipt]:
+
+  0035:         return tuple(history[-1].model_copy(deep=True) for history in self._receipts.values())
+
+
+
+
+FILE: src\nexuss\core\local_workspace.py
+> 0001: """Live, read-only local workspace evidence collection for Nexuss P2."""
+  0002: 
+  0003: from __future__ import annotations
+  0004: 
+
+  0017: 
+  0018: 
+> 0019: class LocalWorkspaceEvidenceError(RuntimeError):
+  0020:     """Raised when local workspace evidence cannot be collected safely."""
+  0021: 
+  0022: 
+
+  0023: def _run_git(repository_root: Path, *arguments: str) -> str:
+
+  0024:     git_executable = shutil.which("git")
+  0025:     if git_executable is None:
+> 0026:         raise LocalWorkspaceEvidenceError("Git executable is unavailable")
+  0027: 
+  0028:     command = [git_executable, "-C", str(repository_root), *arguments]
+  0029:     try:
+
+  0039:         )
+  0040:     except (OSError, subprocess.SubprocessError) as exc:
+> 0041:         raise LocalWorkspaceEvidenceError("Git metadata collection failed") from exc
+  0042: 
+  0043:     output = completed.stdout.strip()
+  0044:     if len(output.encode("utf-8")) > _MAX_GIT_OUTPUT:
+
+> 0045:         raise LocalWorkspaceEvidenceError("Git metadata exceeded the safe output limit")
+  0046:     return output
+  0047: 
+  0048: 
+
+  0057:     root = repository_root.resolve()
+  0058:     if not root.is_dir() or not (root / ".git").exists():
+> 0059:         raise LocalWorkspaceEvidenceError("Configured Nexuss repository is not a Git workspace")
+  0060: 
+  0061:     branch = _run_git(root, "branch", "--show-current") or "detached"
+  0062:     commit = _run_git(root, "rev-parse", "HEAD")
+
+
+FILE: src\nexuss\core\planner.py
+  0031:             "I am Nexuss, your personal cognitive control plane. I interpret "
+  0032:             "requests, apply safety policy, coordinate approved capabilities, "
+> 0033:             "verify results, and preserve auditable Action Receipts."
+  0034:         ),
+  0035:         IntentKind.ASSISTANT_CAPABILITIES: (
+  0036:             "I can inspect this workspace, research bounded public sources, "
+
+  0342:                 "finance.transfer",
+  0343:                 RiskTier.CRITICAL,
+> 0344:                 ["transaction_receipt"],
+  0345:                 {},
+  0346:                 False,
+  0347:             )
+
+  0416:             capability_id=capability_id,
+  0417:             risk_tier=risk,
+> 0418:             expected_evidence=evidence,
+  0419:             parameters=parameters,
+  0420:             reversible=reversible,
+  0421:         )
+
+  0423:             capability_id,
+  0424:             risk,
+> 0425:             evidence,
+  0426:             parameters,
+  0427:             reversible,
+  0428:         ) in enumerate(specs, start=1)
+
+
+FILE: src\nexuss\core\registry.py
+  0133:         version="1.0.0",
+  0134:         title="Undo note creation",
+> 0135:         description="Remove only the unchanged note created by the associated receipt.",
+  0136:         risk_tier=RiskTier.MEDIUM,
+  0137:         approval_policy=ApprovalPolicy.EXPLICIT,
+  0138:         reversible=False,
+
+> 0139:         execution_mode="live_local_receipt_bound_rollback",
+  0140:         status=CapabilityStatus.ACTIVE,
+  0141:     ),
+  0142:     CapabilityManifest(
+
+  0158:         capability_id="device.rollback_launch_notepad",
+  0159:         version="1.0.0",
+> 0160:         title="Close receipt-bound Notepad process",
+  0161:         description=(
+  0162:             "Terminate only the process created by the associated signed device command."
+  0163:         ),
+
+
+FILE: src\nexuss\core\service.py
+  0027: from nexuss.domain.models import (
+  0028:     ActionEvent,
+> 0029:     ActionReceipt,
+  0030:     ApprovalChannel,
+  0031:     ApprovalDecision,
+  0032:     ApprovalDecisionKind,
+
+  0033:     ApprovalRequest,
+  0034:     ApprovalStatus,
+> 0035:     CapabilityResult,
+  0036:     EvidenceRecord,
+  0037:     IdentitySession,
+  0038:     Intent,
+
+  0039:     PlanStep,
+
+  0072: 
+  0073: class RollbackValidationError(ValueError):
+> 0074:     """Raised when receipt-bound rollback cannot be authorized or verified."""
+  0075: 
+  0076: 
+  0077: def _payload_sha256(step: PlanStep) -> str:
+
+  0146:         )
+  0147: 
+> 0148:     def _record_receipt(self, task: TaskView) -> None:
+  0149:         previous = self._ledger.get(task.task_id)
+  0150:         receipt_version = 1 if previous is None else previous.receipt_version + 1
+  0151:         verified = task.state in {TaskState.COMPLETED, TaskState.ROLLED_BACK} and bool(task.results)
+
+  0152:         reversible = task.state is TaskState.COMPLETED and any(
+  0153:             result.capability_id in {"workspace.create_note", "device.launch_notepad"}
+
+  0155:             for result in task.results
+  0156:         )
+> 0157:         receipt = ActionReceipt(
+  0158:             receipt_id=uuid5(NAMESPACE_URL, f"nexuss:receipt:{task.task_id}"),
+  0159:             receipt_version=receipt_version,
+  0160:             task_id=task.task_id,
+
+  0161:             request_id=task.request_id,
+
+  0162:             state=task.state,
+
+  0171:             reversible=reversible,
+  0172:         )
+> 0173:         self._ledger.append(receipt)
+  0174: 
+  0175:     @staticmethod
+  0176:     def _invalid_note_plan(task_id: UUID, intent: Intent, error_code: str) -> TaskPlan:
+
+  0181:             capability_id=capability_id,
+  0182:             risk_tier=RiskTier.MEDIUM,
+> 0183:             expected_evidence=["validation_error"],
+  0184:             parameters={"validation_error": error_code},
+  0185:             reversible=False,
+  0186:         )
+
+  0278:         now: datetime,
+  0279:         session_id: UUID,
+> 0280:     ) -> tuple[TaskState, list[CapabilityResult]]:
+  0281:         validate_transition(events[-1].state, TaskState.EXECUTING)
+  0282:         self._append_event(
+  0283:             task_id,
+
+  0288:             occurred_at=now,
+  0289:         )
+> 0290:         results: list[CapabilityResult] = []
+  0291:         try:
+  0292:             for step in plan.steps:
+  0293:                 results.append(
+
+  0323:             state=TaskState.VERIFYING,
+  0324:             event_type="verification_started",
+> 0325:             detail="Nexuss is verifying returned evidence against the action contract.",
+  0326:             occurred_at=datetime.now(UTC),
+  0327:         )
+  0328:         verified = bool(results) and all(
+
+> 0329:             result.status is StepStatus.VERIFIED and bool(result.evidence) for result in results
+  0330:         )
+  0331:         final_state = TaskState.COMPLETED if verified else TaskState.FAILED
+  0332:         validate_transition(TaskState.VERIFYING, final_state)
+
+  0337:             event_type="verification_completed" if verified else "verification_failed",
+  0338:             detail=(
+> 0339:                 "All expected evidence was verified."
+  0340:                 if verified
+  0341:                 else "The execution result did not satisfy the evidence contract."
+  0342:             ),
+
+  0343:             occurred_at=datetime.now(UTC),
+  0344:         )
+
+  0396: 
+  0397:             approval: ApprovalRequest | None = None
+> 0398:             results: list[CapabilityResult] = []
+  0399: 
+  0400:             if any(decision.outcome is PolicyOutcome.DENY for decision in decisions):
+  0401:                 validate_transition(TaskState.PLANNED, TaskState.DENIED)
+
+  0444:             self._tasks[task_id] = task
+  0445:             self._request_index[request.request_id] = task_id
+> 0446:             self._record_receipt(task)
+  0447:             return task.model_copy(deep=True)
+  0448: 
+  0449:     def approve_task(
+
+  0498:                 )
+  0499:                 self._tasks[task_id] = task
+> 0500:                 self._record_receipt(task)
+  0501:                 raise ApprovalValidationError("APPROVAL_EXPIRED")
+  0502: 
+  0503:             if decision.approval_id != approval.approval_id:
+
+  0534:                 )
+  0535:                 self._tasks[task_id] = task
+> 0536:                 self._record_receipt(task)
+  0537:                 return task.model_copy(deep=True)
+  0538: 
+  0539:             validate_transition(task.state, TaskState.APPROVED)
+
+  0568:             )
+  0569:             self._tasks[task_id] = task
+> 0570:             self._record_receipt(task)
+  0571:             return task.model_copy(deep=True)
+  0572: 
+  0573:     def list_pending_phone_approvals(
+
+  0632:                         if item.capability_id == "phone.open_youtube"
+  0633:                         and item.status is StepStatus.VERIFIED
+> 0634:                         and item.evidence
+  0635:                     ),
+  0636:                     None,
+  0637:                 )
+
+  0638:                 if result is None:
+  0639:                     continue
+> 0640:                 attributes = result.evidence[0].attributes
+  0641:                 launch_url = str(attributes.get("launch_url", ""))
+  0642:                 query = str(attributes.get("query", ""))
+  0643:                 if not launch_url:
+
+  0671:                     }
+  0672:                     and result.status is StepStatus.VERIFIED
+> 0673:                     and result.evidence
+  0674:                 ),
+  0675:                 None,
+  0676:             )
+
+  0677:             if source_result is None:
+> 0678:                 raise RollbackValidationError("NO_RECEIPT_BOUND_REVERSIBLE_RESULT")
+  0679: 
+  0680:             now = datetime.now(UTC)
+  0681:             validate_transition(task.state, TaskState.ROLLING_BACK)
+
+  0685:                 state=TaskState.ROLLING_BACK,
+  0686:                 event_type="rollback_started",
+> 0687:                 detail="Receipt-bound rollback started after explicit user Undo.",
+  0688:                 occurred_at=now,
+  0689:             )
+  0690: 
+
+  0693:                     rollback_result = self._rollback_note(source_result, now)
+  0694:                     detail = (
+> 0695:                         "The receipt-owned note was removed and absence was verified."
+  0696:                     )
+  0697:                 else:
+  0698:                     rollback_result = self._rollback_device_command(task_id, source_result, now)
+
+  0699:                     detail = (
+> 0700:                         "The receipt-bound device process was terminated and absence was verified."
+  0701:                     )
+  0702:             except (ManagedNoteError, DeviceCommandError, ValueError) as exc:
+  0703:                 validate_transition(TaskState.ROLLING_BACK, TaskState.FAILED)
+
+  0714:                 )
+  0715:                 self._tasks[task_id] = failed
+> 0716:                 self._record_receipt(failed)
+  0717:                 raise RollbackValidationError(str(exc)) from exc
+  0718: 
+  0719:             validate_transition(TaskState.ROLLING_BACK, TaskState.ROLLED_BACK)
+
+  0734:             )
+  0735:             self._tasks[task_id] = rolled_back
+> 0736:             self._record_receipt(rolled_back)
+  0737:             return rolled_back.model_copy(deep=True)
+  0738: 
+  0739:     def _rollback_note(
+
+  0740:         self,
+> 0741:         note_result: CapabilityResult,
+  0742:         observed_at: datetime,
+  0743:     ) -> CapabilityResult:
+  0744:         attributes = note_result.evidence[0].attributes
+
+  0745:         filename = str(attributes.get("filename", ""))
+  0746:         expected_sha256 = str(attributes.get("sha256", ""))
+
+  0747:         removed_path = self._note_store.rollback(
+
+  0749:             expected_sha256=expected_sha256,
+  0750:         )
+> 0751:         return CapabilityResult(
+  0752:             step_id=note_result.step_id,
+  0753:             capability_id="workspace.rollback_create_note",
+  0754:             status=StepStatus.ROLLED_BACK,
+
+> 0755:             evidence=[
+  0756:                 EvidenceRecord(
+  0757:                     source="local:managed_workspace",
+  0758:                     observed_at=observed_at,
+
+  0759:                     attributes={
+
+> 0760:                         "source_mode": "live_local_receipt_bound_rollback",
+  0761:                         "filename": filename,
+  0762:                         "removed_path": str(removed_path),
+  0763:                         "expected_sha256": expected_sha256,
+
+  0771:         self,
+  0772:         task_id: UUID,
+> 0773:         device_result: CapabilityResult,
+  0774:         observed_at: datetime,
+  0775:     ) -> CapabilityResult:
+  0776:         attributes = device_result.evidence[0].attributes
+
+  0777:         command_id = UUID(str(attributes.get("command_id", "")))
+  0778:         node_id = str(attributes.get("node_id", ""))
+
+  0779:         evidence = self._device_client.rollback_command(task_id, command_id, node_id)
+
+  0780:         if not evidence.verified_absent:
+  0781:             raise DeviceCommandError("DEVICE_ROLLBACK_NOT_VERIFIED")
+  0782:         return CapabilityResult(
+
+  0783:             step_id=device_result.step_id,
+
+  0784:             capability_id="device.rollback_launch_notepad",
+  0785:             status=StepStatus.ROLLED_BACK,
+
+> 0786:             evidence=[
+  0787:                 EvidenceRecord(
+  0788:                     source="device:windows-node",
+  0789:                     observed_at=observed_at,
+
+  0790:                     attributes={
+
+> 0791:                         "source_mode": evidence.source_mode,
+  0792:                         "rollback_id": str(evidence.rollback_id),
+  0793:                         "command_id": str(evidence.command_id),
+  0794:                         "node_id": evidence.node_id,
+
+  0795:                         "process_id": evidence.process_id,
+
+  0796:                         "terminated": evidence.terminated,
+
+  0797:                         "verified_absent": evidence.verified_absent,
+
+  0798:                     },
+
+  0799:                 )
+
+  0800:             ],
+
+  0808:             return task.model_copy(deep=True)
+  0809: 
+> 0810:     def get_receipt(self, task_id: UUID) -> ActionReceipt:
+  0811:         with self._lock:
+  0812:             receipt = self._ledger.get(task_id)
+  0813:             if receipt is None:
+
+  0814:                 raise TaskNotFoundError(str(task_id))
+  0815:             return receipt
+
+  0816: 
+
+  0817:     def get_receipt_history(self, task_id: UUID) -> tuple[ActionReceipt, ...]:
+  0818:         with self._lock:
+
+  0819:             history = self._ledger.history(task_id)
+  0820:             if not history:
+
+
+FILE: src\nexuss\core\simulator.py
+  0003: from datetime import UTC, datetime
+  0004: 
+> 0005: from nexuss.domain.models import CapabilityResult, EvidenceRecord, PlanStep, StepStatus
+  0006: 
+  0007: _SIMULATED_ATTRIBUTES: dict[str, dict[str, object]] = {
+  0008:     "calendar.read_summary": {"events": 2, "source_mode": "simulated"},
+
+  0020: 
+  0021: 
+> 0022: def execute_step(step: PlanStep, observed_at: datetime | None = None) -> CapabilityResult:
+  0023:     timestamp = observed_at or datetime.now(UTC)
+  0024:     attributes = _SIMULATED_ATTRIBUTES.get(step.capability_id)
+  0025:     if attributes is None:
+
+> 0026:         return CapabilityResult(
+  0027:             step_id=step.step_id,
+  0028:             capability_id=step.capability_id,
+  0029:             status=StepStatus.FAILED,
+
+> 0030:             evidence=[],
+  0031:             error_code="SIMULATOR_CAPABILITY_NOT_FOUND",
+  0032:         )
+  0033: 
+
+> 0034:     evidence = EvidenceRecord(
+  0035:         source=f"simulator:{step.capability_id}",
+  0036:         observed_at=timestamp,
+  0037:         attributes=attributes,
+
+  0038:     )
+> 0039:     return CapabilityResult(
+  0040:         step_id=step.step_id,
+  0041:         capability_id=step.capability_id,
+  0042:         status=StepStatus.VERIFIED,
+
+> 0043:         evidence=[evidence],
+  0044:     )
+
+
+FILE: src\nexuss\device\client.py
+  0017: from nexuss.device.models import (
+  0018:     DeviceCommandEnvelope,
+> 0019:     DeviceCommandEvidence,
+  0020:     DeviceRollbackEnvelope,
+  0021:     DeviceRollbackEvidence,
+  0022: )
+
+  0023: from nexuss.device.signing import sign_payload
+  0024: 
+
+  0035:         task_id: UUID,
+  0036:         target_node_id: str,
+> 0037:     ) -> DeviceCommandEvidence: ...
+  0038: 
+  0039:     def open_web_search(
+  0040:         self,
+
+  0042:         target_node_id: str,
+  0043:         launch_url: str,
+> 0044:     ) -> DeviceCommandEvidence: ...
+  0045: 
+  0046:     def rollback_command(
+  0047:         self,
+
+  0049:         command_id: UUID,
+  0050:         target_node_id: str,
+> 0051:     ) -> DeviceRollbackEvidence: ...
+  0052: 
+  0053: 
+  0054: class DisabledDeviceNodeClient:
+
+  0059:         task_id: UUID,
+  0060:         target_node_id: str,
+> 0061:     ) -> DeviceCommandEvidence:
+  0062:         del task_id, target_node_id
+  0063:         raise DeviceCommandError("TRUSTED_DEVICE_NODE_NOT_CONFIGURED")
+  0064: 
+
+  0068:         target_node_id: str,
+  0069:         launch_url: str,
+> 0070:     ) -> DeviceCommandEvidence:
+  0071:         del task_id, target_node_id, launch_url
+  0072:         raise DeviceCommandError("TRUSTED_DEVICE_NODE_NOT_CONFIGURED")
+  0073: 
+
+  0077:         command_id: UUID,
+  0078:         target_node_id: str,
+> 0079:     ) -> DeviceRollbackEvidence:
+  0080:         del task_id, command_id, target_node_id
+  0081:         raise DeviceCommandError("TRUSTED_DEVICE_NODE_NOT_CONFIGURED")
+  0082: 
+
+  0152:         task_id: UUID,
+  0153:         target_node_id: str,
+> 0154:     ) -> DeviceCommandEvidence:
+  0155:         now = datetime.now(UTC)
+  0156:         command_id = uuid5(
+  0157:             NAMESPACE_URL,
+
+  0171:             parameters={},
+  0172:         )
+> 0173:         return DeviceCommandEvidence.model_validate(
+  0174:             self._post("/v1/commands", envelope)
+  0175:         )
+  0176: 
+
+  0180:         target_node_id: str,
+  0181:         launch_url: str,
+> 0182:     ) -> DeviceCommandEvidence:
+  0183:         now = datetime.now(UTC)
+  0184:         command_id = uuid5(
+  0185:             NAMESPACE_URL,
+
+  0199:             parameters={"launch_url": launch_url},
+  0200:         )
+> 0201:         return DeviceCommandEvidence.model_validate(
+  0202:             self._post("/v1/commands", envelope)
+  0203:         )
+  0204: 
+
+  0208:         command_id: UUID,
+  0209:         target_node_id: str,
+> 0210:     ) -> DeviceRollbackEvidence:
+  0211:         now = datetime.now(UTC)
+  0212:         envelope = DeviceRollbackEnvelope(
+  0213:             rollback_id=uuid5(
+
+  0222:             nonce=secrets.token_urlsafe(32),
+  0223:         )
+> 0224:         return DeviceRollbackEvidence.model_validate(
+  0225:             self._post("/v1/rollbacks", envelope)
+  0226:         )
+
+
+FILE: src\nexuss\device\models.py
+  0025: 
+  0026: 
+> 0027: class DeviceCommandEvidence(BaseModel):
+  0028:     model_config = ConfigDict(extra="forbid")
+  0029: 
+  0030:     command_id: UUID
+
+  0051: 
+  0052: 
+> 0053: class DeviceRollbackEvidence(BaseModel):
+  0054:     model_config = ConfigDict(extra="forbid")
+  0055: 
+  0056:     rollback_id: UUID
+
+
+FILE: src\nexuss\device_node\app.py
+  0015: from nexuss.device.models import (
+  0016:     DeviceCommandEnvelope,
+> 0017:     DeviceCommandEvidence,
+  0018:     DeviceRollbackEnvelope,
+  0019:     DeviceRollbackEvidence,
+  0020: )
+
+  0021: from nexuss.device.signing import DeviceSignatureError, verify_signature
+  0022: from nexuss.device_node.browser_executor import WindowsChromeExecutor
+
+  0077: 
+  0078: 
+> 0079: @app.post("/v1/commands", response_model=DeviceCommandEvidence)
+  0080: def execute_command(
+  0081:     envelope: DeviceCommandEnvelope,
+  0082:     signature: Annotated[str, Header(alias="X-Nexuss-Node-Signature")],
+
+> 0083: ) -> DeviceCommandEvidence:
+  0084:     _authorize(envelope, signature)
+  0085:     try:
+  0086:         if envelope.capability_id == "device.launch_notepad":
+
+  0106: 
+  0107: 
+> 0108: @app.post("/v1/rollbacks", response_model=DeviceRollbackEvidence)
+  0109: def rollback_command(
+  0110:     envelope: DeviceRollbackEnvelope,
+  0111:     signature: Annotated[str, Header(alias="X-Nexuss-Node-Signature")],
+
+> 0112: ) -> DeviceRollbackEvidence:
+  0113:     _authorize(envelope, signature)
+  0114:     try:
+  0115:         return executor.rollback(
+
+
+FILE: src\nexuss\device_node\browser_executor.py
+  0018:     validate_handoff_url,
+  0019: )
+> 0020: from nexuss.device.models import DeviceCommandEvidence
+  0021: from nexuss.device_node.executor import NodeExecutionError, ProcessHandle
+  0022: 
+  0023: 
+
+  0072:         target_node_id: str,
+  0073:         launch_url: str,
+> 0074:     ) -> DeviceCommandEvidence:
+  0075:         del task_id
+  0076:         if target_node_id != self._node_id:
+  0077:             raise NodeExecutionError("TARGET_NODE_ID_MISMATCH")
+
+  0091:         if process.pid <= 0:
+  0092:             raise NodeExecutionError("DEVICE_PROCESS_ID_INVALID")
+> 0093:         return DeviceCommandEvidence(
+  0094:             command_id=command_id,
+  0095:             node_id=self._node_id,
+  0096:             node_hostname=socket.gethostname(),
+
+
+FILE: src\nexuss\device_node\executor.py
+  0016: from uuid import UUID
+  0017: 
+> 0018: from nexuss.device.models import DeviceCommandEvidence, DeviceRollbackEvidence
+  0019: 
+  0020: 
+  0021: class NodeExecutionError(RuntimeError):
+
+  0056: 
+  0057: class WindowsNotepadExecutor:
+> 0058:     """Launch and receipt-bind only the fixed Windows Notepad executable."""
+  0059: 
+  0060:     def __init__(
+  0061:         self,
+
+  0086:         command_id: UUID,
+  0087:         target_node_id: str,
+> 0088:     ) -> DeviceCommandEvidence:
+  0089:         if os.name != "nt" and isinstance(self._runner, SubprocessRunner):
+  0090:             raise NodeExecutionError("WINDOWS_NODE_REQUIRED")
+  0091:         if target_node_id != self._node_id:
+
+  0099:             existing = self._launched.get(command_id)
+  0100:             if existing is not None:
+> 0101:                 return self._evidence(existing)
+  0102:             started_at = datetime.now(UTC)
+  0103:             process = self._runner.start(self._executable)
+  0104:             if process.pid <= 0:
+
+  0112:             )
+  0113:             self._launched[command_id] = record
+> 0114:             return self._evidence(record)
+  0115: 
+  0116:     def _evidence(self, record: _LaunchedProcess) -> DeviceCommandEvidence:
+  0117:         return DeviceCommandEvidence(
+
+  0118:             command_id=record.command_id,
+  0119:             node_id=self._node_id,
+
+  0120:             node_hostname=socket.gethostname(),
+
+  0133:         command_id: UUID,
+  0134:         target_node_id: str,
+> 0135:     ) -> DeviceRollbackEvidence:
+  0136:         if target_node_id != self._node_id:
+  0137:             raise NodeExecutionError("TARGET_NODE_ID_MISMATCH")
+  0138:         with self._lock:
+
+  0139:             record = self._launched.get(command_id)
+  0140:             if record is None:
+> 0141:                 raise NodeExecutionError("RECEIPT_BOUND_COMMAND_NOT_FOUND")
+  0142:             if record.task_id != task_id:
+  0143:                 raise NodeExecutionError("RECEIPT_BOUND_TASK_MISMATCH")
+  0144:             was_running = record.process.poll() is None
+
+  0145:             if was_running:
+  0146:                 record.process.terminate()
+
+  0152:             if verified_absent:
+  0153:                 self._launched.pop(command_id, None)
+> 0154:             return DeviceRollbackEvidence(
+  0155:                 rollback_id=rollback_id,
+  0156:                 command_id=command_id,
+  0157:                 node_id=self._node_id,
+
+
+FILE: src\nexuss\domain\models.py
+  0155:     capability_id: CapabilityId
+  0156:     risk_tier: RiskTier
+> 0157:     expected_evidence: list[str] = Field(min_length=1)
+  0158:     parameters: dict[str, object] = Field(default_factory=dict)
+  0159:     reversible: bool = False
+  0160: 
+
+  0179: 
+  0180: 
+> 0181: class EvidenceRecord(BaseModel):
+  0182:     model_config = ConfigDict(extra="forbid")
+  0183: 
+  0184:     source: str
+
+  0187: 
+  0188: 
+> 0189: class CapabilityResult(BaseModel):
+  0190:     model_config = ConfigDict(extra="forbid")
+  0191: 
+  0192:     step_id: UUID
+
+  0193:     capability_id: CapabilityId
+  0194:     status: StepStatus
+> 0195:     evidence: list[EvidenceRecord]
+  0196:     error_code: str | None = None
+  0197: 
+  0198: 
+
+  0258: 
+  0259: 
+> 0260: class ActionReceipt(BaseModel):
+  0261:     model_config = ConfigDict(extra="forbid")
+  0262: 
+  0263:     receipt_id: UUID
+
+  0264:     receipt_version: int = Field(ge=1)
+  0265:     task_id: UUID
+  0266:     request_id: UUID
+
+  0267:     state: TaskState
+
+  0269:     plan_id: UUID
+  0270:     policy_decisions: list[PolicyDecision]
+> 0271:     results: list[CapabilityResult]
+  0272:     events: list[ActionEvent]
+  0273:     created_at: datetime
+  0274:     updated_at: datetime
+
+  0287:     plan: TaskPlan
+  0288:     policy_decisions: list[PolicyDecision]
+> 0289:     results: list[CapabilityResult]
+  0290:     events: list[ActionEvent]
+  0291:     approval: ApprovalRequest | None = None
+  0292:     created_at: datetime
+
+
+FILE: src\nexuss\knowledge\provider.py
+  0023: 
+  0024: class KnowledgeProviderError(RuntimeError):
+> 0025:     """Raised when a knowledge provider cannot satisfy its evidence contract."""
+  0026: 
+  0027: 
+  0028: class KnowledgeProvider(Protocol):
+
+
+FILE: src\nexuss\media\youtube.py
+  0042: 
+  0043: class MediaProviderError(RuntimeError):
+> 0044:     """Raised when media discovery cannot satisfy its evidence contract."""
+  0045: 
+  0046: 
+  0047: class YouTubeSearchResult(TypedDict):
+
+
+FILE: src\nexuss\ui\app.js
+  0013:   systemState: document.querySelector("#system-state"),
+  0014:   systemStateLabel: document.querySelector("#system-state-label"),
+> 0015:   receiptState: document.querySelector("#receipt-state"),
+  0016:   verificationBadge: document.querySelector("#verification-badge"),
+  0017:   metricIntent: document.querySelector("#metric-intent"),
+  0018:   metricConfidence: document.querySelector("#metric-confidence"),
+
+  0023:   eventSummary: document.querySelector("#event-summary"),
+  0024:   eventList: document.querySelector("#event-list"),
+> 0025:   evidenceSummary: document.querySelector("#evidence-summary"),
+  0026:   evidenceList: document.querySelector("#evidence-list"),
+  0027:   receiptId: document.querySelector("#receipt-id"),
+  0028:   receiptVersion: document.querySelector("#receipt-version"),
+
+  0029:   receiptVerified: document.querySelector("#receipt-verified"),
+
+  0030:   receiptReversible: document.querySelector("#receipt-reversible"),
+
+  0031:   receiptTitle: document.querySelector("#receipt-title"),
+
+  0032:   sessionLabel: document.querySelector("#session-label"),
+
+  0033:   reviewApproval: document.querySelector("#review-approval-button"),
+
+  0034:   copyPath: document.querySelector("#copy-path-button"),
+
+  0083: let recognition = null;
+  0084: let currentTask = null;
+> 0085: let currentReceipt = null;
+  0086: let currentNotePath = null;
+  0087: let toastTimer = null;
+  0088: let pairingChallenge = null;
+
+  0159:    * capabilities return structure so their results render as readable answers
+  0160:    * in the conversation rather than collapsing into one sentence, or being
+> 0161:    * visible only as raw evidence in the inspector.
+  0162:    */
+  0163:   const answer = typeof text === "string" ? { text, blocks: [] } : text;
+  0164: 
+
+  0280: }
+  0281: 
+> 0282: function evidenceFor(task, capabilityId) {
+  0283:   const result = task.results.find((item) => item.capability_id === capabilityId);
+  0284:   return result?.evidence?.[0]?.attributes || null;
+  0285: }
+
+  0286: 
+  0287: /*
+
+  0291:  */
+  0292: function contentAnswer(task) {
+> 0293:   const recall = evidenceFor(task, "memory.recall");
+  0294:   if (recall) {
+  0295:     const matches = Array.isArray(recall.matches) ? recall.matches : [];
+  0296:     if (!matches.length) {
+
+  0310:   }
+  0311: 
+> 0312:   const stored = evidenceFor(task, "memory.remember");
+  0313:   if (stored) {
+  0314:     return {
+  0315:       text: "Stored. I'll remember that.",
+
+  0321:   }
+  0322: 
+> 0323:   const forgotten = evidenceFor(task, "memory.forget");
+  0324:   if (forgotten) {
+  0325:     const removed = Number(forgotten.claims_removed);
+  0326:     return {
+
+  0332:   }
+  0333: 
+> 0334:   const devices = evidenceFor(task, "device.list_phones");
+  0335:   if (devices) {
+  0336:     const listed = Array.isArray(devices.devices) ? devices.devices : [];
+  0337:     if (!listed.length) {
+
+  0352:   }
+  0353: 
+> 0354:   const pairing = evidenceFor(task, "device.pair_phone");
+  0355:   if (pairing) {
+  0356:     return {
+  0357:       text: `Pairing code ${pairing.pairing_code}. Enter it at ${pairing.mobile_url} within ten minutes.`,
+
+  0427: }
+  0428: 
+> 0429: function renderReceipt(receipt) {
+  0430:   currentReceipt = receipt;
+  0431:   elements.receiptId.textContent = receipt.receipt_id;
+  0432:   elements.receiptVersion.textContent = String(receipt.receipt_version);
+
+  0433:   elements.receiptVerified.textContent = receipt.verified ? "Yes" : "No";
+
+  0434:   elements.receiptReversible.textContent = receipt.reversible ? "Yes" : "No";
+
+  0435:   elements.receiptTitle.textContent = `${titleCase(receipt.state)} receipt`;
+
+  0436:   elements.copyPath.hidden = !currentNotePath;
+
+  0437:   elements.rollback.hidden = !receipt.reversible;
+
+  0438: }
+
+  0439: 
+  0440: function renderTask(task, receipt) {
+
+  0441:   currentTask = task;
+  0442:   currentNotePath = null;
+  0443:   elements.receiptState.textContent = titleCase(task.state);
+
+  0444:   elements.metricIntent.textContent = titleCase(task.intent.kind);
+  0445:   elements.metricConfidence.textContent = `${Math.round(task.intent.confidence * 100)}%`;
+  0446:   elements.metricRisk.textContent = titleCase(task.plan.steps[0]?.risk_tier || "—");
+
+  0454:     elements.verificationBadge.classList.add("rolled-back");
+  0455:     elements.verificationBadge.textContent = "ROLLED BACK";
+> 0456:   } else if (receipt.verified) {
+  0457:     elements.verificationBadge.classList.add("verified");
+  0458:     elements.verificationBadge.textContent = "VERIFIED";
+  0459:   } else {
+
+  0478:         reversible: step.reversible,
+  0479:         policy_reason: decision?.reason_code || "unavailable",
+> 0480:         expected_evidence: step.expected_evidence.join(", "),
+  0481:       },
+  0482:     ));
+  0483:   }
+
+  0484:   elements.policySummary.textContent = `${policyCounts.allow} allowed · ${policyCounts.require_approval} approval · ${policyCounts.deny} denied`;
+  0485: 
+> 0486:   elements.evidenceList.className = "detail-list";
+  0487:   elements.evidenceList.replaceChildren();
+  0488:   let evidenceCount = 0;
+  0489:   for (const result of task.results) {
+
+  0490:     if (!result.evidence.length) {
+
+  0491:       elements.evidenceList.append(createDetailCard(
+
+  0492:         result.capability_id,
+  0493:         result.status,
+
+  0494:         { error_code: result.error_code || "No evidence returned" },
+
+  0495:       ));
+  0496:       continue;
+  0497:     }
+
+> 0498:     for (const record of result.evidence) {
+  0499:       evidenceCount += 1;
+  0500:       if (record.attributes.managed_path) currentNotePath = String(record.attributes.managed_path);
+  0501:       elements.evidenceList.append(createDetailCard(
+
+  0502:         result.capability_id,
+
+  0503:         result.status,
+  0504:         { source: record.source, observed_at: record.observed_at, ...record.attributes },
+
+  0507:   }
+  0508:   if (!task.results.length) {
+> 0509:     elements.evidenceList.className = "detail-list empty-state";
+  0510:     elements.evidenceList.textContent = task.state === "awaiting_approval"
+  0511:       ? "Execution is paused. No write occurred before approval."
+  0512:       : "Execution was not authorized, so no evidence was produced.";
+
+  0513:   }
+
+  0514:   elements.evidenceSummary.textContent = `${evidenceCount} record${evidenceCount === 1 ? "" : "s"}`;
+  0515:   elements.reviewApproval.hidden = task.state !== "awaiting_approval" || !task.approval;
+
+  0516:   renderReceipt(receipt);
+  0517:   window.NexussP5?.renderTask(task, receipt);
+
+  0518: }
+  0519: 
+
+  0520: function assistantResponse(task) {
+
+  0521:   const result = task.results.find((item) => item.capability_id === "assistant.respond");
+> 0522:   return result?.evidence?.[0]?.attributes?.response || null;
+  0523: }
+  0524: 
+  0525: function summarizeTask(task) {
+
+  0534:   if (task.state === "completed") {
+  0535:     const deviceResult = task.results.find((result) => result.capability_id === "device.launch_notepad");
+> 0536:     if (deviceResult?.evidence?.[0]) {
+  0537:       const data = deviceResult.evidence[0].attributes;
+  0538:       return `Phone approval verified. ${data.executable} was launched on trusted node ${data.node_id} as process ${data.process_id}, and the Action Receipt can close only that receipt-bound process.`;
+  0539:     }
+
+  0540:     const noteResult = task.results.find((result) => result.capability_id === "workspace.create_note");
+
+  0541:     if (noteResult?.evidence?.[0]) {
+
+  0542:       const data = noteResult.evidence[0].attributes;
+  0543:       return `Created and verified ${data.filename}. The SHA-256 evidence matches the real file, and this receipt can undo the action while the file remains unchanged.`;
+  0544:     }
+
+  0545:     const liveResult = task.results.find((result) => result.capability_id === "workspace.read_status");
+
+  0546:     if (liveResult?.evidence?.[0]) {
+
+  0547:       const data = liveResult.evidence[0].attributes;
+  0548:       const cleanText = data.git_clean ? "clean" : `${data.git_changed_entries} changed entries`;
+  0549:       return `Verified live workspace status. Branch ${data.git_branch} at ${String(data.git_commit).slice(0, 8)}; working tree ${cleanText}; ${Math.round(Number(data.disk_free_bytes) / 1073741824)} GB disk space free.`;
+
+  0550:     }
+
+  0560:     const deviceRollback = task.results.some((result) => result.capability_id === "device.rollback_launch_notepad");
+  0561:     return deviceRollback
+> 0562:       ? "Undo completed. The receipt-bound device process was terminated and verified absent."
+  0563:       : "Undo completed. The receipt-owned note was removed and its absence was verified.";
+  0564:   }
+  0565:   if (task.state === "denied") {
+
+  0566:     const reason = task.policy_decisions.find((decision) => decision.outcome === "deny")?.reason_code;
+
+  0569:   if (task.state === "failed") {
+  0570:     /*
+> 0571:      * Name the reason. "Review the evidence panel" makes the person do the
+  0572:      * diagnosis the system already did, and hides whether the cause was a
+  0573:      * provider error, a validation refusal, or a missing dependency.
+  0574:      */
+
+  0585: }
+  0586: 
+> 0587: async function fetchReceipt(taskId) {
+  0588:   const response = await fetch(`/v1/tasks/${taskId}/receipt`, { cache: "no-store" });
+  0589:   if (!response.ok) throw new Error(`Receipt request failed (${response.status})`);
+  0590:   return response.json();
+
+  0591: }
+
+  0592: 
+
+  0615:       clearInterval(taskPollTimer);
+  0616:       taskPollTimer = null;
+> 0617:       const receipt = await fetchReceipt(task.task_id);
+  0618:       hideApproval();
+  0619:       renderTask(task, receipt);
+  0620:       addMessage("assistant", summarizeTask(task));
+
+  0621:       showToast(task.state === "completed" ? "Phone approval accepted. Device command verified." : `Phone decision: ${titleCase(task.state)}.`);
+  0622:     } catch (_error) {
+
+  0630:   elements.approvalRisk.textContent = titleCase(approval.risk_tier);
+  0631:   elements.approvalDestination.textContent = approval.destination_label;
+> 0632:   elements.approvalReversible.textContent = approval.reversible ? "Yes · receipt-bound" : "No";
+  0633:   elements.approvalSummary.textContent = approval.action_summary;
+  0634:   elements.approvalHash.textContent = approval.payload_sha256;
+  0635:   elements.approvalPreview.textContent = approval.exact_preview;
+
+  0686:     if (!response.ok) throw new Error(`Task request failed (${response.status}): ${await response.text()}`);
+  0687:     const task = await response.json();
+> 0688:     const receipt = await fetchReceipt(task.task_id);
+  0689:     renderTask(task, receipt);
+  0690:     addMessage("assistant", summarizeTask(task));
+  0691:     if (task.state === "awaiting_approval" && task.approval) void showApproval(task.approval);
+
+  0692:   } catch (error) {
+
+  0715:     if (!response.ok) throw new Error(`Approval failed (${response.status}): ${await response.text()}`);
+  0716:     const task = await response.json();
+> 0717:     const receipt = await fetchReceipt(task.task_id);
+  0718:     hideApproval();
+  0719:     renderTask(task, receipt);
+  0720:     addMessage("assistant", summarizeTask(task));
+
+  0721:     showToast(decisionKind === "approve" ? "Exact action approved and verified." : "Action cancelled. No write occurred.");
+  0722:   } catch (error) {
+
+  0728: 
+  0729: async function rollbackCurrentTask() {
+> 0730:   if (!currentTask || !currentReceipt?.reversible) return;
+  0731:   if (!window.confirm("Undo this receipt-owned action? Nexuss will reverse only the verified file or process created by this task.")) return;
+  0732:   setBusy(true);
+  0733:   try {
+
+  0734:     const response = await fetch(`/v1/tasks/${currentTask.task_id}/rollback`, {
+
+  0739:     if (!response.ok) throw new Error(`Undo failed (${response.status}): ${await response.text()}`);
+  0740:     const task = await response.json();
+> 0741:     const receipt = await fetchReceipt(task.task_id);
+  0742:     renderTask(task, receipt);
+  0743:     addMessage("assistant", summarizeTask(task));
+  0744:     showToast("Rollback verified. The receipt-bound action is absent.");
+
+  0745:   } catch (error) {
+
+  0746:     addMessage("assistant", error instanceof Error ? error.message : "Undo failed", true);
+  0747:   } finally {
+
+
+FILE: src\nexuss\ui\mobile.js
+  0141:   elements.summary.textContent = approval.action_summary;
+  0142:   elements.destination.textContent = approval.destination_label;
+> 0143:   elements.reversible.textContent = approval.reversible ? "Yes · receipt-bound" : "No";
+  0144:   elements.preview.textContent = approval.exact_preview;
+  0145:   elements.hash.textContent = approval.payload_sha256;
+  0146: }
+
+
+FILE: src\nexuss\ui\p5.js
+  0045:     (item) => item.capability_id === capability,
+  0046:   );
+> 0047:   return result?.evidence?.[0]?.attributes || null;
+  0048: }
+  0049: 
+  0050: function ensureWorkspace() {
+
+  0568:       return (
+  0569:         `Chrome received the approved search handoff on ${browser.node_id}. ` +
+> 0570:         "The exact allowlisted URL is recorded in the Action Receipt."
+  0571:       );
+  0572:     }
+  0573:     return null;
+
+
+UI STATUS
+---------
+
+FILE: src\nexuss\api\app.py
+  0176: 
+  0177: 
+> 0178: @app.get("/health/live")
+  0179: def health_live() -> dict[str, str]:
+  0180:     return {
+  0181:         "status": "alive",
+
+  0182:         "service": "nexuss-core-api",
+
+  0185: 
+  0186: 
+> 0187: @app.get("/health/ready")
+  0188: def health_ready() -> dict[str, str]:
+  0189:     return {
+  0190:         "status": "ready",
+
+  0191:         "mode": "p5_knowledge_media_mobile",
+
+
+FILE: src\nexuss\core\intents.py
+  0563:         kind = IntentKind.ATS_READ
+  0564:         confidence = 0.96
+> 0565:     elif "health" in normalized:
+  0566:         kind = IntentKind.SYSTEM_HEALTH
+  0567:         confidence = 0.95
+  0568:     elif "play" in normalized and _contains_any(
+
+  0569:         normalized,
+
+
+FILE: src\nexuss\core\planner.py
+  0029:     responses = {
+  0030:         IntentKind.ASSISTANT_IDENTITY: (
+> 0031:             "I am Nexuss, your personal cognitive control plane. I interpret "
+  0032:             "requests, apply safety policy, coordinate approved capabilities, "
+  0033:             "verify results, and preserve auditable Action Receipts."
+  0034:         ),
+
+  0277:             ),
+  0278:             (
+> 0279:                 "ats.read_health",
+  0280:                 RiskTier.LOW,
+  0281:                 ["ats_health_snapshot"],
+  0282:                 {},
+
+  0283:                 False,
+  0284:             ),
+
+  0285:         ],
+> 0286:         IntentKind.SYSTEM_HEALTH: [
+  0287:             (
+  0288:                 "nexuss.read_health",
+  0289:                 RiskTier.LOW,
+
+  0290:                 ["health_snapshot"],
+  0291:                 {},
+
+  0292:                 False,
+  0293:             )
+
+
+FILE: src\nexuss\core\registry.py
+  0251:     ),
+  0252:     CapabilityManifest(
+> 0253:         capability_id="ats.read_health",
+  0254:         version="0.1.0",
+  0255:         title="ATS health",
+  0256:         description="Protected read-only simulation; no live ATS connection.",
+
+  0257:         risk_tier=RiskTier.LOW,
+  0258:         approval_policy=ApprovalPolicy.NONE,
+
+
+FILE: src\nexuss\core\simulator.py
+  0009:     "email.read_summary": {"unread_priority": 3, "source_mode": "simulated"},
+  0010:     "github.read_summary": {"repositories": 4, "open_pull_requests": 1, "source_mode": "simulated"},
+> 0011:     "ats.read_health": {"status": "healthy", "mode": "read_only_simulated"},
+  0012:     "ats.read_intelligence": {
+  0013:         "status": "available",
+  0014:         "mode": "read_only_simulated",
+
+  0015:         "market_signal": "not_real_data",
+  0016:     },
+> 0017:     "nexuss.read_health": {"status": "ready", "mode": "p3_approved_actions"},
+  0018:     "media.prepare_playback": {"status": "prepared", "source_mode": "simulated"},
+  0019: }
+  0020: 
+
+
+FILE: src\nexuss\device_node\app.py
+  0068: 
+  0069: 
+> 0070: @app.get("/health/ready")
+  0071: def health_ready() -> dict[str, str]:
+  0072:     return {
+  0073:         "status": "ready",
+
+  0074:         "mode": "p5_trusted_windows_node",
+
+
+FILE: src\nexuss\domain\models.py
+  0028:     ASSISTANT_HELP = "assistant_help"
+  0029:     DAILY_BRIEFING = "daily_briefing"
+> 0030:     SYSTEM_HEALTH = "system_health"
+  0031:     LOCAL_WORKSPACE_STATUS = "local_workspace_status"
+  0032:     CREATE_NOTE = "create_note"
+  0033:     LAUNCH_NOTEPAD = "launch_notepad"
+
+
+FILE: src\nexuss\mobile\models.py
+  0065: 
+  0066: class MobilePairedDevice(BaseModel):
+> 0067:     """A paired phone as shown on the desktop control plane."""
+  0068: 
+  0069:     model_config = ConfigDict(extra="forbid")
+  0070: 
+
+
+FILE: src\nexuss\ui\app.js
+  0105: }
+  0106: 
+> 0107: function setHealth(state, label) {
+  0108:   elements.systemState.classList.remove("ready", "error");
+  0109:   if (state) elements.systemState.classList.add(state);
+  0110:   elements.systemStateLabel.textContent = label;
+
+  0111: }
+  0112: 
+> 0113: async function checkHealth() {
+  0114:   try {
+  0115:     const response = await fetch("/health/ready", { cache: "no-store" });
+  0116:     if (!response.ok) throw new Error(`Health check returned ${response.status}`);
+
+  0117:     const body = await response.json();
+  0118:     setHealth("ready", `${body.status} · ${body.mode}`);
+
+  0119:   } catch (_error) {
+
+  0120:     setHealth("error", "Nexuss unavailable");
+  0121:   }
+
+  0122: }
+  0123: 
+
+  0427: }
+  0428: 
+> 0429: function renderReceipt(receipt) {
+  0430:   currentReceipt = receipt;
+  0431:   elements.receiptId.textContent = receipt.receipt_id;
+  0432:   elements.receiptVersion.textContent = String(receipt.receipt_version);
+
+  0514:   elements.evidenceSummary.textContent = `${evidenceCount} record${evidenceCount === 1 ? "" : "s"}`;
+  0515:   elements.reviewApproval.hidden = task.state !== "awaiting_approval" || !task.approval;
+> 0516:   renderReceipt(receipt);
+  0517:   window.NexussP5?.renderTask(task, receipt);
+  0518: }
+  0519: 
+
+  0523: }
+  0524: 
+> 0525: function summarizeTask(task) {
+  0526:   const p5Summary = window.NexussP5?.summarizeTask(task);
+  0527:   if (p5Summary) return p5Summary;
+  0528:   const conversational = assistantResponse(task);
+
+  0529:   if (conversational) return String(conversational);
+
+  0618:       hideApproval();
+  0619:       renderTask(task, receipt);
+> 0620:       addMessage("assistant", summarizeTask(task));
+  0621:       showToast(task.state === "completed" ? "Phone approval accepted. Device command verified." : `Phone decision: ${titleCase(task.state)}.`);
+  0622:     } catch (_error) {
+  0623:       // Health polling and the phone client remain the source of truth during transient errors.
+
+  0624:     }
+  0625:   }, 1200);
+  0626: }
+
+  0688:     const receipt = await fetchReceipt(task.task_id);
+  0689:     renderTask(task, receipt);
+> 0690:     addMessage("assistant", summarizeTask(task));
+  0691:     if (task.state === "awaiting_approval" && task.approval) void showApproval(task.approval);
+  0692:   } catch (error) {
+  0693:     addMessage("assistant", error instanceof Error ? error.message : "Unexpected Nexuss error", true);
+
+  0718:     hideApproval();
+  0719:     renderTask(task, receipt);
+> 0720:     addMessage("assistant", summarizeTask(task));
+  0721:     showToast(decisionKind === "approve" ? "Exact action approved and verified." : "Action cancelled. No write occurred.");
+  0722:   } catch (error) {
+  0723:     addMessage("assistant", error instanceof Error ? error.message : "Approval failed", true);
+
+  0741:     const receipt = await fetchReceipt(task.task_id);
+  0742:     renderTask(task, receipt);
+> 0743:     addMessage("assistant", summarizeTask(task));
+  0744:     showToast("Rollback verified. The receipt-bound action is absent.");
+  0745:   } catch (error) {
+  0746:     addMessage("assistant", error instanceof Error ? error.message : "Undo failed", true);
+
+  0866: }
+  0867: 
+> 0868: void checkHealth();
+  0869: setInterval(checkHealth, 30000);
+  0870: elements.input.focus();
+
+
+
+FILE: src\nexuss\ui\p5.js
+  0527:     }
+  0528:   },
+> 0529:   summarizeTask(task) {
+  0530:     const knowledge = resultFor(task, "knowledge.web_research");
+  0531:     if (knowledge) {
+  0532:       const count = Number(knowledge.source_count || 0);
+

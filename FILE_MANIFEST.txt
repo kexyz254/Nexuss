@@ -5,10 +5,14 @@
 ./apps/dashboard/README.md
 ./CODEOWNERS
 ./CONFIDENTIALITY.md
+./config/constitution/nexuss_constitution.json
+./config/constitution/nexuss_constitution.json.sha256
 ./connectors/ats-readonly/README.md
 ./connectors/calendar/README.md
 ./connectors/email/README.md
 ./connectors/github/README.md
+./constitution-integration-map.txt
+./constitution-runtime-targets.txt
 ./contracts/events/task-step-verified.example.json
 ./contracts/openapi/core-api.yaml
 ./contracts/schemas/action-receipt.schema.json
@@ -69,6 +73,8 @@
 ./src/nexuss/__init__.py
 ./src/nexuss/api/__init__.py
 ./src/nexuss/api/app.py
+./src/nexuss/constitution/__init__.py
+./src/nexuss/constitution/loader.py
 ./src/nexuss/core/__init__.py
 ./src/nexuss/core/executor.py
 ./src/nexuss/core/intents.py
@@ -135,6 +141,8 @@
 ./tests/security/README.md
 ./tests/security/test_device_node_security.py
 ./tests/security/test_local_control_boundary.py
+./tests/unit/test_constitution.py
+./tests/unit/test_constitution_runtime.py
 ./tests/unit/test_core_health.py
 ./tests/unit/test_device_node.py
 ./tests/unit/test_intents.py

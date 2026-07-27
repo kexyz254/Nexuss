@@ -637,3 +637,73 @@ kbd { padding: 4px 7px; border: 1px solid var(--line); border-radius: 7px; color
   font-size: 10.5px;
   text-transform: uppercase;
 }
+
+/* ---------------------------------------------------------------------------
+   P6.0 voice bar. The mode badge is always visible: a person must be able to
+   tell at a glance whether audio is leaving the machine, without opening a
+   panel or trusting a memory of how it was configured.
+   --------------------------------------------------------------------------- */
+
+.voice-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(145, 201, 235, 0.09);
+  font-size: 10px;
+}
+
+.voice-badge {
+  padding: 3px 9px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.voice-local { color: #6fffc0; }
+.voice-blocked { color: #ffd079; }
+
+.voice-state {
+  color: #7890a3;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.voice-state::before { content: "Â· "; }
+
+.voice-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #7890a3;
+  cursor: pointer;
+}
+
+.voice-toggle select {
+  padding: 2px 5px;
+  border: 1px solid rgba(145, 201, 235, 0.16);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #c6d9e8;
+  font-size: 10px;
+}
+
+.voice-stop {
+  margin-left: auto;
+  padding: 4px 10px;
+  border: 1px solid rgba(145, 201, 235, 0.16);
+  border-radius: 999px;
+  background: transparent;
+  color: #a9c2d4;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.voice-stop:hover { border-color: rgba(112, 227, 255, 0.4); color: #dff7ff; }
+
+.voice-button:disabled { opacity: 0.4; cursor: not-allowed; }

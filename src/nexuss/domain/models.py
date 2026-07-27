@@ -50,6 +50,9 @@ class IntentKind(StrEnum):
     ATS_WRITE = "ats_write"
     FINANCIAL_TRANSFER = "financial_transfer"
     SOCIAL_PUBLISH = "social_publish"
+    SMALL_TALK = "small_talk"
+    DATETIME_QUERY = "datetime_query"
+    OPEN_QUESTION = "open_question"
     UNKNOWN = "unknown"
 
 

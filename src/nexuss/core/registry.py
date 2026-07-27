@@ -96,6 +96,35 @@ _MANIFESTS = (
         approval_channel=ApprovalChannel.DESKTOP,
     ),
     CapabilityManifest(
+        capability_id="assistant.converse",
+        version="1.0.0",
+        title="Converse",
+        description=(
+            "Answer greetings, courtesies and clock questions deterministically. "
+            "No external source is consulted and nothing is written."
+        ),
+        risk_tier=RiskTier.INFORMATIONAL,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="live_local_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="knowledge.answer",
+        version="1.0.0",
+        title="Answer a question",
+        description=(
+            "Answer an open question from memory when memory is confident, "
+            "and from cited public sources when it is not. The answer always "
+            "states which of the two it used."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="live_public_web_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
         capability_id="assistant.respond",
         version="1.1.0",
         title="Nexuss constitutional conversation",

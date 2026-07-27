@@ -6,6 +6,11 @@ const elements = {
   input: document.querySelector("#command-input"),
   send: document.querySelector("#send-button"),
   voice: document.querySelector("#voice-button"),
+  voiceBadge: document.querySelector("#voice-badge"),
+  voiceState: document.querySelector("#voice-state"),
+  voiceStop: document.querySelector("#voice-stop"),
+  voiceReplies: document.querySelector("#voice-replies"),
+  voiceRate: document.querySelector("#voice-rate"),
   waveform: document.querySelector("#waveform"),
   note: document.querySelector("#composer-note"),
   timeline: document.querySelector("#timeline"),
@@ -132,7 +137,13 @@ function timeLabel(value = new Date()) {
   return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(value);
 }
 
-function addMessage(role, text, isError = false) {
+/*
+ * Only a verified final answer is spoken. Progress notices and error toasts
+ * are deliberately silent: speaking every intermediate step turns the room
+ * into a status feed, and speaking failures aloud is rarely what a person in
+ * a shared space wants.
+ */
+function addMessage(role, text, isError = false, options = {}) {
   const article = document.createElement("article");
   article.className = `message ${role === "user" ? "user-message" : "assistant-message"}`;
   if (isError) article.classList.add("error");
@@ -172,6 +183,10 @@ function addMessage(role, text, isError = false) {
   }
 
   content.append(meta, bubble);
+
+  if (role === "assistant" && !isError && options.speak) {
+    speakAnswer(answer);
+  }
   article.append(avatar, content);
   elements.timeline.append(article);
   elements.timeline.scrollTop = elements.timeline.scrollHeight;
@@ -333,6 +348,41 @@ function evidenceFor(task, capabilityId) {
  * and its source are never separated.
  */
 function contentAnswer(task) {
+  const converse = evidenceFor(task, "assistant.converse");
+  if (converse) {
+    return { text: String(converse.reply), blocks: [] };
+  }
+
+  const answered = evidenceFor(task, "knowledge.answer");
+  if (answered) {
+    if (answered.answer_path === "memory") {
+      const matches = Array.isArray(answered.matches) ? answered.matches : [];
+      return {
+        text: "From what you have told me:",
+        blocks: [{ type: "claims", items: matches }],
+      };
+    }
+    const sources = Array.isArray(answered.sources) ? answered.sources : [];
+    return {
+      text: String(answered.brief || "I found sources but no usable summary."),
+      blocks: [
+        {
+          type: "claims",
+          items: sources.slice(0, 3).map((source) => ({
+            statement: String(source.title),
+            source_ref: String(source.url),
+            source_trust: "public_web",
+            confidence: 0.6,
+          })),
+        },
+        {
+          type: "note",
+          text: "I had nothing stored about this, so I read public sources. Say \u201cremember that\u2026\u201d to keep any of it.",
+        },
+      ],
+    };
+  }
+
   const recall = evidenceFor(task, "memory.recall");
   if (recall) {
     const matches = Array.isArray(recall.matches) ? recall.matches : [];
@@ -682,7 +732,7 @@ async function pollTaskUntilResolved(taskId) {
       const receipt = await fetchReceipt(task.task_id);
       hideApproval();
       renderTask(task, receipt);
-      addMessage("assistant", summarizeTask(task));
+      addMessage("assistant", summarizeTask(task), false, { speak: true });
       showToast(task.state === "completed" ? "Phone approval accepted. Device command verified." : `Phone decision: ${titleCase(task.state)}.`);
     } catch (_error) {
       // Health polling and the phone client remain the source of truth during transient errors.
@@ -730,6 +780,7 @@ function hideApproval() {
 async function executeInstruction(utterance, channel = "text") {
   setBusy(true);
   addMessage("user", utterance);
+  stopSpeaking();
   addMessage("assistant", "Interpreting intent, generating a capability plan, and evaluating policy…");
 
   const payload = {
@@ -739,7 +790,13 @@ async function executeInstruction(utterance, channel = "text") {
     user_session_id: sessionId,
     target_devices: [],
     requested_at: new Date().toISOString(),
-    client_context: { interface: "p5-web-ui", browser_voice: channel === "voice" },
+    client_context: {
+      interface: "p5-web-ui",
+      browser_voice: channel === "voice",
+      // Recorded on the task so a receipt shows how the instruction arrived
+      // and that recognition never left this machine.
+      voice_recognition: channel === "voice" ? "on_device" : "none",
+    },
   };
 
   try {
@@ -752,7 +809,7 @@ async function executeInstruction(utterance, channel = "text") {
     const task = await response.json();
     const receipt = await fetchReceipt(task.task_id);
     renderTask(task, receipt);
-    addMessage("assistant", summarizeTask(task));
+    addMessage("assistant", summarizeTask(task), false, { speak: true });
     if (task.state === "awaiting_approval" && task.approval) void showApproval(task.approval);
   } catch (error) {
     addMessage("assistant", error instanceof Error ? error.message : "Unexpected Nexuss error", true);
@@ -782,7 +839,7 @@ async function decideApproval(decisionKind) {
     const receipt = await fetchReceipt(task.task_id);
     hideApproval();
     renderTask(task, receipt);
-    addMessage("assistant", summarizeTask(task));
+    addMessage("assistant", summarizeTask(task), false, { speak: true });
     showToast(decisionKind === "approve" ? "Exact action approved and verified." : "Action cancelled. No write occurred.");
   } catch (error) {
     addMessage("assistant", error instanceof Error ? error.message : "Approval failed", true);
@@ -805,7 +862,7 @@ async function rollbackCurrentTask() {
     const task = await response.json();
     const receipt = await fetchReceipt(task.task_id);
     renderTask(task, receipt);
-    addMessage("assistant", summarizeTask(task));
+    addMessage("assistant", summarizeTask(task), false, { speak: true });
     showToast("Rollback verified. The receipt-bound action is absent.");
   } catch (error) {
     addMessage("assistant", error instanceof Error ? error.message : "Undo failed", true);
@@ -893,42 +950,307 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !elements.approvalOverlay.hidden) hideApproval();
 });
 
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-if (SpeechRecognition) {
-  recognition = new SpeechRecognition();
-  recognition.lang = navigator.language || "en-US";
-  recognition.continuous = false;
-  recognition.interimResults = true;
+/* =========================================================================
+ * P6.0 Local-first voice.
+ *
+ * Recognition order: explicit browser on-device, then fail closed. There is
+ * no cloud path. Note that the canonical MDN example sets
+ * processLocally = false when the language pack is missing, which silently
+ * routes audio to the browser vendor -- exactly the behaviour Nexuss forbids.
+ * ========================================================================= */
 
-  recognition.addEventListener("start", () => {
-    elements.voice.classList.add("listening");
-    elements.waveform.classList.add("active");
-    elements.note.textContent = "Listening… speak naturally. You will review the transcript before execution.";
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const SpeechSynthesis = window.speechSynthesis;
+
+const VOICE_LANGUAGE = navigator.language || "en-US";
+const VOICE_QUALITY = "dictation";
+
+/** Explicit states, so the person always knows what the microphone is doing. */
+const VoiceState = {
+  IDLE: "idle",
+  REQUESTING: "requesting permission",
+  LISTENING: "listening locally",
+  PROCESSING: "processing locally",
+  TRANSCRIPT_READY: "transcript ready",
+  EXECUTING: "executing",
+  SPEAKING: "speaking",
+  UNAVAILABLE: "unavailable",
+  PERMISSION_DENIED: "permission denied",
+};
+
+let voiceState = VoiceState.IDLE;
+let onDeviceReady = false;
+let voiceOptions = { langs: [VOICE_LANGUAGE], processLocally: true, quality: VOICE_QUALITY };
+let speakRepliesEnabled = true;
+
+/*
+ * Utterances that are safe to submit without a review press. Conservative by
+ * design: anything not clearly interrogative goes to review, so "call James"
+ * and "delete the note" can never auto-run. Recording has always ended before
+ * this is consulted, and policy still gates every capability regardless.
+ */
+const QUESTION_OPENERS = /^(who|what|when|where|why|how|which|is|are|was|were|do|does|did|can|could|should|would|will)\b/i;
+
+function looksLikeQuestion(transcript) {
+  const text = String(transcript || "").trim();
+  if (!text) return false;
+  if (text.endsWith("?")) return true;
+  return QUESTION_OPENERS.test(text);
+}
+
+/*
+ * Speech is a broadcast channel: anyone in the room hears it. Identifiers that
+ * are meaningful to an attacker are never spoken, even when they appear in a
+ * conversational answer.
+ */
+function redactForSpeech(text) {
+  // Order matters: the specific shapes must match before the generic digit
+  // rule, or a phone number is consumed as "a code" and loses its meaning.
+  return String(text || "")
+    .replace(/https?:\/\/\S+/gi, "a link")
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "an identifier")
+    .replace(/\+\d[\d\s\-()]{7,}\d/g, "a phone number")
+    .replace(/\b[0-9a-f]{16,}\b/gi, "a digest")
+    .replace(/\b\d{6,}\b/g, "a code")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+/**
+ * Assemble what Nexuss says aloud: the conversational answer and any recalled
+ * statements, never the provenance metadata, scores or receipt material that
+ * belongs in the inspector.
+ */
+function speechTextFor(answer) {
+  if (typeof answer === "string") return redactForSpeech(answer);
+  const parts = [answer.text];
+  for (const block of answer.blocks || []) {
+    if (block.type === "claims") {
+      for (const item of block.items) parts.push(item.statement);
+    } else if (block.type === "note") {
+      parts.push(block.text);
+    }
+  }
+  return redactForSpeech(parts.filter(Boolean).join(". "));
+}
+
+function setVoiceState(state, note) {
+  voiceState = state;
+  const listening = state === VoiceState.LISTENING;
+  elements.voice.classList.toggle("listening", listening);
+  elements.waveform.classList.toggle("active", listening);
+  elements.voice.setAttribute("aria-label", listening ? "Stop voice input" : "Start voice input");
+  if (elements.voiceState) elements.voiceState.textContent = state;
+  if (note) elements.note.textContent = note;
+}
+
+function setVoiceBadge(available, detail) {
+  if (!elements.voiceBadge) return;
+  elements.voiceBadge.classList.toggle("voice-local", available);
+  elements.voiceBadge.classList.toggle("voice-blocked", !available);
+  elements.voiceBadge.textContent = available
+    ? "Voice · on-device · audio remains local"
+    : `Voice unavailable · ${detail}`;
+}
+
+function disableVoice(detail) {
+  onDeviceReady = false;
+  elements.voice.disabled = true;
+  setVoiceState(VoiceState.UNAVAILABLE);
+  setVoiceBadge(false, detail);
+  elements.note.textContent = `${detail} Type your request instead.`;
+}
+
+/**
+ * Probe for on-device support and fail closed.
+ *
+ * A browser without the on-device statics only offers server-based
+ * recognition, so it is treated as unavailable rather than downgraded.
+ */
+async function initialiseVoice() {
+  if (!SpeechRecognition) {
+    disableVoice("This browser has no speech recognition.");
+    return;
+  }
+  if (typeof SpeechRecognition.available !== "function") {
+    disableVoice("This browser cannot recognise speech on-device, and Nexuss will not send audio to a cloud service.");
+    return;
+  }
+
+  /*
+   * Probe several configurations rather than one. A machine may carry a pack
+   * for the base language but not the regional tag, or for standard but not
+   * dictation quality. Reporting "unavailable" after a single narrow request
+   * pushes the diagnosis onto the person, which needs developer tools they
+   * should not have to open.
+   */
+  const probes = [];
+  const base = VOICE_LANGUAGE.split("-")[0];
+  for (const langs of [[VOICE_LANGUAGE], [base], ["en-US"]]) {
+    probes.push({ langs, processLocally: true, quality: VOICE_QUALITY });
+    probes.push({ langs, processLocally: true });
+  }
+
+  let installable = null;
+  for (const options of probes) {
+    let status;
+    try {
+      status = await SpeechRecognition.available(options);
+    } catch (error) {
+      disableVoice("On-device speech recognition is blocked by policy on this page.");
+      return;
+    }
+    if (status === "available") {
+      voiceOptions = options;
+      onDeviceReady = true;
+      elements.voice.disabled = false;
+      setVoiceBadge(true);
+      setVoiceState(VoiceState.IDLE, `Voice ready. Recognition runs on this device (${options.langs[0]}).`);
+      return;
+    }
+    if (!installable && (status === "downloadable" || status === "downloading")) {
+      installable = options;
+    }
+  }
+
+  if (installable) {
+    voiceOptions = installable;
+    setVoiceBadge(false, `language pack for ${installable.langs[0]} not installed yet`);
+    elements.voice.disabled = false;
+    elements.note.textContent = `Press the microphone to install the on-device ${installable.langs[0]} language pack. No audio leaves this machine.`;
+    onDeviceReady = false;
+    return;
+  }
+
+  disableVoice(
+    `This browser reports no on-device language pack for ${VOICE_LANGUAGE}, ${base} or en-US. ` +
+    "Chrome 139 or later is required, and Nexuss will not use cloud recognition."
+  );
+}
+
+async function ensureLanguagePack() {
+  setVoiceState(VoiceState.REQUESTING, "Installing the on-device language pack…");
+  let installed = false;
+  try {
+    installed = await SpeechRecognition.install(voiceOptions);
+  } catch (error) {
+    installed = false;
+  }
+  if (!installed) {
+    disableVoice("The on-device language pack could not be installed.");
+    return false;
+  }
+  onDeviceReady = true;
+  setVoiceBadge(true);
+  return true;
+}
+
+function buildRecognition() {
+  const instance = new SpeechRecognition();
+  instance.lang = voiceOptions.langs[0];
+  instance.continuous = false;
+  instance.interimResults = true;
+  // Never set to false anywhere. This is the whole guarantee.
+  instance.processLocally = true;
+
+  instance.addEventListener("start", () => {
+    setVoiceState(VoiceState.LISTENING, "Listening on this device. You will review the transcript before anything runs.");
   });
-  recognition.addEventListener("result", (event) => {
+
+  instance.addEventListener("result", (event) => {
     let transcript = "";
-    for (let index = event.resultIndex; index < event.results.length; index += 1) transcript += event.results[index][0].transcript;
+    for (let index = event.resultIndex; index < event.results.length; index += 1) {
+      transcript += event.results[index][0].transcript;
+    }
     elements.input.value = transcript.trim();
     elements.input.dispatchEvent(new Event("input"));
-    if (event.results[event.results.length - 1].isFinal) lastInputChannel = "voice";
+    if (event.results[event.results.length - 1].isFinal) {
+      lastInputChannel = "voice";
+      setVoiceState(VoiceState.PROCESSING);
+    }
   });
-  recognition.addEventListener("end", () => {
-    elements.voice.classList.remove("listening");
-    elements.waveform.classList.remove("active");
-    elements.note.textContent = "Voice transcript ready. Review it, then press Execute.";
+
+  instance.addEventListener("end", () => {
+    const transcript = elements.input.value.trim();
+    if (!transcript) {
+      setVoiceState(VoiceState.IDLE, "No speech was recognised.");
+      return;
+    }
+    // Recording has ended before anything is submitted, always.
+    if (looksLikeQuestion(transcript)) {
+      setVoiceState(VoiceState.EXECUTING, "Question recognised. Submitting.");
+      elements.form.requestSubmit();
+      return;
+    }
+    setVoiceState(VoiceState.TRANSCRIPT_READY, "Transcript ready. Review it, then press Execute.");
   });
-  recognition.addEventListener("error", (event) => {
-    elements.voice.classList.remove("listening");
-    elements.waveform.classList.remove("active");
-    elements.note.textContent = `Voice input unavailable: ${event.error}. Text control remains active.`;
+
+  instance.addEventListener("error", (event) => {
+    if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+      onDeviceReady = false;
+      setVoiceState(VoiceState.PERMISSION_DENIED);
+      setVoiceBadge(false, "microphone permission denied");
+      elements.note.textContent = "Microphone access was denied. Type your request instead.";
+      return;
+    }
+    if (event.error === "language-not-supported") {
+      disableVoice("The on-device language pack is missing and Nexuss will not fall back to cloud recognition.");
+      return;
+    }
+    if (event.error === "no-speech") {
+      setVoiceState(VoiceState.IDLE, "No speech was detected.");
+      return;
+    }
+    setVoiceState(VoiceState.IDLE, `Voice input stopped: ${event.error}. Text control remains active.`);
   });
-  elements.voice.addEventListener("click", () => {
-    try { recognition.start(); } catch (_error) { recognition.stop(); }
-  });
-} else {
-  elements.voice.disabled = true;
-  elements.note.textContent = "Voice recognition is unavailable in this browser. Text control remains active.";
+
+  return instance;
 }
+
+function stopSpeaking() {
+  if (SpeechSynthesis) SpeechSynthesis.cancel();
+  if (voiceState === VoiceState.SPEAKING) setVoiceState(VoiceState.IDLE);
+}
+
+function speakAnswer(answer) {
+  if (!speakRepliesEnabled || !SpeechSynthesis) return;
+  const text = speechTextFor(answer);
+  if (!text) return;
+  stopSpeaking();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = VOICE_LANGUAGE;
+  utterance.rate = Number(elements.voiceRate?.value || 1);
+  utterance.addEventListener("end", () => {
+    if (voiceState === VoiceState.SPEAKING) setVoiceState(VoiceState.IDLE);
+  });
+  setVoiceState(VoiceState.SPEAKING);
+  SpeechSynthesis.speak(utterance);
+}
+
+if (SpeechRecognition) {
+  elements.voice.addEventListener("click", async () => {
+    stopSpeaking();
+    if (voiceState === VoiceState.LISTENING) {
+      recognition?.stop();
+      return;
+    }
+    if (!onDeviceReady && !(await ensureLanguagePack())) return;
+    if (!recognition) recognition = buildRecognition();
+    try {
+      recognition.start();
+    } catch (_error) {
+      recognition.stop();
+    }
+  });
+}
+
+elements.voiceStop?.addEventListener("click", stopSpeaking);
+elements.voiceReplies?.addEventListener("change", (event) => {
+  speakRepliesEnabled = Boolean(event.target.checked);
+  if (!speakRepliesEnabled) stopSpeaking();
+});
+
+void initialiseVoice();
 
 void checkHealth();
 setInterval(checkHealth, 30000);

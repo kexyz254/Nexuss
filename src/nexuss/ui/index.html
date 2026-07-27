@@ -186,6 +186,23 @@
           <span id="composer-note">Voice transcripts are reviewable before execution.</span>
           <span>Shift + Enter for a new line</span>
         </div>
+        <div class="voice-bar">
+          <span class="voice-badge voice-blocked" id="voice-badge">Voice · checking on-device support…</span>
+          <span class="voice-state" id="voice-state">idle</span>
+          <label class="voice-toggle">
+            <input type="checkbox" id="voice-replies" checked>
+            <span>Speak replies</span>
+          </label>
+          <label class="voice-toggle">
+            <span>Rate</span>
+            <select id="voice-rate" aria-label="Speech rate">
+              <option value="0.85">Slow</option>
+              <option value="1" selected>Normal</option>
+              <option value="1.25">Fast</option>
+            </select>
+          </label>
+          <button type="button" class="voice-stop" id="voice-stop">Stop speaking</button>
+        </div>
       </div>
     </section>
 

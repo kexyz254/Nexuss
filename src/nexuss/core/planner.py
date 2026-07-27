@@ -184,6 +184,39 @@ def _direct_specs(intent: Intent) -> list[StepSpec] | None:
             ),
         ]
 
+    if intent.kind is IntentKind.SMALL_TALK:
+        return [
+            (
+                "assistant.converse",
+                RiskTier.INFORMATIONAL,
+                ["conversational_reply"],
+                {"small_talk_kind": intent.entities.get("small_talk_kind", "greeting")},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.DATETIME_QUERY:
+        return [
+            (
+                "assistant.converse",
+                RiskTier.INFORMATIONAL,
+                ["conversational_reply"],
+                {"datetime_field": intent.entities.get("datetime_field", "time")},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.OPEN_QUESTION:
+        return [
+            (
+                "knowledge.answer",
+                RiskTier.LOW,
+                ["answer_with_provenance"],
+                {"question": intent.entities.get("question", "")},
+                False,
+            )
+        ]
+
     if intent.kind is IntentKind.MEMORY_REMEMBER:
         statement = intent.entities.get("statement", "")
         topic = derive_topic(statement)

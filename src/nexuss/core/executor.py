@@ -605,6 +605,150 @@ def _execute_memory_forget(
     )
 
 
+_GREETING_REPLY = (
+    "Hello. I can research public sources, remember things you tell me, "
+    "control the media workspace, and send approved actions to your paired phone."
+)
+_THANKS_REPLY = "You're welcome."
+_FAREWELL_REPLY = "Goodbye. Everything is recorded in your Action Receipts."
+_WELLBEING_REPLY = (
+    "Operating normally. Capabilities are registered, policy is active, and the "
+    "Constitution verified on load."
+)
+
+_SMALL_TALK_REPLIES = {
+    "greeting": _GREETING_REPLY,
+    "thanks": _THANKS_REPLY,
+    "farewell": _FAREWELL_REPLY,
+    "wellbeing": _WELLBEING_REPLY,
+}
+
+
+def _execute_assistant_converse(
+    step: PlanStep,
+    timestamp: datetime,
+) -> CapabilityResult:
+    """Answer a courtesy or a clock question.
+
+    The clock is read from this machine, not inferred, so the answer is a fact
+    rather than a guess. Nothing external is consulted and nothing is written.
+    """
+    field = str(step.parameters.get("datetime_field", "")).strip()
+    if field:
+        local = timestamp.astimezone()
+        if field == "date":
+            reply = f"Today is {local.strftime('%A, %d %B %Y')}."
+        else:
+            reply = f"It is {local.strftime('%H:%M')} on {local.strftime('%A, %d %B %Y')}."
+        attributes: dict[str, object] = {
+            "source_mode": "live_local_readonly",
+            "reply": reply,
+            "answer_path": "system_clock",
+            "observed_at_local": local.isoformat(),
+        }
+    else:
+        kind = str(step.parameters.get("small_talk_kind", "greeting"))
+        reply = _SMALL_TALK_REPLIES.get(kind, _GREETING_REPLY)
+        attributes = {
+            "source_mode": "live_local_readonly",
+            "reply": reply,
+            "answer_path": "conversational",
+            "small_talk_kind": kind,
+        }
+
+    return CapabilityResult(
+        step_id=step.step_id,
+        capability_id=step.capability_id,
+        status=StepStatus.VERIFIED,
+        evidence=[
+            EvidenceRecord(
+                source="local:assistant",
+                observed_at=timestamp,
+                attributes=attributes,
+            )
+        ],
+    )
+
+
+# A recalled claim must clear this before Nexuss answers from memory instead of
+# looking the question up. Below it, memory is a hint, not an answer.
+_MEMORY_ANSWER_THRESHOLD = 0.35
+
+
+def _execute_knowledge_answer(
+    step: PlanStep,
+    timestamp: datetime,
+    memory_store: MemoryStore | None,
+    knowledge_provider: KnowledgeProvider,
+) -> CapabilityResult:
+    """Answer from memory when memory is confident, from public sources when not.
+
+    The two paths are never blended. An answer states which one produced it, so
+    "you told me this" is never confused with "a public source says this", and
+    web-derived claims keep public_web trust wherever they travel.
+    """
+    question = str(step.parameters.get("question", "")).strip()
+    if not question:
+        return _failed(step, "QUESTION_MISSING")
+
+    remembered = memory_store.recall(question, limit=3, now=timestamp) if memory_store else ()
+    confident = [match for match in remembered if match.score >= _MEMORY_ANSWER_THRESHOLD]
+
+    if confident:
+        return CapabilityResult(
+            step_id=step.step_id,
+            capability_id=step.capability_id,
+            status=StepStatus.VERIFIED,
+            evidence=[
+                EvidenceRecord(
+                    source="local:memory_store",
+                    observed_at=timestamp,
+                    attributes={
+                        "source_mode": "live_local_readonly",
+                        "answer_path": "memory",
+                        "question": question,
+                        "match_count": len(confident),
+                        "matches": [
+                            {
+                                "statement": match.claim.statement,
+                                "source_ref": match.claim.source_ref,
+                                "source_trust": match.claim.source_trust.value,
+                                "confidence": round(match.decayed_confidence, 3),
+                            }
+                            for match in confident
+                        ],
+                    },
+                )
+            ],
+        )
+
+    try:
+        research = knowledge_provider.research(question)
+    except KnowledgeProviderError as exc:
+        return _failed(step, str(exc))
+
+    attributes = dict(research)
+    attributes["answer_path"] = "public_web"
+    attributes["question"] = question
+    attributes["memory_checked"] = True
+    # Anything from a public source stays untrusted data wherever it travels.
+    attributes["content_trust"] = "untrusted_external_source"
+    attributes["memory_saved"] = False
+
+    return CapabilityResult(
+        step_id=step.step_id,
+        capability_id=step.capability_id,
+        status=StepStatus.VERIFIED,
+        evidence=[
+            EvidenceRecord(
+                source="public_web:knowledge_provider",
+                observed_at=timestamp,
+                attributes=attributes,
+            )
+        ],
+    )
+
+
 def execute_step(
     step: PlanStep,
     observed_at: datetime | None = None,
@@ -619,6 +763,16 @@ def execute_step(
     memory_store: MemoryStore | None = None,
 ) -> CapabilityResult:
     timestamp = observed_at or datetime.now(UTC)
+
+    if step.capability_id == "assistant.converse":
+        return _execute_assistant_converse(step, timestamp)
+
+    if step.capability_id == "knowledge.answer":
+        if knowledge_provider is None:
+            return _failed(step, "KNOWLEDGE_PROVIDER_NOT_CONFIGURED")
+        return _execute_knowledge_answer(
+            step, timestamp, memory_store, knowledge_provider
+        )
 
     if step.capability_id in {"memory.remember", "memory.recall", "memory.forget"}:
         if memory_store is None:

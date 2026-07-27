@@ -449,6 +449,55 @@ def _identity_recall_query(normalized: str) -> str:
     return "developed created built made developer creator"
 
 
+# Conversational basics. Without these, "hello" reaches nexuss.unsupported and
+# is denied at HIGH risk -- a greeting treated as an attempted escalation.
+_GREETING_TERMS = (
+    "hello", "hi", "hey", "yo", "howdy", "greetings",
+    "good morning", "good afternoon", "good evening", "morning", "evening",
+)
+_THANKS_TERMS = ("thanks", "thank you", "cheers", "appreciate it", "much appreciated")
+_FAREWELL_TERMS = ("bye", "goodbye", "good bye", "see you", "later", "good night", "goodnight")
+_WELLBEING_TERMS = ("how are you", "how's it going", "hows it going", "you good", "how do you do")
+
+_TIME_TERMS = ("what time is it", "what's the time", "whats the time", "the time now",
+               "current time", "time now", "what time")
+_DATE_TERMS = ("what is the date", "what's the date", "whats the date", "today's date",
+               "todays date", "what day is it", "what is today", "what's today",
+               "current date", "what date")
+
+# Only question-shaped input may reach a public source. An unmatched imperative
+# such as "close media" is a missing capability, not a research topic, and
+# silently searching the web for it would be both wrong and surprising.
+_OPEN_QUESTION_PATTERN = re.compile(
+    r"^(?:who|what|whats|what's|when|where|why|how|which|is|are|was|were|do|does|did|"
+    r"can|could|should|would|will|tell me about|explain)\b",
+    re.IGNORECASE,
+)
+
+
+def _small_talk_kind(normalized: str) -> str | None:
+    """Classify a courtesy. Exact-ish matching keeps 'hi' from firing inside
+    'hide the panel'."""
+    words = normalized.rstrip("!?.").strip()
+    for term in _GREETING_TERMS:
+        if words == term or words.startswith(f"{term} ") or words.startswith(f"{term},"):
+            return "greeting"
+    if any(words == term or words.startswith(f"{term} ") for term in _THANKS_TERMS):
+        return "thanks"
+    if any(words == term or words.startswith(f"{term} ") for term in _FAREWELL_TERMS):
+        return "farewell"
+    if any(term in words for term in _WELLBEING_TERMS):
+        return "wellbeing"
+    return None
+
+
+def _is_open_question(display_text: str) -> bool:
+    text = display_text.strip()
+    if len(text.split()) < 2:
+        return False
+    return bool(_OPEN_QUESTION_PATTERN.match(text)) or text.endswith("?")
+
+
 def classify_intent(utterance: str) -> Intent:
     display_text = _strip_leading_noise(utterance)
     normalized = display_text.casefold()
@@ -611,6 +660,22 @@ def classify_intent(utterance: str) -> Intent:
     ):
         kind = IntentKind.PLAY_MEDIA
         confidence = 0.94
+    elif (small_talk := _small_talk_kind(normalized)) is not None:
+        kind = IntentKind.SMALL_TALK
+        confidence = 0.96
+        entities = {"small_talk_kind": small_talk}
+    elif _contains_any(normalized, _TIME_TERMS):
+        kind = IntentKind.DATETIME_QUERY
+        confidence = 0.96
+        entities = {"datetime_field": "time"}
+    elif _contains_any(normalized, _DATE_TERMS):
+        kind = IntentKind.DATETIME_QUERY
+        confidence = 0.96
+        entities = {"datetime_field": "date"}
+    elif _is_open_question(display_text):
+        kind = IntentKind.OPEN_QUESTION
+        confidence = 0.72
+        entities = {"question": display_text.strip()}
     else:
         kind = IntentKind.UNKNOWN
         confidence = 0.0
