@@ -73,6 +73,22 @@ def evaluate_step(step: PlanStep) -> PolicyDecision:
             ),
         )
 
+    if (
+        step.capability_id == "assistant.respond"
+        and step.parameters.get("response_key")
+    ):
+        return PolicyDecision(
+            step_id=step.step_id,
+            capability_id=step.capability_id,
+            outcome=PolicyOutcome.ALLOW,
+            reason_code="CONSTITUTIONAL_INFORMATIONAL_RESPONSE",
+            explanation=(
+                "The active hash-verified Nexuss Constitution "
+                "authorizes this informational response. It creates "
+                "no external side effect and grants no authority."
+            ),
+        )
+
     if manifest.approval_policy is ApprovalPolicy.NONE:
         reason_code = (
             "INFORMATIONAL_NO_SIDE_EFFECT"

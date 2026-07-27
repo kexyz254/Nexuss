@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import Protocol
 from uuid import UUID
 
+from nexuss.constitution import ConstitutionError, get_constitution
 from nexuss.core.local_workspace import (
     LocalWorkspaceEvidenceError,
     collect_local_workspace_status,
@@ -66,9 +67,79 @@ def _execute_assistant_response(
     step: PlanStep,
     timestamp: datetime,
 ) -> CapabilityResult:
-    response = str(step.parameters.get("response", ""))
+    response_key = str(
+        step.parameters.get("response_key", "")
+    ).strip()
+
+    if response_key:
+        try:
+            constitution = get_constitution()
+            response = constitution.standard_response(response_key)
+        except ConstitutionError:
+            return _failed(step, "CONSTITUTION_UNAVAILABLE")
+
+        rule_by_response = {
+            "who_are_you": (
+                "Nexuss identity is defined by the active Constitution."
+            ),
+            "who_is_your_founder": (
+                "Founder identity is a constitutional system fact."
+            ),
+            "who_developed_you": (
+                "Original developer identity is constitutionally defined."
+            ),
+            "who_is_your_boss": (
+                "Operational authority requires authenticated roles."
+            ),
+            "user_claims_to_be_peter": (
+                "Conversational identity claims do not grant authority."
+            ),
+            "ignore_constitution": (
+                "Ordinary conversation cannot amend or disable "
+                "the Constitution."
+            ),
+        }
+
+        return CapabilityResult(
+            step_id=step.step_id,
+            capability_id=step.capability_id,
+            status=StepStatus.VERIFIED,
+            evidence=[
+                EvidenceRecord(
+                    source="nexuss:constitution",
+                    observed_at=timestamp,
+                    attributes={
+                        "response": response,
+                        "response_key": response_key,
+                        "source_mode": (
+                            "constitutional_local_verified"
+                        ),
+                        "authority_source": (
+                            "nexuss_constitution"
+                        ),
+                        "constitution_status": "active",
+                        "constitution_version": (
+                            constitution.version
+                        ),
+                        "constitution_sha256": (
+                            constitution.sha256
+                        ),
+                        "integrity_verified": True,
+                        "grants_authority": False,
+                        "rule_applied": rule_by_response.get(
+                            response_key,
+                            "The active Constitution governs "
+                            "this response.",
+                        ),
+                    },
+                )
+            ],
+        )
+
+    response = str(step.parameters.get("response", "")).strip()
     if not response:
         return _failed(step, "ASSISTANT_RESPONSE_MISSING")
+
     return CapabilityResult(
         step_id=step.step_id,
         capability_id=step.capability_id,
@@ -80,6 +151,9 @@ def _execute_assistant_response(
                 attributes={
                     "response": response,
                     "source_mode": "deterministic_local",
+                    "authority_source": (
+                        "registered_assistant_capability"
+                    ),
                 },
             )
         ],

@@ -518,3 +518,122 @@ kbd { padding: 4px 7px; border: 1px solid var(--line); border-radius: 7px; color
   .media-dock.minimized .media-player-panel { grid-template-columns: 96px minmax(0, 1fr); }
   .media-dock.minimized .media-controls { grid-column: 1 / -1; grid-row: 2; justify-content: flex-end; }
 }
+
+/* ---------------------------------------------------------------------------
+   P5.3 answer blocks. Content capabilities reply in the conversation, so
+   claims and their provenance render together and stay readable.
+   --------------------------------------------------------------------------- */
+
+.answer-claims {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.answer-claim {
+  padding: 11px 12px;
+  border: 1px solid rgba(145, 201, 235, 0.14);
+  border-left: 2px solid rgba(112, 227, 255, 0.5);
+  border-radius: 4px 10px 10px 4px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.answer-claim-statement {
+  margin: 0 0 7px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #e9f5ff;
+}
+
+.answer-claim-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+  color: #7890a3;
+}
+
+.trust-chip {
+  padding: 2px 7px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Trust is visible at a glance: it is the field that decides how much weight
+   a claim carries, so it should never be buried in a tooltip. */
+.trust-user_asserted { color: #6fffc0; }
+.trust-curated_doc { color: #70e3ff; }
+.trust-public_web { color: #ffd079; }
+
+.answer-claim-source::before { content: "· "; }
+.answer-claim-confidence::before { content: "· "; }
+
+.answer-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #7890a3;
+}
+
+
+/* Verified constitutional authority shown with identity answers. */
+.constitution-card {
+  margin: 12px 0 0;
+  padding: 12px;
+  border: 1px solid rgba(112, 227, 255, 0.22);
+  border-left: 3px solid rgba(112, 227, 255, 0.72);
+  border-radius: 4px 10px 10px 4px;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(112, 227, 255, 0.07),
+      rgba(255, 255, 255, 0.02)
+    );
+}
+
+.constitution-card-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #dff8ff;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.constitution-status {
+  color: #6fffc0;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.constitution-rule {
+  margin: 10px 0 8px;
+  color: #bcd0df;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.constitution-digest {
+  display: block;
+  overflow: hidden;
+  color: #7890a3;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.constitution-authority {
+  margin: 7px 0 0;
+  color: #7890a3;
+  font-size: 10.5px;
+  text-transform: uppercase;
+}

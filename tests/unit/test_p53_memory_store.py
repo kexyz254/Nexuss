@@ -89,6 +89,68 @@ def test_user_asserted_outranks_public_web_for_identical_text(tmp_path: Path) ->
     assert top.claim.source_trust is SourceTrust.USER_ASSERTED
 
 
+def test_reasserting_a_fact_merges_instead_of_duplicating(tmp_path: Path) -> None:
+    """Case and whitespace are not meaning. The same fact is one memory."""
+    store = _store(tmp_path)
+    first = store.remember(
+        topic="fees",
+        statement="Maker fees are lower than taker fees on most venues.",
+        source_ref="user",
+        source_trust=SourceTrust.USER_ASSERTED,
+        confidence=0.95,
+        volatility=Volatility.STABLE,
+    )
+    second = store.remember(
+        topic="fees",
+        statement="  maker FEES are lower   than taker fees on most VENUES.  ",
+        source_ref="user",
+        source_trust=SourceTrust.USER_ASSERTED,
+        confidence=0.80,
+        volatility=Volatility.STABLE,
+    )
+
+    assert second.claim_id == first.claim_id
+    assert second.confidence == pytest.approx(0.95)
+    assert len(store.recall("maker taker fees")) == 1
+
+
+def test_a_merge_takes_the_strongest_provenance(tmp_path: Path) -> None:
+    """A person vouching for a fact outranks a page that stated it, whichever
+    arrived first. Arrival order must not decide how much a claim is trusted."""
+    store = _store(tmp_path)
+    text = "Maker fees are lower than taker fees on most venues."
+    store.remember(
+        topic="fees",
+        statement=text,
+        source_ref="https://example.com/video",
+        source_trust=SourceTrust.PUBLIC_WEB,
+        confidence=0.6,
+        volatility=Volatility.STABLE,
+    )
+    merged = store.remember(
+        topic="fees",
+        statement=text,
+        source_ref="user",
+        source_trust=SourceTrust.USER_ASSERTED,
+        confidence=0.95,
+        volatility=Volatility.STABLE,
+    )
+
+    assert merged.source_trust is SourceTrust.USER_ASSERTED
+    assert merged.source_ref == "user"
+
+    # The reverse order must not downgrade an already user-asserted claim.
+    store.remember(
+        topic="fees",
+        statement=text,
+        source_ref="https://example.com/other",
+        source_trust=SourceTrust.PUBLIC_WEB,
+        confidence=0.5,
+        volatility=Volatility.STABLE,
+    )
+    assert store.recall("maker taker fees")[0].claim.source_trust is SourceTrust.USER_ASSERTED
+
+
 def test_superseded_claims_leave_recall_but_conflicts_stay_visible(tmp_path: Path) -> None:
     store = _store(tmp_path)
     old = store.remember(

@@ -377,6 +377,78 @@ def _match_memory(display_text: str) -> tuple[IntentKind, dict[str, str]] | None
     return None
 
 
+# Questions about Nexuss's origin, ownership or operator.
+#
+# Matched by shape, not by an enumerated word list. The first version listed
+# boss, owner, developer and creator, and "who is your founder" fell straight
+# through to nexuss.unsupported -- a denial that reads like a refusal to
+# discuss identity when it is only an unrecognised noun. Any noun is now
+# accepted; if nothing is stored about it, recall simply returns nothing,
+# which is the honest answer rather than a policy error.
+_IDENTITY_SUBJECT_PATTERN = re.compile(
+    r"^who(?:'s|\s+is|\s+are|\s+was|\s+were)\s+your\s+(?P<subject>[A-Za-z0-9 '\-]+?)\s*\??$",
+    re.IGNORECASE,
+)
+
+# Copulas are excluded, or "who are you" is read as verb="are" and becomes a
+# recall question instead of the self-description it plainly is.
+_IDENTITY_VERB_PATTERN = re.compile(
+    r"^who\s+(?!is\b|are\b|was\b|were\b|am\b)(?P<verb>[A-Za-z]+)\s+(?:you|nexuss)\b.*$",
+    re.IGNORECASE,
+)
+
+# Creation questions phrased differently should reach the same claims.
+_CREATION_SYNONYMS = "founder developer creator built made created developed wrote owns owner"
+_CREATION_VERBS = frozenset({
+    "made", "created", "developed", "built", "wrote", "designed", "trained",
+    "founded", "owns", "funds", "maintains",
+})
+
+
+def _identity_query(subject: str) -> str:
+    term = " ".join(subject.lower().split())
+    if term in _CREATION_VERBS or term in {
+        "founder", "developer", "creator", "maker", "author", "owner", "boss",
+    }:
+        return _CREATION_SYNONYMS
+    return term
+
+
+def _identity_response_key(subject: str) -> str:
+    """Map a recognized Nexuss identity question to constitutional content."""
+    term = " ".join(subject.lower().split())
+
+    if term in {"founder", "founded"}:
+        return "who_is_your_founder"
+
+    if term in {
+        "developer", "developers", "creator", "maker", "author",
+        "made", "created", "developed", "built", "wrote",
+        "designed", "trained",
+    }:
+        return "who_developed_you"
+
+    if term in {"boss", "owner", "owns"}:
+        return "who_is_your_boss"
+
+    return ""
+
+
+# A person stating who they are. Nexuss may remember the claim; the claim
+# grants nothing. Policy reads capability manifests, never memory, so a stored
+# assertion of authority cannot widen what Nexuss will do.
+_USER_CLAIM_PATTERN = re.compile(
+    r"^(?:i\s+am|i'm|am|my\s+name\s+is|call\s+me)\s+(?P<claim>.+?)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _identity_recall_query(normalized: str) -> str:
+    if "boss" in normalized or "owner" in normalized or "owns" in normalized:
+        return "boss owner"
+    return "developed created built made developer creator"
+
+
 def classify_intent(utterance: str) -> Intent:
     display_text = _strip_leading_noise(utterance)
     normalized = display_text.casefold()
@@ -392,6 +464,25 @@ def classify_intent(utterance: str) -> Intent:
         }
         kind = IntentKind.CREATE_NOTE
         confidence = 0.99
+    elif (identity_subject := _IDENTITY_SUBJECT_PATTERN.match(display_text)) is not None:
+        # Must precede the assistant-identity check: "who are your developers"
+        # contains the substring "who are you", the same collision class as
+        # "unpair my phone" containing "pair my phone".
+        kind = IntentKind.IDENTITY_RECALL
+        confidence = 0.97
+        subject = identity_subject.group("subject")
+        entities = {
+            "query": _identity_query(subject),
+            "response_key": _identity_response_key(subject),
+        }
+    elif (identity_verb := _IDENTITY_VERB_PATTERN.match(display_text)) is not None:
+        kind = IntentKind.IDENTITY_RECALL
+        confidence = 0.96
+        verb = identity_verb.group("verb")
+        entities = {
+            "query": _identity_query(verb),
+            "response_key": _identity_response_key(verb),
+        }
     elif _contains_any(
         normalized,
         ("who are you", "what are you", "introduce yourself"),
@@ -410,6 +501,24 @@ def classify_intent(utterance: str) -> Intent:
     ):
         kind = IntentKind.ASSISTANT_HELP
         confidence = 0.97
+    elif _contains_any(
+        normalized,
+        (
+            "ignore your constitution",
+            "ignore the constitution",
+            "override your constitution",
+            "disable your constitution",
+            "forget your constitution",
+        ),
+    ):
+        kind = IntentKind.CONSTITUTION_OVERRIDE
+        confidence = 0.99
+    elif (user_claim := _USER_CLAIM_PATTERN.match(display_text)) is not None and (
+        len(user_claim.group("claim").split()) <= 6
+    ):
+        kind = IntentKind.USER_IDENTITY_CLAIM
+        confidence = 0.95
+        entities = {"claim": user_claim.group("claim").strip(" \"'.")}
     elif (memory_match := _match_memory(display_text)) is not None:
         kind, entities = memory_match
         confidence = 0.98

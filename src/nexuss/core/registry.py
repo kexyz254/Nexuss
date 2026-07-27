@@ -97,9 +97,12 @@ _MANIFESTS = (
     ),
     CapabilityManifest(
         capability_id="assistant.respond",
-        version="1.0.0",
-        title="Nexuss conversation",
-        description="Answer identity, help, and capability questions without side effects.",
+        version="1.1.0",
+        title="Nexuss constitutional conversation",
+        description=(
+            "Answer identity, governance, help, and capability questions "
+            "through verified local constitutional or deterministic evidence."
+        ),
         risk_tier=RiskTier.INFORMATIONAL,
         approval_policy=ApprovalPolicy.NONE,
         reversible=False,

@@ -5,6 +5,7 @@ Deterministic task planning for the Nexuss P5 knowledge, media, and mobile plane
 
 from __future__ import annotations
 
+import re
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from nexuss.core.managed_notes import prepare_note
@@ -26,11 +27,6 @@ def _step_id(task_id: UUID, order: int, capability_id: str) -> UUID:
 
 def _assistant_response(intent: Intent) -> str:
     responses = {
-        IntentKind.ASSISTANT_IDENTITY: (
-            "I am Nexuss, your personal cognitive control plane. I interpret "
-            "requests, apply safety policy, coordinate approved capabilities, "
-            "verify results, and preserve auditable Action Receipts."
-        ),
         IntentKind.ASSISTANT_CAPABILITIES: (
             "I can inspect this workspace, research bounded public sources, "
             "discover and rank YouTube media, create verified notes, and use "
@@ -46,8 +42,18 @@ def _assistant_response(intent: Intent) -> str:
 
 
 def _direct_specs(intent: Intent) -> list[StepSpec] | None:
+    if intent.kind is IntentKind.ASSISTANT_IDENTITY:
+        return [
+            (
+                "assistant.respond",
+                RiskTier.INFORMATIONAL,
+                ["assistant_response"],
+                {"response_key": "who_are_you"},
+                False,
+            )
+        ]
+
     if intent.kind in {
-        IntentKind.ASSISTANT_IDENTITY,
         IntentKind.ASSISTANT_CAPABILITIES,
         IntentKind.ASSISTANT_HELP,
     }:
@@ -57,6 +63,17 @@ def _direct_specs(intent: Intent) -> list[StepSpec] | None:
                 RiskTier.INFORMATIONAL,
                 ["assistant_response"],
                 {"response": _assistant_response(intent)},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.CONSTITUTION_OVERRIDE:
+        return [
+            (
+                "assistant.respond",
+                RiskTier.INFORMATIONAL,
+                ["assistant_response"],
+                {"response_key": "ignore_constitution"},
                 False,
             )
         ]
@@ -89,7 +106,7 @@ def _direct_specs(intent: Intent) -> list[StepSpec] | None:
             (
                 "knowledge.web_research",
                 RiskTier.LOW,
-                ["public_sources", "cited_brief"],
+                ["sources", "brief"],
                 {"query": query},
                 False,
             )
@@ -106,9 +123,70 @@ def _direct_specs(intent: Intent) -> list[StepSpec] | None:
             )
         ]
 
+    if intent.kind is IntentKind.IDENTITY_RECALL:
+        response_key = intent.entities.get("response_key", "")
+        if response_key:
+            return [
+                (
+                    "assistant.respond",
+                    RiskTier.INFORMATIONAL,
+                    ["assistant_response"],
+                    {"response_key": response_key},
+                    False,
+                )
+            ]
+
+        return [
+            (
+                "memory.recall",
+                RiskTier.INFORMATIONAL,
+                ["memory_recall_results"],
+                {"query": intent.entities.get("query", "")},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.USER_IDENTITY_CLAIM:
+        claim = intent.entities.get("claim", "")
+        normalized_claim = " ".join(claim.casefold().split())
+
+        if normalized_claim == "peter":
+            response_parameters: dict[str, object] = {
+                "response_key": "user_claims_to_be_peter",
+            }
+        else:
+            response_parameters = {
+                "response": (
+                    f"You are claiming to be {claim}. I can retain that as an "
+                    "unverified identity claim, but authority still requires "
+                    "authentication."
+                )
+            }
+
+        return [
+            (
+                "memory.remember",
+                RiskTier.LOW,
+                ["memory_claim_recorded"],
+                {
+                    "statement": f"The operator states that they are {claim}.",
+                    "topic": derive_topic(claim),
+                    "unverified_identity_claim": True,
+                },
+                True,
+            ),
+            (
+                "assistant.respond",
+                RiskTier.INFORMATIONAL,
+                ["assistant_response"],
+                response_parameters,
+                False,
+            ),
+        ]
+
     if intent.kind is IntentKind.MEMORY_REMEMBER:
         statement = intent.entities.get("statement", "")
-        topic = " ".join(statement.split()[:8]) or "general"
+        topic = derive_topic(statement)
         return [
             (
                 "memory.remember",
@@ -338,6 +416,42 @@ def _fallback_specs(intent: Intent) -> list[StepSpec]:
         ],
     }
     return capability_specs.get(intent.kind, [])
+
+
+# Topic labels group and display claims; the full statement is always stored
+# separately. Taking the first N words produced labels like "maker fees are
+# lower than taker fees on", which is a truncated sentence, not a topic.
+_TOPIC_STOPWORDS = frozenset({
+    "a", "about", "all", "also", "am", "an", "and", "any", "are", "as", "at",
+    "be", "been", "being", "but", "by", "can", "did", "do", "does", "for",
+    "from", "had", "has", "have", "he", "her", "his", "how", "i", "if", "in",
+    "into", "is", "it", "its", "just", "me", "more", "most", "my", "no", "not",
+    "of", "on", "one", "only", "or", "our", "out", "over", "own", "she", "so",
+    "some", "than", "that", "the", "their", "them", "then", "there", "these",
+    "they", "this", "those", "to", "up", "us", "very", "was", "we", "were",
+    "what", "when", "where", "which", "while", "who", "why", "will", "with",
+    "would", "you", "your",
+})
+
+_TOPIC_WORD_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9'\-]*")
+_TOPIC_MAX_WORDS = 4
+
+
+def derive_topic(statement: str) -> str:
+    """Derive a short topic label from a statement.
+
+    Keeps the content words in order and drops filler, so
+    "maker fees are lower than taker fees on most venues" becomes
+    "maker fees lower taker" rather than a clipped sentence.
+
+    This is deliberately a heuristic. ADR-0009 places real topic extraction in
+    the claim extractor, where a language model can do it properly; until then
+    an honest approximation beats a truncation that reads like a bug.
+    """
+    words = _TOPIC_WORD_PATTERN.findall(statement.lower())
+    content = [word for word in words if word not in _TOPIC_STOPWORDS]
+    selected = content[:_TOPIC_MAX_WORDS] or words[:_TOPIC_MAX_WORDS]
+    return " ".join(selected) or "general"
 
 
 def build_plan(task_id: UUID, intent: Intent) -> TaskPlan:

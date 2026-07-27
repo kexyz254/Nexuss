@@ -153,13 +153,259 @@ function addMessage(role, text, isError = false) {
 
   const bubble = document.createElement("div");
   bubble.className = "bubble";
+
+  /*
+   * An answer is either a plain string or a structured object. Content
+   * capabilities return structure so their results render as readable answers
+   * in the conversation rather than collapsing into one sentence, or being
+   * visible only as raw evidence in the inspector.
+   */
+  const answer = typeof text === "string" ? { text, blocks: [] } : text;
+
   const paragraph = document.createElement("p");
-  paragraph.textContent = text;
+  paragraph.textContent = answer.text;
   bubble.append(paragraph);
+
+  for (const block of answer.blocks || []) {
+    const rendered = renderAnswerBlock(block);
+    if (rendered) bubble.append(rendered);
+  }
+
   content.append(meta, bubble);
   article.append(avatar, content);
   elements.timeline.append(article);
   elements.timeline.scrollTop = elements.timeline.scrollHeight;
+}
+
+/*
+ * Answer blocks. Adding a new content capability means adding a builder in
+ * contentAnswer() and, if it needs a new shape, one case here. Nothing else
+ * in the conversation pipeline changes.
+ */
+function renderAnswerBlock(block) {
+  if (block.type === "constitution") {
+    return renderConstitutionBlock(block);
+  }
+  if (block.type === "claims") return renderClaimBlock(block);
+  if (block.type === "note") {
+    const note = document.createElement("p");
+    note.className = "answer-note";
+    note.textContent = block.text;
+    return note;
+  }
+  return null;
+}
+
+function renderConstitutionBlock(block) {
+  const card = document.createElement("section");
+  card.className = "constitution-card";
+
+  const heading = document.createElement("div");
+  heading.className = "constitution-card-heading";
+
+  const title = document.createElement("strong");
+  title.textContent = "NEXUSS CONSTITUTION";
+
+  const status = document.createElement("span");
+  status.className = "constitution-status";
+  status.textContent = block.integrity_verified
+    ? `Active ? v${block.version} ? integrity verified`
+    : `v${block.version} ? integrity unverified`;
+
+  heading.append(title, status);
+
+  const rule = document.createElement("p");
+  rule.className = "constitution-rule";
+  rule.textContent = block.rule_applied;
+
+  const digest = document.createElement("code");
+  digest.className = "constitution-digest";
+  digest.textContent = `SHA-256 ${String(block.sha256).slice(0, 16)}?`;
+  digest.title = String(block.sha256);
+
+  const authority = document.createElement("p");
+  authority.className = "constitution-authority";
+  authority.textContent = block.grants_authority
+    ? "This response changes authority."
+    : "Informational only ? grants no authority";
+
+  card.append(heading, rule, digest, authority);
+  return card;
+}
+
+
+/** Turn a source reference into something a person can read at a glance. */
+function sourceLabel(sourceRef) {
+  const value = String(sourceRef || "").trim();
+  if (!value || value === "user") return "you told me";
+
+  /*
+   * Only http(s) is treated as a URL. A Windows path such as
+   * "C:\\Docs\\lease.pdf" is a *valid* URL whose scheme is "c:" and whose
+   * hostname is empty, which silently produced a blank label.
+   */
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      return new URL(value).hostname.replace(/^www\./, "") || value;
+    } catch {
+      return value;
+    }
+  }
+
+  const segments = value.split(/[\\/]/).filter(Boolean);
+  return segments[segments.length - 1] || value;
+}
+
+function renderClaimBlock(block) {
+  const list = document.createElement("ul");
+  list.className = "answer-claims";
+
+  for (const item of block.items) {
+    const entry = document.createElement("li");
+    entry.className = "answer-claim";
+
+    const statement = document.createElement("p");
+    statement.className = "answer-claim-statement";
+    statement.textContent = item.statement;
+
+    const meta = document.createElement("div");
+    meta.className = "answer-claim-meta";
+
+    const trust = document.createElement("span");
+    trust.className = `trust-chip trust-${item.source_trust}`;
+    trust.textContent = item.source_trust.replace(/_/g, " ");
+
+    const origin = document.createElement("span");
+    origin.className = "answer-claim-source";
+    origin.textContent = sourceLabel(item.source_ref);
+
+    const confidence = document.createElement("span");
+    confidence.className = "answer-claim-confidence";
+    const percentage = Math.round(Number(item.confidence) * 100);
+    confidence.textContent = `${percentage}% confidence`;
+    confidence.title = "Confidence after time decay for this claim's volatility";
+
+    meta.append(trust, origin, confidence);
+    entry.append(statement, meta);
+    list.append(entry);
+  }
+  return list;
+}
+
+/* Plain-language readings of the error codes a person can act on. */
+const FAILURE_EXPLANATIONS = {
+  CONSTITUTION_UNAVAILABLE:
+    "The Nexuss Constitution could not be loaded or its integrity could not be verified.",
+  MEMORY_WRITE_REFUSED_CREDENTIAL_SHAPED:
+    "That text looks like a credential, so I refused to store it. Secrets never enter memory.",
+  MEMORY_TOPIC_CEILING_REACHED:
+    "That topic already holds as many claims as I allow. Forget some of it first.",
+  MEMORY_STORE_NOT_CONFIGURED: "Memory is not configured on this Nexuss instance.",
+  MEMORY_STATEMENT_MISSING: "I could not find a statement to remember in that.",
+  MEMORY_QUERY_MISSING: "I could not work out what to search memory for.",
+  MEMORY_TOPIC_MISSING: "I could not work out which topic to forget.",
+  NO_PAIRED_DEVICE: "No phone is paired, so there was nothing to act on.",
+  PAIRED_DEVICE_NOT_FOUND: "No paired phone matches that name.",
+  PAIRED_DEVICE_AMBIGUOUS:
+    "Several phones are paired and you did not say which one, so I changed nothing.",
+  MOBILE_PAIRING_GATEWAY_NOT_CONFIGURED: "Phone pairing is not available on this instance.",
+  KNOWLEDGE_PROVIDER_FORBIDDEN:
+    "The public knowledge source refused the request, so I stopped without producing unsupported material.",
+  KNOWLEDGE_PROVIDER_UNAVAILABLE:
+    "The public knowledge source did not respond, so I have no cited material to give you.",
+  KNOWLEDGE_NO_RESULTS:
+    "The public knowledge source returned nothing for that query. Try naming the topic more directly.",
+};
+
+function failureExplanation(code) {
+  return FAILURE_EXPLANATIONS[code]
+    || `The capability reported ${code}, and I did not act on a result I could not verify.`;
+}
+
+function evidenceFor(task, capabilityId) {
+  const result = task.results.find((item) => item.capability_id === capabilityId);
+  return result?.evidence?.[0]?.attributes || null;
+}
+
+/*
+ * Content capabilities answer in the conversation. Each returns a structured
+ * answer; anything that needs provenance carries it in the blocks so a claim
+ * and its source are never separated.
+ */
+function contentAnswer(task) {
+  const recall = evidenceFor(task, "memory.recall");
+  if (recall) {
+    const matches = Array.isArray(recall.matches) ? recall.matches : [];
+    if (!matches.length) {
+      return {
+        text: `I don't have anything stored about "${recall.query}".`,
+        blocks: [{
+          type: "note",
+          text: "Tell me something starting with \u201cremember that\u2026\u201d and I'll keep it with its source.",
+        }],
+      };
+    }
+    const count = matches.length;
+    return {
+      text: `Here ${count === 1 ? "is" : "are"} ${count} thing${count === 1 ? "" : "s"} I remember about \u201c${recall.query}\u201d:`,
+      blocks: [{ type: "claims", items: matches }],
+    };
+  }
+
+  const stored = evidenceFor(task, "memory.remember");
+  if (stored) {
+    return {
+      text: "Stored. I'll remember that.",
+      blocks: [{
+        type: "note",
+        text: `Filed under \u201c${stored.topic}\u201d as ${String(stored.source_trust).replace(/_/g, " ")}.`,
+      }],
+    };
+  }
+
+  const forgotten = evidenceFor(task, "memory.forget");
+  if (forgotten) {
+    const removed = Number(forgotten.claims_removed);
+    return {
+      text: removed === 0
+        ? `I had nothing stored about \u201c${forgotten.topic}\u201d.`
+        : `Forgotten. I removed ${removed} claim${removed === 1 ? "" : "s"} about \u201c${forgotten.topic}\u201d.`,
+      blocks: [],
+    };
+  }
+
+  const devices = evidenceFor(task, "device.list_phones");
+  if (devices) {
+    const listed = Array.isArray(devices.devices) ? devices.devices : [];
+    if (!listed.length) {
+      return { text: "No phones are paired right now.", blocks: [] };
+    }
+    return {
+      text: `${listed.length} paired phone${listed.length === 1 ? "" : "s"}:`,
+      blocks: [{
+        type: "claims",
+        items: listed.map((device) => ({
+          statement: device.device_label,
+          source_ref: "user",
+          source_trust: "user_asserted",
+          confidence: 1,
+        })),
+      }],
+    };
+  }
+
+  const pairing = evidenceFor(task, "device.pair_phone");
+  if (pairing) {
+    return {
+      text: `Pairing code ${pairing.pairing_code}. Enter it at ${pairing.mobile_url} within ten minutes.`,
+      blocks: [{
+        type: "note",
+        text: "Asking again issues a new code and retires this one.",
+      }],
+    };
+  }
+
+  return null;
 }
 
 function titleCase(value) {
@@ -315,15 +561,40 @@ function renderTask(task, receipt) {
 }
 
 function assistantResponse(task) {
-  const result = task.results.find((item) => item.capability_id === "assistant.respond");
-  return result?.evidence?.[0]?.attributes?.response || null;
+  const result = task.results.find(
+    (item) => item.capability_id === "assistant.respond",
+  );
+  const attributes = result?.evidence?.[0]?.attributes;
+
+  if (!attributes?.response) return null;
+
+  if (
+    attributes.authority_source !== "nexuss_constitution"
+  ) {
+    return String(attributes.response);
+  }
+
+  return {
+    text: String(attributes.response),
+    blocks: [{
+      type: "constitution",
+      version: attributes.constitution_version,
+      sha256: attributes.constitution_sha256,
+      integrity_verified: attributes.integrity_verified,
+      rule_applied: attributes.rule_applied,
+      grants_authority: attributes.grants_authority,
+    }],
+  };
 }
 
 function summarizeTask(task) {
   const p5Summary = window.NexussP5?.summarizeTask(task);
   if (p5Summary) return p5Summary;
   const conversational = assistantResponse(task);
-  if (conversational) return String(conversational);
+  if (conversational) return conversational;
+
+  const content = contentAnswer(task);
+  if (content) return content;
 
   if (task.state === "completed") {
     const deviceResult = task.results.find((result) => result.capability_id === "device.launch_notepad");
@@ -360,7 +631,21 @@ function summarizeTask(task) {
     const reason = task.policy_decisions.find((decision) => decision.outcome === "deny")?.reason_code;
     return `The request was denied by policy${reason ? `: ${reason}` : ""}.`;
   }
-  if (task.state === "failed") return "The action failed closed. Review the lifecycle and evidence panel for the recorded reason.";
+  if (task.state === "failed") {
+    /*
+     * Name the reason. "Review the evidence panel" makes the person do the
+     * diagnosis the system already did, and hides whether the cause was a
+     * provider error, a validation refusal, or a missing dependency.
+     */
+    const failure = task.results.find((result) => result.error_code);
+    if (failure) {
+      return {
+        text: `I stopped without acting. ${failureExplanation(String(failure.error_code))}`,
+        blocks: [{ type: "note", text: `Capability ${failure.capability_id} reported ${failure.error_code}.` }],
+      };
+    }
+    return "The action failed closed, and no capability recorded a reason. The lifecycle panel has the event trail.";
+  }
   return `The task is currently ${titleCase(task.state)}.`;
 }
 

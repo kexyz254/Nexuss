@@ -17,6 +17,7 @@ Design properties, per ADR-0009:
 
 from __future__ import annotations
 
+import hashlib
 import math
 import os
 import re
@@ -35,7 +36,7 @@ from nexuss.memory.models import (
     Volatility,
 )
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS memory_schema_version (
@@ -55,6 +56,7 @@ CREATE TABLE IF NOT EXISTS episodes (
 
 CREATE TABLE IF NOT EXISTS claims (
     claim_id      TEXT PRIMARY KEY,
+    fingerprint   TEXT NOT NULL DEFAULT '',
     topic         TEXT NOT NULL,
     statement     TEXT NOT NULL,
     source_ref    TEXT NOT NULL,
@@ -139,6 +141,16 @@ class MemoryStore(Protocol):
     def recent_episodes(self, session_id: UUID, *, limit: int = 20) -> tuple[Episode, ...]: ...
 
 
+def content_fingerprint(statement: str) -> str:
+    """Stable identity for a remembered statement.
+
+    Case and whitespace are not meaning. Two utterances that normalise to the
+    same text are the same memory, however many times they are asserted.
+    """
+    normalized = " ".join(statement.lower().split())
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
 def _refuse_credentials(statement: str) -> None:
     for pattern in _CREDENTIAL_PATTERNS:
         if pattern.search(statement):
@@ -182,11 +194,84 @@ class SqliteMemoryStore:
                     "INSERT INTO memory_schema_version (version) VALUES (?)",
                     (_SCHEMA_VERSION,),
                 )
+                self._ensure_fingerprint_index(connection)
+            elif int(row[0]) == 1:
+                self._migrate_v1_to_v2(connection)
+            elif int(row[0]) == _SCHEMA_VERSION:
+                self._ensure_fingerprint_index(connection)
             elif int(row[0]) != _SCHEMA_VERSION:
                 raise RuntimeError(
                     f"STOP: memory schema version {row[0]} is not supported "
                     f"by this build (expected {_SCHEMA_VERSION})."
                 )
+
+    @staticmethod
+    def _ensure_fingerprint_index(connection: sqlite3.Connection) -> None:
+        connection.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS claims_fingerprint_unique "
+            "ON claims (fingerprint)"
+        )
+
+    def _migrate_v1_to_v2(self, connection: sqlite3.Connection) -> None:
+        """Backfill fingerprints and collapse pre-existing duplicates.
+
+        A live database already holds duplicates, so the migration must merge
+        them rather than fail. The earliest claim wins its identity; later
+        assertions only refresh its observed_at and raise its confidence.
+        """
+        columns = {
+            str(row[1])
+            for row in connection.execute("PRAGMA table_info(claims)").fetchall()
+        }
+        if "fingerprint" not in columns:
+            connection.execute(
+                "ALTER TABLE claims ADD COLUMN fingerprint TEXT NOT NULL DEFAULT ''"
+            )
+
+        rows = connection.execute(
+            "SELECT claim_id, statement FROM claims"
+        ).fetchall()
+        for claim_id, statement in rows:
+            connection.execute(
+                "UPDATE claims SET fingerprint = ? WHERE claim_id = ?",
+                (content_fingerprint(str(statement)), str(claim_id)),
+            )
+
+        duplicates = connection.execute(
+            "SELECT fingerprint, MIN(observed_at) FROM claims "
+            "WHERE superseded_by IS NULL GROUP BY fingerprint HAVING COUNT(*) > 1"
+        ).fetchall()
+        for fingerprint, earliest in duplicates:
+            survivors = connection.execute(
+                "SELECT claim_id FROM claims WHERE fingerprint = ? "
+                "AND observed_at = ? LIMIT 1",
+                (str(fingerprint), str(earliest)),
+            ).fetchone()
+            if survivors is None:
+                continue
+            keep = str(survivors[0])
+            stale = [
+                str(row[0])
+                for row in connection.execute(
+                    "SELECT claim_id FROM claims WHERE fingerprint = ? AND claim_id != ?",
+                    (str(fingerprint), keep),
+                ).fetchall()
+            ]
+            for claim_id in stale:
+                connection.execute(
+                    "DELETE FROM claims_fts WHERE claim_id = ?", (claim_id,)
+                )
+                connection.execute(
+                    "DELETE FROM claims WHERE claim_id = ?", (claim_id,)
+                )
+
+        connection.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS claims_fingerprint_unique "
+            "ON claims (fingerprint)"
+        )
+        connection.execute(
+            "UPDATE memory_schema_version SET version = ?", (_SCHEMA_VERSION,)
+        )
 
     # ----------------------------------------------------------- semantic
 
@@ -218,7 +303,53 @@ class SqliteMemoryStore:
             episode_id=episode_id,
         )
 
+        fingerprint = content_fingerprint(claim.statement)
+
         with self._lock, self._connect() as connection:
+            duplicate = connection.execute(
+                "SELECT claim_id, topic, statement, source_ref, source_trust, "
+                "confidence, volatility, observed_at, superseded_by, episode_id "
+                "FROM claims WHERE fingerprint = ?",
+                (fingerprint,),
+            ).fetchone()
+            if duplicate is not None:
+                # Re-asserting a fact refreshes it; it does not multiply it.
+                #
+                # The merged claim takes the strongest provenance offered. If a
+                # statement arrived from a video and the operator later asserts
+                # the same thing, the memory is now user-asserted: a person
+                # vouching for a fact outranks a page that stated it. Keeping
+                # whichever source happened to arrive first would let arrival
+                # order decide how much a claim is trusted.
+                existing_claim = _claim_from_row(duplicate)
+                if _TRUST_WEIGHT[claim.source_trust] > _TRUST_WEIGHT[existing_claim.source_trust]:
+                    merged_trust = claim.source_trust
+                    merged_source = claim.source_ref
+                else:
+                    merged_trust = existing_claim.source_trust
+                    merged_source = existing_claim.source_ref
+                merged_confidence = max(existing_claim.confidence, claim.confidence)
+
+                connection.execute(
+                    "UPDATE claims SET observed_at = ?, confidence = ?, "
+                    "source_trust = ?, source_ref = ? WHERE claim_id = ?",
+                    (
+                        claim.observed_at.isoformat(),
+                        merged_confidence,
+                        merged_trust.value,
+                        merged_source,
+                        str(existing_claim.claim_id),
+                    ),
+                )
+                return existing_claim.model_copy(
+                    update={
+                        "observed_at": claim.observed_at,
+                        "confidence": merged_confidence,
+                        "source_trust": merged_trust,
+                        "source_ref": merged_source,
+                    }
+                )
+
             existing = connection.execute(
                 "SELECT COUNT(*) FROM claims WHERE topic = ?",
                 (claim.topic,),
@@ -229,11 +360,12 @@ class SqliteMemoryStore:
                     "consolidate or forget before adding more."
                 )
             connection.execute(
-                "INSERT INTO claims (claim_id, topic, statement, source_ref, "
-                "source_trust, confidence, volatility, observed_at, "
-                "superseded_by, episode_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO claims (claim_id, fingerprint, topic, statement, "
+                "source_ref, source_trust, confidence, volatility, observed_at, "
+                "superseded_by, episode_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     str(claim.claim_id),
+                    fingerprint,
                     claim.topic,
                     claim.statement,
                     claim.source_ref,
@@ -287,7 +419,20 @@ class SqliteMemoryStore:
             )
 
         matches.sort(key=lambda match: match.score, reverse=True)
-        return tuple(matches[:limit])
+
+        # Retrieval-side guard. The unique index prevents new duplicates, but a
+        # database written before this build may still hold them, and a reader
+        # must never show the same fact twice.
+        seen: set[str] = set()
+        deduplicated: list[RecallMatch] = []
+        for match in matches:
+            fingerprint = content_fingerprint(match.claim.statement)
+            if fingerprint in seen:
+                continue
+            seen.add(fingerprint)
+            deduplicated.append(match)
+
+        return tuple(deduplicated[:limit])
 
     def active_claims(self, topic: str) -> tuple[MemoryClaim, ...]:
         with self._lock, self._connect() as connection:

@@ -5,7 +5,7 @@ from uuid import UUID
 from nexuss.core.intents import classify_intent
 from nexuss.core.planner import build_plan
 from nexuss.core.policy import evaluate_step
-from nexuss.domain.models import PolicyOutcome
+from nexuss.domain.models import IntentKind, PolicyOutcome
 
 TASK_ID = UUID("00000000-0000-0000-0000-000000000101")
 
@@ -52,11 +52,29 @@ def test_create_note_requires_exact_user_approval() -> None:
     assert decision.reason_code == "EXPLICIT_USER_APPROVAL_REQUIRED"
 
 
-def test_identity_response_is_allowed_without_side_effect() -> None:
+def test_identity_response_is_allowed_by_constitution() -> None:
     plan = build_plan(TASK_ID, classify_intent("Who are you?"))
     decision = evaluate_step(plan.steps[0])
 
     assert plan.steps[0].capability_id == "assistant.respond"
+    assert plan.steps[0].parameters["response_key"] == "who_are_you"
+    assert decision.outcome is PolicyOutcome.ALLOW
+    assert decision.reason_code == (
+        "CONSTITUTIONAL_INFORMATIONAL_RESPONSE"
+    )
+    assert "Constitution" in decision.explanation
+    assert "grants no authority" in decision.explanation
+
+
+def test_nonconstitutional_capabilities_response_remains_informational() -> None:
+    intent = classify_intent("Show capabilities")
+    assert intent.kind is IntentKind.ASSISTANT_CAPABILITIES
+
+    plan = build_plan(TASK_ID, intent)
+    decision = evaluate_step(plan.steps[0])
+
+    assert plan.steps[0].capability_id == "assistant.respond"
+    assert "response_key" not in plan.steps[0].parameters
     assert decision.outcome is PolicyOutcome.ALLOW
     assert decision.reason_code == "INFORMATIONAL_NO_SIDE_EFFECT"
 

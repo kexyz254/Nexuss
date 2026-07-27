@@ -5,10 +5,18 @@ Real, bounded, read-only public knowledge acquisition for Nexuss P5.
 
 from __future__ import annotations
 
+import os
 from typing import Protocol
 from urllib.parse import quote_plus
 
 import httpx
+
+_DEFAULT_CONTACT = "https://github.com/kexyz254peter/nexuss"
+_USER_AGENT = (
+    f"Nexuss/0.5 "
+    f"({os.getenv('NEXUSS_CONTACT', _DEFAULT_CONTACT)}) "
+    "httpx"
+)
 
 
 class KnowledgeProviderError(RuntimeError):
@@ -61,15 +69,17 @@ class WikipediaKnowledgeProvider:
                 trust_env=self._trust_env,
                 follow_redirects=True,
                 transport=self._transport,
-                headers={
-                    "User-Agent": (
-                        "Nexuss/0.5 private-prototype kexyz254peter"
-                    )
-                },
+                headers={"User-Agent": _USER_AGENT},
             ) as client:
                 response = client.get(self._endpoint, params=parameters)
+                if response.status_code == 403:
+                    raise KnowledgeProviderError(
+                        "KNOWLEDGE_PROVIDER_FORBIDDEN"
+                    )
                 response.raise_for_status()
                 payload: object = response.json()
+        except KnowledgeProviderError:
+            raise
         except (httpx.HTTPError, ValueError) as exc:
             raise KnowledgeProviderError(
                 "KNOWLEDGE_PROVIDER_UNAVAILABLE"
