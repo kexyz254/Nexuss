@@ -48,6 +48,7 @@ from nexuss.domain.models import (
 )
 from nexuss.knowledge.provider import KnowledgeProvider, WikipediaKnowledgeProvider
 from nexuss.media.youtube import YouTubeDataProvider, YouTubeProvider
+from nexuss.memory.store import MemoryStore
 from nexuss.mobile.models import MobileApprovalSummary, MobileHandoffSummary
 
 _HANDOFF_FRESHNESS = timedelta(minutes=2)
@@ -101,6 +102,7 @@ class CoreSimulatorService:
         knowledge_provider: KnowledgeProvider | None = None,
         youtube_provider: YouTubeProvider | None = None,
         pairing_gateway: PhonePairingGateway | None = None,
+        memory_store: MemoryStore | None = None,
     ) -> None:
         self._tasks: dict[UUID, TaskView] = {}
         self._request_index: dict[UUID, UUID] = {}
@@ -110,6 +112,7 @@ class CoreSimulatorService:
         self._knowledge_provider = knowledge_provider or WikipediaKnowledgeProvider()
         self._youtube_provider = youtube_provider or YouTubeDataProvider()
         self._pairing_gateway = pairing_gateway
+        self._memory_store = memory_store
         self._lock = RLock()
 
     @staticmethod
@@ -298,6 +301,7 @@ class CoreSimulatorService:
                         youtube_provider=self._youtube_provider,
                         session_id=session_id,
                         pairing_gateway=self._pairing_gateway,
+                        memory_store=self._memory_store,
                     )
                 )
         except ManagedNoteError as exc:

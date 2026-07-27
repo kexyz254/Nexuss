@@ -28,6 +28,8 @@ from nexuss.domain.models import (
 )
 from nexuss.knowledge.provider import KnowledgeProvider, KnowledgeProviderError
 from nexuss.media.youtube import MediaProviderError, YouTubeProvider
+from nexuss.memory.models import SourceTrust, Volatility
+from nexuss.memory.store import MemoryStore, MemoryWriteRefused
 from nexuss.mobile.models import MobilePairedDevice, MobilePairingChallenge
 
 
@@ -416,6 +418,119 @@ def _execute_unpair_phone(
     )
 
 
+def _execute_memory_remember(
+    step: PlanStep,
+    timestamp: datetime,
+    memory_store: MemoryStore,
+) -> CapabilityResult:
+    """Store a user-asserted claim.
+
+    Everything entering through this capability is USER_ASSERTED by
+    definition: the person typed it. Web-derived claims arrive through the
+    study pipeline at PUBLIC_WEB trust, never through here.
+    """
+    statement = str(step.parameters.get("statement", "")).strip()
+    topic = str(step.parameters.get("topic", "")).strip() or "general"
+    if not statement:
+        return _failed(step, "MEMORY_STATEMENT_MISSING")
+    try:
+        claim = memory_store.remember(
+            topic=topic,
+            statement=statement,
+            source_ref="user",
+            source_trust=SourceTrust.USER_ASSERTED,
+            confidence=0.95,
+            volatility=Volatility.STABLE,
+            now=timestamp,
+        )
+    except MemoryWriteRefused as exc:
+        return _failed(step, str(exc).split(":", maxsplit=1)[0])
+    return CapabilityResult(
+        step_id=step.step_id,
+        capability_id=step.capability_id,
+        status=StepStatus.VERIFIED,
+        evidence=[
+            EvidenceRecord(
+                source="local:memory_store",
+                observed_at=timestamp,
+                attributes={
+                    "source_mode": "live_local_controlled_write",
+                    "claim_id": str(claim.claim_id),
+                    "topic": claim.topic,
+                    "source_trust": claim.source_trust.value,
+                    "confidence": claim.confidence,
+                },
+            )
+        ],
+    )
+
+
+def _execute_memory_recall(
+    step: PlanStep,
+    timestamp: datetime,
+    memory_store: MemoryStore,
+) -> CapabilityResult:
+    query = str(step.parameters.get("query", "")).strip()
+    if not query:
+        return _failed(step, "MEMORY_QUERY_MISSING")
+    matches = memory_store.recall(query, limit=5, now=timestamp)
+    return CapabilityResult(
+        step_id=step.step_id,
+        capability_id=step.capability_id,
+        status=StepStatus.VERIFIED,
+        evidence=[
+            EvidenceRecord(
+                source="local:memory_store",
+                observed_at=timestamp,
+                attributes={
+                    "source_mode": "live_local_readonly",
+                    "query": query,
+                    "match_count": len(matches),
+                    "matches": [
+                        {
+                            "statement": match.claim.statement,
+                            "topic": match.claim.topic,
+                            "source_ref": match.claim.source_ref,
+                            "source_trust": match.claim.source_trust.value,
+                            "confidence": round(match.decayed_confidence, 3),
+                            "score": round(match.score, 3),
+                            "observed_at": match.claim.observed_at.isoformat(),
+                        }
+                        for match in matches
+                    ],
+                },
+            )
+        ],
+    )
+
+
+def _execute_memory_forget(
+    step: PlanStep,
+    timestamp: datetime,
+    memory_store: MemoryStore,
+) -> CapabilityResult:
+    topic = str(step.parameters.get("topic", "")).strip()
+    if not topic:
+        return _failed(step, "MEMORY_TOPIC_MISSING")
+    removed = memory_store.forget_topic(topic)
+    return CapabilityResult(
+        step_id=step.step_id,
+        capability_id=step.capability_id,
+        status=StepStatus.VERIFIED,
+        evidence=[
+            EvidenceRecord(
+                source="local:memory_store",
+                observed_at=timestamp,
+                attributes={
+                    "source_mode": "live_local_controlled_write",
+                    "topic": topic,
+                    "claims_removed": removed,
+                },
+            )
+        ],
+    )
+
+
 def execute_step(
     step: PlanStep,
     observed_at: datetime | None = None,
@@ -427,8 +542,18 @@ def execute_step(
     youtube_provider: YouTubeProvider | None = None,
     session_id: UUID | None = None,
     pairing_gateway: PhonePairingGateway | None = None,
+    memory_store: MemoryStore | None = None,
 ) -> CapabilityResult:
     timestamp = observed_at or datetime.now(UTC)
+
+    if step.capability_id in {"memory.remember", "memory.recall", "memory.forget"}:
+        if memory_store is None:
+            return _failed(step, "MEMORY_STORE_NOT_CONFIGURED")
+        if step.capability_id == "memory.remember":
+            return _execute_memory_remember(step, timestamp, memory_store)
+        if step.capability_id == "memory.recall":
+            return _execute_memory_recall(step, timestamp, memory_store)
+        return _execute_memory_forget(step, timestamp, memory_store)
 
     if step.capability_id == "device.pair_phone":
         if pairing_gateway is None or session_id is None:

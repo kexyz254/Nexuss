@@ -13,6 +13,49 @@ from nexuss.domain.models import (
 
 _MANIFESTS = (
     CapabilityManifest(
+        capability_id="memory.remember",
+        version="1.0.0",
+        title="Remember",
+        description=(
+            "Store a user-asserted statement in durable memory with full "
+            "provenance. Credential-shaped content is refused, not masked."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=True,
+        execution_mode="live_local_controlled_write",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="memory.recall",
+        version="1.0.0",
+        title="Recall",
+        description=(
+            "Search durable memory. Results always carry source, trust tier "
+            "and decayed confidence; provenance is never stripped."
+        ),
+        risk_tier=RiskTier.INFORMATIONAL,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="live_local_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="memory.forget",
+        version="1.0.0",
+        title="Forget a topic",
+        description=(
+            "Delete every claim on a topic permanently. Desktop approval is "
+            "required because deletion is irreversible."
+        ),
+        risk_tier=RiskTier.HIGH,
+        approval_policy=ApprovalPolicy.EXPLICIT,
+        reversible=False,
+        execution_mode="live_local_controlled_write",
+        status=CapabilityStatus.ACTIVE,
+        approval_channel=ApprovalChannel.DESKTOP,
+    ),
+    CapabilityManifest(
         capability_id="device.pair_phone",
         version="1.0.0",
         title="Pair a phone",

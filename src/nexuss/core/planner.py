@@ -106,6 +106,41 @@ def _direct_specs(intent: Intent) -> list[StepSpec] | None:
             )
         ]
 
+    if intent.kind is IntentKind.MEMORY_REMEMBER:
+        statement = intent.entities.get("statement", "")
+        topic = " ".join(statement.split()[:8]) or "general"
+        return [
+            (
+                "memory.remember",
+                RiskTier.LOW,
+                ["memory_claim_recorded"],
+                {"statement": statement, "topic": topic},
+                True,
+            )
+        ]
+
+    if intent.kind is IntentKind.MEMORY_RECALL:
+        return [
+            (
+                "memory.recall",
+                RiskTier.INFORMATIONAL,
+                ["memory_recall_results"],
+                {"query": intent.entities.get("query", "")},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.MEMORY_FORGET:
+        return [
+            (
+                "memory.forget",
+                RiskTier.HIGH,
+                ["memory_topic_forgotten"],
+                {"topic": intent.entities.get("topic", "")},
+                False,
+            )
+        ]
+
     if intent.kind is IntentKind.PAIR_PHONE:
         return [
             (

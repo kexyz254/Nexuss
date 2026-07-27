@@ -106,10 +106,12 @@ $PreviousNodeId = $env:NEXUSS_WINDOWS_NODE_ID
 $PreviousMobileUrl = $env:NEXUSS_MOBILE_PUBLIC_URL
 $PreviousYouTubeApiKey = $env:NEXUSS_YOUTUBE_API_KEY
 $PreviousDeviceStore = $env:NEXUSS_MOBILE_DEVICE_STORE
+$PreviousMemoryStore = $env:NEXUSS_MEMORY_STORE
 
 # Paired phones survive restarts from here. The runtime directory is already
 # excluded from version control, so no device record reaches a commit.
 $DeviceStorePath = Join-Path $RuntimeDirectory "paired-devices.db"
+$MemoryStorePath = Join-Path $RuntimeDirectory "memory.db"
 New-Item -ItemType Directory -Path $RuntimeDirectory -Force | Out-Null
 
 try {
@@ -119,6 +121,7 @@ try {
     $env:NEXUSS_WINDOWS_NODE_ID = "windows-primary"
     $env:NEXUSS_MOBILE_PUBLIC_URL = $MobileUrl
     $env:NEXUSS_MOBILE_DEVICE_STORE = $DeviceStorePath
+    $env:NEXUSS_MEMORY_STORE = $MemoryStorePath
 
     # The trusted Windows node never receives external-provider credentials.
     Remove-Item Env:\NEXUSS_YOUTUBE_API_KEY -ErrorAction SilentlyContinue
@@ -147,6 +150,7 @@ finally {
     $env:NEXUSS_WINDOWS_NODE_ID = $PreviousNodeId
     $env:NEXUSS_MOBILE_PUBLIC_URL = $PreviousMobileUrl
     $env:NEXUSS_MOBILE_DEVICE_STORE = $PreviousDeviceStore
+    $env:NEXUSS_MEMORY_STORE = $PreviousMemoryStore
 
     if ([string]::IsNullOrWhiteSpace($PreviousYouTubeApiKey)) {
         Remove-Item Env:\NEXUSS_YOUTUBE_API_KEY -ErrorAction SilentlyContinue

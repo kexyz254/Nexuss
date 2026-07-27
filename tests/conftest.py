@@ -9,6 +9,7 @@ from pytest import MonkeyPatch
 from nexuss.api import app as app_module
 from nexuss.core.managed_notes import ManagedNoteStore
 from nexuss.core.service import CoreSimulatorService
+from nexuss.memory.store import SqliteMemoryStore
 from nexuss.mobile.gateway import MobileApprovalGateway
 from tests.fakes import FakeDeviceNodeClient
 
@@ -32,6 +33,7 @@ def isolate_nexuss_service(
         note_store=ManagedNoteStore(tmp_path / "managed"),
         device_client=fake_device_client,
         pairing_gateway=gateway,
+        memory_store=SqliteMemoryStore(tmp_path / "memory.db"),
     )
     monkeypatch.setattr(app_module, "service", service)
     monkeypatch.setattr(app_module, "mobile_gateway", gateway)

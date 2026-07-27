@@ -341,6 +341,42 @@ def _unpair_label(display_text: str) -> str:
     return remainder
 
 
+# Memory vocabulary. "forget about <topic>" requires the word "about" so it
+# can never collide with device revocation ("forget this device"), which is
+# classified earlier and requires a device noun.
+_REMEMBER_PATTERN = re.compile(
+    r"^(?:remember|memori[sz]e)\s+(?:that\s+)?(?P<statement>.+?)\s*$",
+    re.IGNORECASE,
+)
+
+_RECALL_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"^what\s+do\s+you\s+remember\s+about\s+(?P<query>.+?)\s*$", re.IGNORECASE),
+    re.compile(r"^what\s+have\s+you\s+learn(?:ed|t)\s+about\s+(?P<query>.+?)\s*$", re.IGNORECASE),
+    re.compile(r"^recall\s+(?P<query>.+?)\s*$", re.IGNORECASE),
+)
+
+_FORGET_MEMORY_PATTERN = re.compile(
+    r"^forget\s+(?:everything\s+|what\s+you\s+know\s+)?about\s+(?P<topic>.+?)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _match_memory(display_text: str) -> tuple[IntentKind, dict[str, str]] | None:
+    forget = _FORGET_MEMORY_PATTERN.match(display_text)
+    if forget:
+        return IntentKind.MEMORY_FORGET, {"topic": forget.group("topic").strip(" \"'")}
+    for pattern in _RECALL_PATTERNS:
+        recall = pattern.match(display_text)
+        if recall:
+            return IntentKind.MEMORY_RECALL, {"query": recall.group("query").strip(" \"'")}
+    remember = _REMEMBER_PATTERN.match(display_text)
+    if remember:
+        return IntentKind.MEMORY_REMEMBER, {
+            "statement": remember.group("statement").strip(" \"'")
+        }
+    return None
+
+
 def classify_intent(utterance: str) -> Intent:
     display_text = _strip_leading_noise(utterance)
     normalized = display_text.casefold()
@@ -374,6 +410,9 @@ def classify_intent(utterance: str) -> Intent:
     ):
         kind = IntentKind.ASSISTANT_HELP
         confidence = 0.97
+    elif (memory_match := _match_memory(display_text)) is not None:
+        kind, entities = memory_match
+        confidence = 0.98
     elif _is_unpair_request(normalized):
         kind = IntentKind.UNPAIR_PHONE
         confidence = 0.97

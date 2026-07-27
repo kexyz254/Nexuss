@@ -39,6 +39,7 @@ from nexuss.domain.models import (
     TaskRequest,
     TaskView,
 )
+from nexuss.memory.store import memory_store_from_environment
 from nexuss.mobile.gateway import MobileApprovalGateway, MobilePairingError
 from nexuss.mobile.models import (
     MobileApprovalSummary,
@@ -70,6 +71,7 @@ mobile_gateway = MobileApprovalGateway(
 service = CoreSimulatorService(
     device_client=HttpDeviceNodeClient.from_environment(),
     pairing_gateway=mobile_gateway,
+    memory_store=memory_store_from_environment(),
 )
 _PAIR_ATTEMPT_WINDOW = timedelta(minutes=5)
 _PAIR_ATTEMPT_LIMIT = 5
