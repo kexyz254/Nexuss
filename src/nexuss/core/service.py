@@ -12,6 +12,9 @@ from datetime import UTC, datetime, timedelta
 from threading import RLock
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+from nexuss.connectors.contracts import ConnectorStatus
+from nexuss.connectors.errors import ConnectorError
+from nexuss.connectors.github.runtime import get_github_connector
 from nexuss.core.executor import PhonePairingGateway, execute_step
 from nexuss.core.intents import classify_intent
 from nexuss.core.ledger import InMemoryActionLedger
@@ -36,6 +39,7 @@ from nexuss.domain.models import (
     EvidenceRecord,
     IdentitySession,
     Intent,
+    IntentKind,
     PlanStep,
     PolicyDecision,
     PolicyOutcome,
@@ -228,6 +232,42 @@ class CoreSimulatorService:
             )
             destination_label = "Trusted Windows node · Chrome"
             approval_channel = ApprovalChannel.PHONE
+        elif step.capability_id == "github.repository.create":
+            account_login = str(
+                step.parameters.get("account_login", "")
+            )
+            account_id = str(step.parameters.get("account_id", ""))
+            repository_name = str(
+                step.parameters.get("repository_name", "")
+            )
+            connector_digest = str(
+                step.parameters.get(
+                    "connector_payload_sha256",
+                    "",
+                )
+            )
+            action_title = "Create private GitHub repository"
+            action_summary = (
+                "Create one empty private repository for the "
+                f"verified GitHub account {account_login}."
+            )
+            exact_preview = (
+                f"Capability: {step.capability_id}\n"
+                f"Account: {account_login}\n"
+                f"Account ID: {account_id}\n"
+                f"Repository: {repository_name}\n"
+                "Visibility: private\n"
+                "README: none\n"
+                ".gitignore: none\n"
+                "License: none\n"
+                "Template: none\n"
+                "Initial commit: none\n"
+                f"GitHub payload SHA-256: {connector_digest}"
+            )
+            destination_label = (
+                f"GitHub · {account_login}/{repository_name}"
+            )
+            approval_channel = ApprovalChannel.PHONE
         elif step.capability_id == "phone.open_youtube":
             launch_url = str(step.parameters.get("launch_url", ""))
             action_title = "Open YouTube on paired phone"
@@ -277,6 +317,7 @@ class CoreSimulatorService:
         events: list[ActionEvent],
         now: datetime,
         session_id: UUID,
+        approval: ApprovalRequest | None = None,
     ) -> tuple[TaskState, list[CapabilityResult]]:
         validate_transition(events[-1].state, TaskState.EXECUTING)
         self._append_event(
@@ -302,6 +343,7 @@ class CoreSimulatorService:
                         session_id=session_id,
                         pairing_gateway=self._pairing_gateway,
                         memory_store=self._memory_store,
+                        approval=approval,
                     )
                 )
         except ManagedNoteError as exc:
@@ -354,6 +396,27 @@ class CoreSimulatorService:
             task_id = uuid5(NAMESPACE_URL, f"nexuss:task:{request.request_id}")
             now = datetime.now(UTC)
             intent = classify_intent(request.utterance)
+            if intent.kind is IntentKind.GITHUB_CREATE_REPOSITORY:
+                entities = dict(intent.entities)
+                try:
+                    github_health = get_github_connector().health(now=now)
+                except ConnectorError:
+                    github_health = None
+                if (
+                    github_health is not None
+                    and github_health.status is ConnectorStatus.CONNECTED
+                    and github_health.identity is not None
+                    and github_health.identity.verified
+                ):
+                    entities["account_login"] = (
+                        github_health.identity.account_label
+                    )
+                    entities["account_id"] = (
+                        github_health.identity.external_account_id
+                    )
+                intent = intent.model_copy(
+                    update={"entities": entities}
+                )
             events: list[ActionEvent] = []
             self._append_event(
                 task_id,
@@ -550,7 +613,12 @@ class CoreSimulatorService:
                 occurred_at=now,
             )
             state, results = self._execute_authorized_steps(
-                task_id, task.plan, task.events, now, task.user_session_id
+                task_id,
+                task.plan,
+                task.events,
+                now,
+                task.user_session_id,
+                approval,
             )
             consumed = approval.model_copy(
                 update={

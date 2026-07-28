@@ -32,6 +32,32 @@ def evaluate_step(step: PlanStep) -> PolicyDecision:
             explanation="This capability is outside the approved P5 execution boundary.",
         )
 
+    if step.capability_id == "github.repository.create":
+        if not str(step.parameters.get("account_login", "")).strip():
+            return PolicyDecision(
+                step_id=step.step_id,
+                capability_id=step.capability_id,
+                outcome=PolicyOutcome.DENY,
+                reason_code="GITHUB_NOT_CONNECTED",
+                explanation=(
+                    "A verified GitHub account must be connected before "
+                    "repository creation can be approved."
+                ),
+            )
+        if (
+            step.parameters.get("private") is not True
+            or step.parameters.get("auto_init") is not False
+        ):
+            return PolicyDecision(
+                step_id=step.step_id,
+                capability_id=step.capability_id,
+                outcome=PolicyOutcome.DENY,
+                reason_code="GITHUB_REPOSITORY_CONTRACT_INVALID",
+                explanation=(
+                    "Only a private, uninitialized repository is permitted."
+                ),
+            )
+
     manifest = get_capability(step.capability_id)
     if manifest is None:
         return PolicyDecision(

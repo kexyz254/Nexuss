@@ -309,6 +309,19 @@ function renderClaimBlock(block) {
 
 /* Plain-language readings of the error codes a person can act on. */
 const FAILURE_EXPLANATIONS = {
+  GITHUB_NOT_CONNECTED: "Connect and verify GitHub before requesting this operation.",
+  GITHUB_REAUTH_REQUIRED: "The GitHub authorization expired or was revoked. Reconnect GitHub.",
+  GITHUB_ACCOUNT_MISMATCH: "The live GitHub account no longer matches the approved account.",
+  GITHUB_REPOSITORY_ALREADY_EXISTS: "A repository with that exact name already exists. No change was made.",
+  GITHUB_PERMISSION_INSUFFICIENT: "The GitHub App lacks the required permission.",
+  GITHUB_RATE_LIMITED: "GitHub rate-limited the connector. No write was repeated.",
+  GITHUB_APPROVAL_CONTEXT_MISSING: "A valid phone approval was not attached to this GitHub write.",
+  GITHUB_PREPARED_PAYLOAD_MISMATCH: "The GitHub payload changed after approval, so I refused it.",
+  GITHUB_CREATION_NOT_VERIFIED: "The created repository did not satisfy the approved contract.",
+  INTELLIGENCE_NO_EVIDENCE: "I could not find sufficiently relevant public evidence for that question. Try asking with a shorter or more specific topic.",
+  INTELLIGENCE_RETRIEVER_FORBIDDEN: "The public knowledge provider refused this request, so I stopped without presenting an unverified answer.",
+  INTELLIGENCE_RETRIEVER_UNAVAILABLE: "The public knowledge provider is temporarily unavailable. I stopped rather than inventing an answer.",
+  MEMORY_STATEMENT_AMBIGUOUS: "Tell me the exact fact to remember. Words such as \"that\" or \"this\" are too ambiguous.",
   CONSTITUTION_UNAVAILABLE:
     "The Nexuss Constitution could not be loaded or its integrity could not be verified.",
   MEMORY_WRITE_REFUSED_CREDENTIAL_SHAPED:
@@ -351,6 +364,49 @@ function contentAnswer(task) {
   const converse = evidenceFor(task, "assistant.converse");
   if (converse) {
     return { text: String(converse.reply), blocks: [] };
+  }
+
+  const githubStatus = evidenceFor(task, "github.connection.status");
+  if (githubStatus) {
+    const account = githubStatus.account_login
+      ? ` as ${githubStatus.account_login}`
+      : "";
+    return {
+      text: `GitHub connector status: ${githubStatus.status}${account}.`,
+      blocks: [{
+        type: "note",
+        text: githubStatus.identity_verified
+          ? "The live identity is verified. Credentials remain encrypted and are excluded from receipts."
+          : String(githubStatus.detail || "GitHub is not connected."),
+      }],
+    };
+  }
+
+  const githubRepositories = evidenceFor(task, "github.repositories.list");
+  if (githubRepositories) {
+    const repositories = Array.isArray(githubRepositories.repositories)
+      ? githubRepositories.repositories
+      : [];
+    return {
+      text: `Verified ${githubRepositories.total} repositories for ${githubRepositories.account_login}: ${githubRepositories.private_count} private and ${githubRepositories.public_count} public.`,
+      blocks: [{
+        type: "note",
+        text: repositories.slice(0, 12).map(
+          (repo) => `${repo.full_name} · ${repo.private ? "private" : "public"}`,
+        ).join("\n"),
+      }],
+    };
+  }
+
+  const githubCreated = evidenceFor(task, "github.repository.create");
+  if (githubCreated) {
+    return {
+      text: `Created and independently verified ${githubCreated.full_name}.`,
+      blocks: [{
+        type: "note",
+        text: `Private: ${githubCreated.private_verified ? "verified" : "not verified"} · Empty repository: ${githubCreated.empty_repository_verified ? "verified" : "not verified"} · Initial commit: none`,
+      }],
+    };
   }
 
   const answered = evidenceFor(task, "knowledge.answer");
@@ -666,6 +722,11 @@ function summarizeTask(task) {
     return `Completed and verified ${task.results.length} capability result${task.results.length === 1 ? "" : "s"}.`;
   }
   if (task.state === "awaiting_approval") {
+    if (
+      task.approval?.capability_id === "github.repository.create"
+    ) {
+      return "I prepared an exact GitHub repository payload. No repository exists yet. Approve or reject the account, name, visibility, initialization settings, and hashes on your paired phone.";
+    }
     if (task.approval?.approval_channel === "phone") {
       return "I prepared a signed trusted-device command. No command has executed. Pair your phone and approve the exact payload there.";
     }

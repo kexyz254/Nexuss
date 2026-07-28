@@ -459,6 +459,11 @@ _THANKS_TERMS = ("thanks", "thank you", "cheers", "appreciate it", "much appreci
 _FAREWELL_TERMS = ("bye", "goodbye", "good bye", "see you", "later", "good night", "goodnight")
 _WELLBEING_TERMS = ("how are you", "how's it going", "hows it going", "you good", "how do you do")
 
+# These read as courtesies alone but are ordinary words in a longer sentence.
+# "later stages of the plan" is not a farewell; "morning routine" is not a
+# greeting. They match only as the entire utterance.
+_EXACT_ONLY_COURTESIES = frozenset({"morning", "evening", "later", "greetings"})
+
 _TIME_TERMS = ("what time is it", "what's the time", "whats the time", "the time now",
                "current time", "time now", "what time")
 _DATE_TERMS = ("what is the date", "what's the date", "whats the date", "today's date",
@@ -468,23 +473,50 @@ _DATE_TERMS = ("what is the date", "what's the date", "whats the date", "today's
 # Only question-shaped input may reach a public source. An unmatched imperative
 # such as "close media" is a missing capability, not a research topic, and
 # silently searching the web for it would be both wrong and surprising.
-_OPEN_QUESTION_PATTERN = re.compile(
-    r"^(?:who|what|whats|what's|when|where|why|how|which|is|are|was|were|do|does|did|"
-    r"can|could|should|would|will|tell me about|explain)\b",
+# Interrogative words open a question on their own.
+_INTERROGATIVE_PATTERN = re.compile(
+    r"^(?:who|what|whats|what's|when|where|why|how|which|whose|whom)\b",
     re.IGNORECASE,
 )
+
+# Auxiliaries only open a question when a subject follows. "do you know" is a
+# question; "do something undefined" is an imperative, and treating it as a
+# question sent an unmatched command to a public search engine.
+_AUXILIARY_QUESTION_PATTERN = re.compile(
+    r"^(?:is|are|was|were|am|do|does|did|can|could|should|would|will|has|have|had)\s+"
+    r"(?:i|you|we|they|he|she|it|there|this|that|these|those|my|your|our|their|his|her|its|the|a|an)\b",
+    re.IGNORECASE,
+)
+
+# Explicit requests for explanation are imperative in form but informational
+# in intent, so they are listed rather than inferred.
+_EXPLAIN_PATTERN = re.compile(
+    r"^(?:tell me about|explain|describe|define|what do you know about)\b",
+    re.IGNORECASE,
+)
+
+
+def _matches_courtesy(words: str, terms: tuple[str, ...]) -> bool:
+    """Match a courtesy without swallowing the sentence that contains it."""
+    for term in terms:
+        if words == term:
+            return True
+        if term in _EXACT_ONLY_COURTESIES:
+            continue
+        if words.startswith((f"{term} ", f"{term},")):
+            return True
+    return False
 
 
 def _small_talk_kind(normalized: str) -> str | None:
     """Classify a courtesy. Exact-ish matching keeps 'hi' from firing inside
     'hide the panel'."""
     words = normalized.rstrip("!?.").strip()
-    for term in _GREETING_TERMS:
-        if words == term or words.startswith(f"{term} ") or words.startswith(f"{term},"):
-            return "greeting"
-    if any(words == term or words.startswith(f"{term} ") for term in _THANKS_TERMS):
+    if _matches_courtesy(words, _GREETING_TERMS):
+        return "greeting"
+    if _matches_courtesy(words, _THANKS_TERMS):
         return "thanks"
-    if any(words == term or words.startswith(f"{term} ") for term in _FAREWELL_TERMS):
+    if _matches_courtesy(words, _FAREWELL_TERMS):
         return "farewell"
     if any(term in words for term in _WELLBEING_TERMS):
         return "wellbeing"
@@ -492,10 +524,102 @@ def _small_talk_kind(normalized: str) -> str | None:
 
 
 def _is_open_question(display_text: str) -> bool:
+    """True only for input that is genuinely a question.
+
+    Deliberately conservative. Anything reaching here is unmatched, and a false
+    positive sends the person's words to a public source; a false negative only
+    reports that no capability matched.
+    """
     text = display_text.strip()
     if len(text.split()) < 2:
         return False
-    return bool(_OPEN_QUESTION_PATTERN.match(text)) or text.endswith("?")
+    if text.endswith("?"):
+        return True
+    if _INTERROGATIVE_PATTERN.match(text):
+        return True
+    if _AUXILIARY_QUESTION_PATTERN.match(text):
+        return True
+    return bool(_EXPLAIN_PATTERN.match(text))
+
+
+
+_GITHUB_CREATE_PREFIX = re.compile(
+    r"^(?:please\s+)?(?:create|make)\s+"
+    r"(?:(?:a|new|private)\s+)*"
+    r"(?:github\s+)?(?:repository|repo)\b",
+    re.IGNORECASE,
+)
+_GITHUB_NAME_MARKER = re.compile(
+    r"\b(?:called|named|titled)\s+(?P<name>.+)$",
+    re.IGNORECASE,
+)
+_GITHUB_NAME_STOP = re.compile(
+    r"(?:[.!?]\s*|\s+(?:and|but|with|without|do\s+not|don't)\b)",
+    re.IGNORECASE,
+)
+_GITHUB_SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _github_create_entities(display_text: str) -> dict[str, str] | None:
+    if _GITHUB_CREATE_PREFIX.match(display_text) is None:
+        return None
+    marker = _GITHUB_NAME_MARKER.search(display_text)
+    if marker is None:
+        return None
+    requested = _GITHUB_NAME_STOP.split(
+        marker.group("name"),
+        maxsplit=1,
+    )[0].strip(" \"'.")
+    if not requested:
+        return None
+    repository_name = _GITHUB_SAFE_NAME.sub("-", requested).strip("-._")
+    repository_name = re.sub(r"-{2,}", "-", repository_name)[:100]
+    if not repository_name:
+        return None
+    return {
+        "requested_name": requested,
+        "repository_name": repository_name,
+        "private": "true",
+        "auto_init": "false",
+    }
+
+
+def _is_github_status(normalized: str) -> bool:
+    return "github" in normalized and any(
+        term in normalized
+        for term in (
+            "connection",
+            "connected",
+            "account status",
+            "github status",
+        )
+    )
+
+
+def _is_github_repository_read(normalized: str) -> bool:
+    return (
+        "github" in normalized
+        and any(
+            term in normalized
+            for term in (
+                "repositories",
+                "repository status",
+                "repos",
+                "repo status",
+            )
+        )
+        and any(
+            term in normalized
+            for term in (
+                "check",
+                "show",
+                "list",
+                "inspect",
+                "status",
+                "what",
+            )
+        )
+    )
 
 
 def classify_intent(utterance: str) -> Intent:
@@ -585,6 +709,18 @@ def classify_intent(utterance: str) -> Intent:
         kind = IntentKind.PHONE_OPEN_YOUTUBE
         confidence = 0.99
         entities = _media_entities(phone_query or "YouTube")
+    elif (
+        github_create := _github_create_entities(display_text)
+    ) is not None:
+        kind = IntentKind.GITHUB_CREATE_REPOSITORY
+        confidence = 0.99
+        entities = github_create
+    elif _is_github_status(normalized):
+        kind = IntentKind.GITHUB_CONNECTION_STATUS
+        confidence = 0.98
+    elif _is_github_repository_read(normalized):
+        kind = IntentKind.GITHUB_REPOSITORIES
+        confidence = 0.98
     elif _contains_any(
         normalized,
         (

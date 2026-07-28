@@ -53,6 +53,9 @@ class IntentKind(StrEnum):
     SMALL_TALK = "small_talk"
     DATETIME_QUERY = "datetime_query"
     OPEN_QUESTION = "open_question"
+    GITHUB_CONNECTION_STATUS = "github_connection_status"
+    GITHUB_REPOSITORIES = "github_repositories"
+    GITHUB_CREATE_REPOSITORY = "github_create_repository"
     UNKNOWN = "unknown"
 
 

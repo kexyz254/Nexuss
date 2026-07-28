@@ -5,10 +5,15 @@ Capability execution router for verified local, public-web, media, and device ac
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Protocol
 from uuid import UUID
 
+from nexuss.connectors.errors import ConnectorError
+from nexuss.connectors.github.models import RepositoryCreateApproval
+from nexuss.connectors.github.runtime import get_github_connector
+from nexuss.connectors.github.service import GitHubConnectorService
 from nexuss.constitution import ConstitutionError, get_constitution
 from nexuss.core.local_workspace import (
     LocalWorkspaceEvidenceError,
@@ -22,11 +27,24 @@ from nexuss.core.web_actions import (
 )
 from nexuss.device.client import DeviceCommandError, DeviceNodeClient
 from nexuss.domain.models import (
+    ApprovalRequest,
     CapabilityResult,
     EvidenceRecord,
     PlanStep,
     StepStatus,
 )
+from nexuss.intelligence.context import ConversationContextStore
+from nexuss.intelligence.errors import IntelligenceError
+from nexuss.intelligence.knowledge import ExistingKnowledgeProviderAdapter
+from nexuss.intelligence.models import (
+    AnswerStyle,
+    ContentSensitivity,
+    IntelligenceMode,
+    IntelligenceRequest,
+)
+from nexuss.intelligence.provider import ExtractiveReasoningProvider
+from nexuss.intelligence.router import ProviderRouter
+from nexuss.intelligence.service import IntelligenceService
 from nexuss.knowledge.provider import KnowledgeProvider, KnowledgeProviderError
 from nexuss.media.youtube import MediaProviderError, YouTubeProvider
 from nexuss.memory.models import SourceTrust, Volatility
@@ -503,8 +521,31 @@ def _execute_memory_remember(
     definition: the person typed it. Web-derived claims arrive through the
     study pipeline at PUBLIC_WEB trust, never through here.
     """
-    statement = str(step.parameters.get("statement", "")).strip()
-    topic = str(step.parameters.get("topic", "")).strip() or "general"
+    statement = str(
+        step.parameters.get("statement", "")
+    ).strip()
+    topic = (
+        str(step.parameters.get("topic", "")).strip()
+        or "general"
+    )
+
+    normalized_statement = " ".join(
+        statement.casefold().split()
+    ).strip(" .!?")
+
+    if normalized_statement in {
+        "that",
+        "this",
+        "it",
+        "that information",
+        "this information",
+        "the above",
+    }:
+        return _failed(
+            step,
+            "MEMORY_STATEMENT_AMBIGUOUS",
+        )
+
     if not statement:
         return _failed(step, "MEMORY_STATEMENT_MISSING")
     try:
@@ -672,7 +713,79 @@ def _execute_assistant_converse(
 
 # A recalled claim must clear this before Nexuss answers from memory instead of
 # looking the question up. Below it, memory is a hint, not an answer.
-_MEMORY_ANSWER_THRESHOLD = 0.35
+_INTELLIGENCE_CONTEXT = ConversationContextStore()
+
+
+_MEMORY_ANSWER_THRESHOLD = 0.70
+
+_KNOWLEDGE_TOKEN_PATTERN = re.compile(
+    r"[A-Za-z0-9][A-Za-z0-9'\-]*"
+)
+
+_KNOWLEDGE_STOP_WORDS = {
+    "a",
+    "about",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "can",
+    "do",
+    "does",
+    "explain",
+    "for",
+    "from",
+    "how",
+    "i",
+    "in",
+    "is",
+    "it",
+    "me",
+    "of",
+    "on",
+    "or",
+    "the",
+    "this",
+    "to",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "why",
+    "with",
+    "you",
+    "your",
+}
+
+
+def _knowledge_terms(value: str) -> set[str]:
+    return {
+        match.group(0).casefold()
+        for match in _KNOWLEDGE_TOKEN_PATTERN.finditer(value)
+        if match.group(0).casefold()
+        not in _KNOWLEDGE_STOP_WORDS
+    }
+
+
+def _memory_match_is_relevant(
+    question: str,
+    statement: str,
+) -> bool:
+    question_terms = _knowledge_terms(question)
+    statement_terms = _knowledge_terms(statement)
+
+    if not question_terms or not statement_terms:
+        return False
+
+    shared = question_terms & statement_terms
+    overlap = len(shared) / len(question_terms)
+
+    return bool(shared) and overlap >= 0.34
+
 
 
 def _execute_knowledge_answer(
@@ -680,6 +793,7 @@ def _execute_knowledge_answer(
     timestamp: datetime,
     memory_store: MemoryStore | None,
     knowledge_provider: KnowledgeProvider,
+    session_id: UUID | None,
 ) -> CapabilityResult:
     """Answer from memory when memory is confident, from public sources when not.
 
@@ -692,7 +806,17 @@ def _execute_knowledge_answer(
         return _failed(step, "QUESTION_MISSING")
 
     remembered = memory_store.recall(question, limit=3, now=timestamp) if memory_store else ()
-    confident = [match for match in remembered if match.score >= _MEMORY_ANSWER_THRESHOLD]
+    confident = [
+        match
+        for match in remembered
+        if (
+            match.score >= _MEMORY_ANSWER_THRESHOLD
+            and _memory_match_is_relevant(
+                question,
+                match.claim.statement,
+            )
+        )
+    ]
 
     if confident:
         return CapabilityResult(
@@ -723,17 +847,83 @@ def _execute_knowledge_answer(
         )
 
     try:
-        research = knowledge_provider.research(question)
-    except KnowledgeProviderError as exc:
-        return _failed(step, str(exc))
+        intelligence = IntelligenceService(
+            retriever=ExistingKnowledgeProviderAdapter(
+                knowledge_provider
+            ),
+            provider_router=ProviderRouter(
+                local_provider=ExtractiveReasoningProvider(),
+            ),
+            context_store=_INTELLIGENCE_CONTEXT,
+        )
 
-    attributes = dict(research)
-    attributes["answer_path"] = "public_web"
-    attributes["question"] = question
-    attributes["memory_checked"] = True
-    # Anything from a public source stays untrusted data wherever it travels.
-    attributes["content_trust"] = "untrusted_external_source"
-    attributes["memory_saved"] = False
+        answer = intelligence.answer(
+            IntelligenceRequest(
+                session_id=session_id or step.step_id,
+                query=question,
+                style=AnswerStyle.DETAILED,
+                mode=IntelligenceMode.LOCAL_ONLY,
+                sensitivity=ContentSensitivity.PUBLIC,
+                external_processing_approved=False,
+                requires_live_sources=False,
+                max_sources=5,
+                max_evidence_chars=12_000,
+            )
+        )
+    except IntelligenceError as exc:
+        return _failed(step, exc.code)
+
+    sources = [
+        {
+            "source_id": source.source_id,
+            "title": source.title,
+            "url": (
+                str(source.url)
+                if source.url is not None
+                else None
+            ),
+            "publisher": source.publisher,
+            "published_at": (
+                source.published_at.isoformat()
+                if source.published_at is not None
+                else None
+            ),
+            "retrieved_at": source.retrieved_at.isoformat(),
+            "live": source.live,
+        }
+        for source in answer.sources
+    ]
+
+    attributes: dict[str, object] = {
+        # Preserve the existing renderer contract.
+        "answer_path": "public_web",
+        "question": question,
+        "brief": answer.answer,
+        "sources": sources,
+
+        # Intelligence-plane evidence.
+        "answer": answer.answer,
+        "claims": [
+            claim.model_dump(mode="json")
+            for claim in answer.claims
+        ],
+        "limitations": list(answer.limitations),
+        "provider_id": answer.provider_id,
+        "provider_kind": answer.provider_kind.value,
+        "intelligence_mode": answer.intelligence_mode.value,
+        "context": answer.context.model_dump(mode="json"),
+        "grounded": answer.grounded,
+        "verified": answer.verified,
+
+        # Trust boundary.
+        "source_mode": (
+            "live_public_web_local_intelligence"
+        ),
+        "memory_checked": True,
+        "content_trust": "untrusted_external_source",
+        "memory_saved": False,
+        "external_processing": False,
+    }
 
     return CapabilityResult(
         step_id=step.step_id,
@@ -741,9 +931,189 @@ def _execute_knowledge_answer(
         status=StepStatus.VERIFIED,
         evidence=[
             EvidenceRecord(
-                source="public_web:knowledge_provider",
+                source="local:intelligence_plane",
                 observed_at=timestamp,
                 attributes=attributes,
+            )
+        ],
+    )
+
+
+
+
+def _execute_github_status(
+    step: PlanStep,
+    timestamp: datetime,
+    connector: GitHubConnectorService,
+) -> CapabilityResult:
+    try:
+        health = connector.health(now=timestamp)
+    except ConnectorError as exc:
+        return _failed(step, exc.code)
+    identity = health.identity
+    return CapabilityResult(
+        step_id=step.step_id,
+        capability_id=step.capability_id,
+        status=StepStatus.VERIFIED,
+        evidence=[
+            EvidenceRecord(
+                source="connector:github",
+                observed_at=timestamp,
+                attributes={
+                    "source_mode": "live_github_readonly",
+                    "status": health.status.value,
+                    "configured": health.configured,
+                    "detail": health.detail,
+                    "account_login": (
+                        identity.account_label if identity else None
+                    ),
+                    "account_id": (
+                        identity.external_account_id if identity else None
+                    ),
+                    "account_type": (
+                        identity.account_type if identity else None
+                    ),
+                    "identity_verified": (
+                        identity.verified if identity else False
+                    ),
+                    "credentials_exposed": False,
+                },
+            )
+        ],
+    )
+
+
+def _execute_github_repositories(
+    step: PlanStep,
+    timestamp: datetime,
+    connector: GitHubConnectorService,
+) -> CapabilityResult:
+    try:
+        inventory = connector.list_repositories(now=timestamp)
+    except ConnectorError as exc:
+        return _failed(step, exc.code)
+    return CapabilityResult(
+        step_id=step.step_id,
+        capability_id=step.capability_id,
+        status=StepStatus.VERIFIED,
+        evidence=[
+            EvidenceRecord(
+                source="connector:github",
+                observed_at=timestamp,
+                attributes={
+                    "source_mode": "live_github_readonly",
+                    "account_login": inventory.account_login,
+                    "total": inventory.total,
+                    "private_count": inventory.private_count,
+                    "public_count": inventory.public_count,
+                    "archived_count": inventory.archived_count,
+                    "disabled_count": inventory.disabled_count,
+                    "fork_count": inventory.fork_count,
+                    "repositories": [
+                        {
+                            "repository_id": repository.repository_id,
+                            "name": repository.name,
+                            "full_name": repository.full_name,
+                            "private": repository.private,
+                            "archived": repository.archived,
+                            "disabled": repository.disabled,
+                            "fork": repository.fork,
+                            "html_url": str(repository.html_url),
+                            "default_branch": repository.default_branch,
+                            "updated_at": (
+                                repository.updated_at.isoformat()
+                                if repository.updated_at
+                                else None
+                            ),
+                        }
+                        for repository in inventory.repositories[:50]
+                    ],
+                    "credentials_exposed": False,
+                },
+            )
+        ],
+    )
+
+
+def _execute_github_create_repository(
+    step: PlanStep,
+    timestamp: datetime,
+    connector: GitHubConnectorService,
+    approval: ApprovalRequest | None,
+) -> CapabilityResult:
+    if approval is None:
+        return _failed(step, "GITHUB_APPROVAL_CONTEXT_MISSING")
+    requested_name = str(
+        step.parameters.get("requested_name", "")
+    ).strip()
+    expected_name = str(
+        step.parameters.get("repository_name", "")
+    ).strip()
+    expected_account = str(
+        step.parameters.get("account_login", "")
+    ).strip()
+    expected_digest = str(
+        step.parameters.get("connector_payload_sha256", "")
+    ).strip()
+    try:
+        prepared = connector.prepare_private_repository(
+            requested_name,
+            now=timestamp,
+        )
+    except ConnectorError as exc:
+        return _failed(step, exc.code)
+    if (
+        prepared.repository_name != expected_name
+        or prepared.owner_login.casefold() != expected_account.casefold()
+        or prepared.payload_sha256 != expected_digest
+    ):
+        return _failed(step, "GITHUB_PREPARED_PAYLOAD_MISMATCH")
+    connector_approval = RepositoryCreateApproval(
+        approval_id=approval.approval_id,
+        request_id=prepared.request_id,
+        account_login=expected_account,
+        payload_sha256=prepared.payload_sha256,
+        approved_at=timestamp,
+        expires_at=approval.expires_at,
+    )
+    try:
+        verified = connector.create_private_repository(
+            prepared,
+            connector_approval,
+            now=timestamp,
+        )
+    except ConnectorError as exc:
+        return _failed(step, exc.code)
+    repository = verified.repository
+    return CapabilityResult(
+        step_id=step.step_id,
+        capability_id=step.capability_id,
+        status=StepStatus.VERIFIED,
+        evidence=[
+            EvidenceRecord(
+                source="connector:github",
+                observed_at=timestamp,
+                attributes={
+                    "source_mode": "live_github_controlled_write",
+                    "repository_id": repository.repository_id,
+                    "node_id": repository.node_id,
+                    "owner_login": repository.owner_login,
+                    "name": repository.name,
+                    "full_name": repository.full_name,
+                    "private": repository.private,
+                    "html_url": str(repository.html_url),
+                    "api_url": str(repository.api_url),
+                    "initial_commit": False,
+                    "private_verified": verified.private_verified,
+                    "empty_repository_verified": (
+                        verified.empty_repository_verified
+                    ),
+                    "owner_verified": verified.owner_verified,
+                    "name_verified": verified.name_verified,
+                    "approval_id": str(verified.approval_id),
+                    "connector_payload_sha256": verified.payload_sha256,
+                    "credentials_exposed": False,
+                },
             )
         ],
     )
@@ -761,8 +1131,35 @@ def execute_step(
     session_id: UUID | None = None,
     pairing_gateway: PhonePairingGateway | None = None,
     memory_store: MemoryStore | None = None,
+    github_connector: GitHubConnectorService | None = None,
+    approval: ApprovalRequest | None = None,
 ) -> CapabilityResult:
     timestamp = observed_at or datetime.now(UTC)
+
+    if step.capability_id in {
+        "github.connection.status",
+        "github.repositories.list",
+        "github.repository.create",
+    }:
+        connector = (
+            github_connector
+            if github_connector is not None
+            else get_github_connector()
+        )
+        if step.capability_id == "github.connection.status":
+            return _execute_github_status(step, timestamp, connector)
+        if step.capability_id == "github.repositories.list":
+            return _execute_github_repositories(
+                step,
+                timestamp,
+                connector,
+            )
+        return _execute_github_create_repository(
+            step,
+            timestamp,
+            connector,
+            approval,
+        )
 
     if step.capability_id == "assistant.converse":
         return _execute_assistant_converse(step, timestamp)
@@ -771,7 +1168,11 @@ def execute_step(
         if knowledge_provider is None:
             return _failed(step, "KNOWLEDGE_PROVIDER_NOT_CONFIGURED")
         return _execute_knowledge_answer(
-            step, timestamp, memory_store, knowledge_provider
+            step,
+            timestamp,
+            memory_store,
+            knowledge_provider,
+            session_id,
         )
 
     if step.capability_id in {"memory.remember", "memory.recall", "memory.forget"}:

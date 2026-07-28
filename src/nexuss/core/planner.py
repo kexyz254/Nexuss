@@ -5,6 +5,8 @@ Deterministic task planning for the Nexuss P5 knowledge, media, and mobile plane
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -202,6 +204,64 @@ def _direct_specs(intent: Intent) -> list[StepSpec] | None:
                 RiskTier.INFORMATIONAL,
                 ["conversational_reply"],
                 {"datetime_field": intent.entities.get("datetime_field", "time")},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.GITHUB_CONNECTION_STATUS:
+        return [
+            (
+                "github.connection.status",
+                RiskTier.INFORMATIONAL,
+                ["github_connection_status"],
+                {},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.GITHUB_REPOSITORIES:
+        return [
+            (
+                "github.repositories.list",
+                RiskTier.LOW,
+                ["github_repository_inventory"],
+                {},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.GITHUB_CREATE_REPOSITORY:
+        repository_name = intent.entities.get("repository_name", "")
+        payload: dict[str, object] = {
+            "name": repository_name,
+            "private": True,
+            "auto_init": False,
+        }
+        digest = hashlib.sha256(
+            json.dumps(
+                payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        return [
+            (
+                "github.repository.create",
+                RiskTier.HIGH,
+                ["github_repository_created_verified"],
+                {
+                    "requested_name": intent.entities.get(
+                        "requested_name",
+                        repository_name,
+                    ),
+                    "repository_name": repository_name,
+                    "account_login": intent.entities.get("account_login", ""),
+                    "account_id": intent.entities.get("account_id", ""),
+                    "private": True,
+                    "auto_init": False,
+                    "connector_payload_sha256": digest,
+                },
                 False,
             )
         ]

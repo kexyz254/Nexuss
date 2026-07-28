@@ -274,12 +274,57 @@ _MANIFESTS = (
         capability_id="github.read_summary",
         version="0.1.0",
         title="GitHub summary",
-        description="P1 deterministic simulation only.",
+        description=(
+            "Legacy deterministic simulation retained for "
+            "daily briefing compatibility."
+        ),
         risk_tier=RiskTier.LOW,
         approval_policy=ApprovalPolicy.NONE,
         reversible=False,
         execution_mode="simulated",
         status=CapabilityStatus.SIMULATED,
+    ),
+    CapabilityManifest(
+        capability_id="github.connection.status",
+        version="1.0.0",
+        title="GitHub connection status",
+        description=(
+            "Verify the encrypted GitHub connector identity without "
+            "exposing credentials."
+        ),
+        risk_tier=RiskTier.INFORMATIONAL,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="live_github_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="github.repositories.list",
+        version="1.0.0",
+        title="GitHub repository inventory",
+        description=(
+            "Read bounded repository metadata for the verified GitHub account."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="live_github_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="github.repository.create",
+        version="1.0.0",
+        title="Create private GitHub repository",
+        description=(
+            "Create one exact private, uninitialized repository after "
+            "payload-bound phone approval and independent verification."
+        ),
+        risk_tier=RiskTier.HIGH,
+        approval_policy=ApprovalPolicy.EXPLICIT,
+        reversible=False,
+        execution_mode="live_github_controlled_write",
+        status=CapabilityStatus.ACTIVE,
+        approval_channel=ApprovalChannel.PHONE,
     ),
     CapabilityManifest(
         capability_id="ats.read_health",
