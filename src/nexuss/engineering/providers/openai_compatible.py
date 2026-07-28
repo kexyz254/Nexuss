@@ -30,8 +30,14 @@ class OpenAICompatibleProvider:
         body = {
             "model": self.profile.model,
             "messages": [
-                {"role": "system", "content": request.system_prompt},
-                {"role": "user", "content": request.user_prompt},
+                {
+                    "role": "system",
+                    "content": request.system_prompt,
+                },
+                {
+                    "role": "user",
+                    "content": request.user_prompt,
+                },
             ],
             "response_format": {"type": "json_object"},
             "temperature": 0,
@@ -43,14 +49,68 @@ class OpenAICompatibleProvider:
                 timeout=self._timeout_seconds,
                 transport=self._transport,
                 headers={
-                    "Authorization": f"Bearer {self._api_key.get_secret_value()}",
+                    "Authorization": (
+                        "Bearer "
+                        f"{self._api_key.get_secret_value()}"
+                    ),
                     "Content-Type": "application/json",
-                    "User-Agent": "Nexuss-Engineering/1.0",
+                    "User-Agent": "Nexuss-Engineering/1.2",
                 },
             ) as client:
-                response = client.post("/chat/completions", json=body)
+                response = client.post(
+                    "/chat/completions",
+                    json=body,
+                )
                 response.raise_for_status()
                 payload = response.json()
+        except httpx.HTTPStatusError as exc:
+            status_code = exc.response.status_code
+            if status_code == 402:
+                code = (
+                    "ENGINEERING_PROVIDER_INSUFFICIENT_BALANCE"
+                )
+                message = (
+                    "The selected engineering provider has "
+                    "insufficient API balance."
+                )
+                retryable = False
+            elif status_code in {401, 403}:
+                code = (
+                    "ENGINEERING_PROVIDER_CREDENTIAL_REJECTED"
+                )
+                message = (
+                    "The selected engineering provider rejected "
+                    "its encrypted credential."
+                )
+                retryable = False
+            elif status_code == 422:
+                code = "ENGINEERING_PROVIDER_REQUEST_INVALID"
+                message = (
+                    "The selected engineering provider rejected "
+                    "the model request contract."
+                )
+                retryable = False
+            elif status_code == 429:
+                code = "ENGINEERING_PROVIDER_RATE_LIMITED"
+                message = (
+                    "The selected engineering provider "
+                    "rate-limited the request."
+                )
+                retryable = True
+            else:
+                code = "ENGINEERING_PROVIDER_UNAVAILABLE"
+                message = (
+                    "The selected engineering provider "
+                    "is unavailable."
+                )
+                retryable = status_code >= 500
+
+            raise EngineeringError(
+                code,
+                message,
+                retryable=retryable,
+                safe_details={"status_code": status_code},
+            ) from exc
         except (httpx.HTTPError, ValueError) as exc:
             raise EngineeringError(
                 "ENGINEERING_PROVIDER_UNAVAILABLE",
@@ -59,7 +119,9 @@ class OpenAICompatibleProvider:
             ) from exc
 
         try:
-            content = payload["choices"][0]["message"]["content"]
+            content = payload["choices"][0]["message"][
+                "content"
+            ]
         except (KeyError, IndexError, TypeError) as exc:
             raise EngineeringError(
                 "ENGINEERING_PROVIDER_RESPONSE_INVALID",
