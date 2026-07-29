@@ -26,6 +26,9 @@ from nexuss.archive.workflow import (
     ArchiveTaskNotFoundError,
     ArchiveWorkflowError,
 )
+from nexuss.connectors.github.workspace_api import (
+    register_github_workspace_routes,
+)
 from nexuss.core.registry import list_capabilities
 from nexuss.core.service import (
     ApprovalValidationError,
@@ -536,3 +539,5 @@ def decide_mobile_approval(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
+
+register_github_workspace_routes(app, _require_local_control)

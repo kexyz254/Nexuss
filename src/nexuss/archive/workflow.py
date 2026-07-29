@@ -8,6 +8,7 @@ P6.5E manifest only after a second phone approval.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -71,7 +72,7 @@ from nexuss.engineering.archive_publication import (
 )
 from nexuss.mobile.models import MobileApprovalSummary
 
-_APPROVAL_LIFETIME = timedelta(minutes=5)
+_APPROVAL_LIFETIME = timedelta(minutes=30)
 _RETENTION_LIFETIME = timedelta(hours=24)
 _MAX_UPLOAD_BYTES = 50_000_000
 _MAX_NATIVE_PUBLISH_FILES = 500
@@ -271,6 +272,7 @@ class ArchiveImportCoordinator:
         self._ledger = InMemoryActionLedger()
         self._lock = RLock()
         self._cleanup_stale_storage()
+        self._restore_durable_tasks()
 
     @classmethod
     def from_environment(cls) -> ArchiveImportCoordinator:
@@ -570,18 +572,29 @@ class ArchiveImportCoordinator:
         )
         policy_decisions = [
             PolicyDecision(
-                step_id=step.step_id,
-                capability_id=step.capability_id,
+                step_id=create_step.step_id,
+                capability_id=create_step.capability_id,
                 outcome=PolicyOutcome.REQUIRE_APPROVAL,
                 reason_code=(
-                    "PHONE_APPROVAL_REQUIRED_FOR_EXTERNAL_WRITE"
+                    "PHONE_APPROVAL_REQUIRED_FOR_COMBINED_ARCHIVE_IMPORT"
                 ),
                 explanation=(
-                    "This external GitHub write requires exact-payload approval "
-                    "from the paired phone."
+                    "One exact phone approval authorizes repository creation "
+                    "and publication of the validated immutable archive manifest."
                 ),
-            )
-            for step in plan.steps
+            ),
+            PolicyDecision(
+                step_id=publish_step.step_id,
+                capability_id=publish_step.capability_id,
+                outcome=PolicyOutcome.ALLOW,
+                reason_code=(
+                    "AUTHORIZED_BY_COMBINED_ARCHIVE_IMPORT_APPROVAL"
+                ),
+                explanation=(
+                    "Archive publication is covered by the same immutable "
+                    "phone-approved transaction payload."
+                ),
+            ),
         ]
         events: list[ActionEvent] = []
         self._append_event(
@@ -601,8 +614,8 @@ class ArchiveImportCoordinator:
             state=TaskState.PLANNED,
             event_type="archive_import_planned",
             detail=(
-                "Prepared a two-phase private repository creation and exact "
-                "archive publication plan."
+                "Prepared one immutable private repository creation and exact "
+                "archive publication transaction."
             ),
             occurred_at=now,
         )
@@ -611,6 +624,7 @@ class ArchiveImportCoordinator:
             session.session_id,
             create_step,
             prepared_create,
+            proposal,
             receipt,
             now,
         )
@@ -620,8 +634,8 @@ class ArchiveImportCoordinator:
             state=TaskState.AWAITING_APPROVAL,
             event_type="repository_creation_approval_requested",
             detail=(
-                "Phase one is paused pending paired-phone approval of the exact "
-                "private empty repository payload."
+                "The complete repository creation and archive publication transaction "
+                "is paused pending one paired-phone approval."
             ),
             occurred_at=now,
         )
@@ -830,7 +844,11 @@ class ArchiveImportCoordinator:
                 connector_approval,
                 now=approved_at,
             )
-        except ConnectorError as exc:
+        except Exception as raw_exc:  # noqa: BLE001 - fail-closed boundary
+            exc = self._as_connector_error(
+                raw_exc,
+                phase="repository_create",
+            )
             return self._fail_phase(
                 task_id,
                 phase="repository_create",
@@ -897,7 +915,11 @@ class ArchiveImportCoordinator:
                 verified,
                 now=datetime.now(UTC),
             )
-        except ConnectorError as exc:
+        except Exception as raw_exc:  # noqa: BLE001 - fail-closed boundary
+            exc = self._as_connector_error(
+                raw_exc,
+                phase="archive_prepare",
+            )
             return self._fail_phase(
                 task_id,
                 phase="archive_publish",
@@ -935,14 +957,6 @@ class ArchiveImportCoordinator:
         updated_plan = task.plan.model_copy(
             update={"steps": [task.plan.steps[0], publish_step]}
         )
-        next_approval = self._archive_publish_approval(
-            task_id,
-            task.user_session_id,
-            publish_step,
-            prepared_publish,
-            observed_at,
-        )
-
         with self._lock:
             context.prepared_publish = prepared_publish
             context.phase = "archive_publish"
@@ -950,25 +964,25 @@ class ArchiveImportCoordinator:
             self._append_event(
                 task_id,
                 current.events,
-                state=TaskState.AWAITING_APPROVAL,
-                event_type="archive_publication_approval_requested",
+                state=TaskState.EXECUTING,
+                event_type="archive_publication_started",
                 detail=(
-                    "The private repository is verified empty. Phase two is "
-                    "paused pending approval of every archive path and hash."
+                    "The approved transaction verified the private empty "
+                    "repository and continued directly to archive publication."
                 ),
                 occurred_at=observed_at,
             )
             updated = current.model_copy(
                 update={
-                    "state": TaskState.AWAITING_APPROVAL,
+                    "state": TaskState.EXECUTING,
                     "plan": updated_plan,
-                    "approval": next_approval,
                     "updated_at": observed_at,
                 }
             )
             self._tasks[task_id] = updated
             self._record_receipt(updated)
-            return updated.model_copy(deep=True)
+
+        return self._execute_archive_publication(task_id, observed_at)
 
     def _execute_archive_publication(
         self,
@@ -1000,7 +1014,11 @@ class ArchiveImportCoordinator:
                 connector_approval,
                 now=approved_at,
             )
-        except ConnectorError as exc:
+        except Exception as raw_exc:  # noqa: BLE001 - fail-closed boundary
+            exc = self._as_connector_error(
+                raw_exc,
+                phase="archive_publish",
+            )
             return self._fail_phase(
                 task_id,
                 phase="archive_publish",
@@ -1264,44 +1282,62 @@ class ArchiveImportCoordinator:
             self._record_receipt(updated)
             return updated.model_copy(deep=True)
 
+    # NEXUSS_SINGLE_APPROVAL_ARCHIVE_IMPORT_V1
     @staticmethod
     def _repository_create_approval(
         task_id: UUID,
         session_id: UUID,
         step: PlanStep,
         prepared: PreparedRepositoryCreate,
+        proposal: ArchiveRepositoryImportProposal,
         receipt: ArchiveIntakeReceipt,
         now: datetime,
     ) -> ApprovalRequest:
         exact_payload = {
-            "capability_id": step.capability_id,
+            "capability_id": "github.repository.import_archive",
             "account_login": prepared.owner_login,
             "repository_name": prepared.repository_name,
             "private": True,
             "auto_init": False,
             "description": prepared.description,
+            "branch": proposal.branch,
+            "commit_message": proposal.commit_message,
             "archive_name": receipt.archive_name,
             "archive_sha256": receipt.archive_sha256,
             "manifest_sha256": receipt.manifest_sha256,
-            "file_count_waiting_for_phase_two": receipt.file_count,
-            "phase": 1,
-            "phase_count": 2,
+            "files": [
+                item.model_dump(mode="json")
+                for item in proposal.files
+            ],
+            "force_push": False,
+            "workflow_files_changed": False,
+            "approval_count": 1,
         }
+        exact_json = json.dumps(
+            exact_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        )
+        combined_payload_sha256 = hashlib.sha256(
+            exact_json.encode("utf-8")
+        ).hexdigest()
         return ApprovalRequest(
             approval_id=uuid5(
                 NAMESPACE_URL,
                 (
-                    f"nexuss:archive-approval:{task_id}:create:"
-                    f"{prepared.payload_sha256}"
+                    f"nexuss:archive-approval:{task_id}:combined:"
+                    f"{combined_payload_sha256}"
                 ),
             ),
             task_id=task_id,
-            capability_id=step.capability_id,
+            capability_id="github.repository.import_archive",
             status=ApprovalStatus.PENDING,
-            action_title="Create private empty GitHub repository",
+            action_title="Create private repository and publish ZIP",
             action_summary=(
-                "Phase 1 of 2: create one private repository without a "
-                "README, license, .gitignore, template, branch, or commit."
+                "One approval creates the private empty repository, publishes "
+                f"the exact {len(proposal.files)}-file manifest to "
+                f"{proposal.branch}, and verifies the remote commit and tree."
             ),
             exact_preview=json.dumps(
                 exact_payload,
@@ -1310,10 +1346,10 @@ class ArchiveImportCoordinator:
                 ensure_ascii=False,
             ),
             destination_label=(
-                f"GitHub · {prepared.owner_login}/"
-                f"{prepared.repository_name}"
+                f"GitHub - {prepared.owner_login}/"
+                f"{prepared.repository_name}:{proposal.branch}"
             ),
-            payload_sha256=prepared.payload_sha256,
+            payload_sha256=combined_payload_sha256,
             approval_token=secrets.token_urlsafe(32),
             session_id=session_id,
             expires_at=now + _APPROVAL_LIFETIME,
@@ -1451,7 +1487,7 @@ class ArchiveImportCoordinator:
 
     @staticmethod
     def _normalize_repository_name(value: str) -> str:
-        normalized = value.strip()
+        normalized = value.strip().rstrip(".")
         if not _REPOSITORY_NAME.fullmatch(normalized):
             raise ArchiveWorkflowError(
                 "ARCHIVE_REPOSITORY_NAME_INVALID",
@@ -1534,6 +1570,233 @@ class ArchiveImportCoordinator:
             )
         )
 
+    # NEXUSS_NATIVE_ARCHIVE_DURABILITY_V1
+    def _task_state_path(self, task_id: UUID) -> Path:
+        return self._root / "tasks" / str(task_id) / "workflow-state.json"
+
+    def _persist_task_locked(self, task: TaskView) -> None:
+        context = self._contexts.get(task.task_id)
+        if context is None:
+            return
+
+        state_path = self._task_state_path(task.task_id)
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = state_path.with_suffix(".tmp")
+
+        payload = {
+            "version": 1,
+            "task": task.model_dump(mode="json"),
+            "context": {
+                "receipt": context.receipt.model_dump(mode="json"),
+                "proposal": context.proposal.model_dump(mode="json"),
+                "prepared_create": context.prepared_create.model_dump(mode="json"),
+                "phase": context.phase,
+                "verified_create": (
+                    context.verified_create.model_dump(mode="json")
+                    if context.verified_create is not None
+                    else None
+                ),
+                "prepared_publish": (
+                    context.prepared_publish.model_dump(mode="json")
+                    if context.prepared_publish is not None
+                    else None
+                ),
+            },
+        }
+
+        temporary.write_text(
+            json.dumps(payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        temporary.replace(state_path)
+
+    def _restore_durable_tasks(self) -> None:
+        tasks_root = self._root / "tasks"
+        if not tasks_root.exists():
+            return
+
+        for state_path in tasks_root.glob("*/workflow-state.json"):
+            try:
+                payload = json.loads(state_path.read_text(encoding="utf-8"))
+                if payload.get("version") != 1:
+                    continue
+
+                task = TaskView.model_validate(payload["task"])
+                context_data = payload["context"]
+                context = _ArchiveTaskContext(
+                    receipt=ArchiveIntakeReceipt.model_validate(
+                        context_data["receipt"]
+                    ),
+                    proposal=ArchiveRepositoryImportProposal.model_validate(
+                        context_data["proposal"]
+                    ),
+                    prepared_create=PreparedRepositoryCreate.model_validate(
+                        context_data["prepared_create"]
+                    ),
+                    phase=str(context_data["phase"]),
+                    verified_create=(
+                        VerifiedRepositoryCreate.model_validate(
+                            context_data["verified_create"]
+                        )
+                        if context_data.get("verified_create") is not None
+                        else None
+                    ),
+                    prepared_publish=(
+                        PreparedArchivePublish.model_validate(
+                            context_data["prepared_publish"]
+                        )
+                        if context_data.get("prepared_publish") is not None
+                        else None
+                    ),
+                )
+
+                self._tasks[task.task_id] = task
+                self._contexts[task.task_id] = context
+                self._request_index[task.request_id] = task.task_id
+                target_key = (
+                    f"{context.proposal.account_login.casefold()}/"
+                    f"{context.proposal.repository_name.casefold()}"
+                )
+                self._target_index[target_key] = task.task_id
+                self._record_receipt(task)
+            except Exception as exc:  # noqa: BLE001 - durable recovery boundary
+                diagnostic = self._root / "recovery-errors.jsonl"
+                record = {
+                    "observed_at": datetime.now(UTC).isoformat(),
+                    "state_path": str(state_path),
+                    "exception_type": type(exc).__name__,
+                    "message": str(exc)[:1000],
+                }
+                with diagnostic.open("a", encoding="utf-8") as output:
+                    output.write(json.dumps(record, sort_keys=True) + "\n")
+
+    # NEXUSS_PROFESSIONAL_ARCHIVE_RECOVERY_V2
+    def list_recoverable_tasks(self) -> tuple[TaskView, ...]:
+        """Return interrupted imports whose exact approval was consumed."""
+
+        recoverable_states = {
+            TaskState.EXECUTING,
+            TaskState.PARTIALLY_COMPLETED,
+            TaskState.FAILED,
+        }
+        with self._lock:
+            items = [
+                task.model_copy(deep=True)
+                for task in self._tasks.values()
+                if (
+                    task.state in recoverable_states
+                    and task.approval is not None
+                    and task.approval.status is ApprovalStatus.CONSUMED
+                    and self._contexts.get(task.task_id) is not None
+                )
+            ]
+        return tuple(
+            sorted(items, key=lambda item: item.updated_at, reverse=True)
+        )
+
+    def resume_interrupted_task(self, task_id: UUID) -> TaskView:
+        """Resume one consumed durable transaction without new approval."""
+
+        with self._lock:
+            task = self._tasks.get(task_id)
+            context = self._contexts.get(task_id)
+            if task is None or context is None:
+                raise ArchiveTaskNotFoundError(str(task_id))
+            if task.state is TaskState.COMPLETED:
+                return task.model_copy(deep=True)
+            approval = task.approval
+            if (
+                approval is None
+                or approval.status is not ApprovalStatus.CONSUMED
+            ):
+                raise ArchiveApprovalValidationError(
+                    "RECOVERY_REQUIRES_CONSUMED_APPROVAL"
+                )
+            if task.state not in {
+                TaskState.EXECUTING,
+                TaskState.PARTIALLY_COMPLETED,
+                TaskState.FAILED,
+            }:
+                raise ArchiveApprovalValidationError(
+                    "TASK_IS_NOT_RECOVERABLE"
+                )
+
+            approved_at = next(
+                (
+                    event.occurred_at
+                    for event in reversed(task.events)
+                    if event.event_type in {
+                        "archive_publish_approval_granted",
+                        "repository_create_approval_granted",
+                    }
+                ),
+                task.updated_at,
+            )
+            observed_at = datetime.now(UTC)
+            self._append_event(
+                task_id,
+                task.events,
+                state=TaskState.EXECUTING,
+                event_type="archive_transaction_recovery_started",
+                detail=(
+                    "Nexuss resumed the existing consumed approval; no new "
+                    "repository or approval was created."
+                ),
+                occurred_at=observed_at,
+            )
+            executing = task.model_copy(
+                update={
+                    "state": TaskState.EXECUTING,
+                    "updated_at": observed_at,
+                }
+            )
+            self._tasks[task_id] = executing
+            self._record_receipt(executing)
+            phase = context.phase
+
+        if phase == "archive_publish":
+            return self._execute_archive_publication(task_id, approved_at)
+        if phase == "repository_create":
+            return self._execute_repository_creation(task_id, approved_at)
+
+        error = ConnectorError(
+            "ARCHIVE_PHASE_INVALID",
+            "The durable archive task has an invalid recovery phase.",
+            retryable=False,
+            safe_details={"phase": phase},
+        )
+        return self._fail_phase(
+            task_id,
+            phase="repository_create",
+            exc=error,
+            partially_completed=False,
+        )
+
+    @staticmethod
+    def _as_connector_error(
+        exc: Exception,
+        *,
+        phase: str,
+    ) -> ConnectorError:
+        if isinstance(exc, ConnectorError):
+            return exc
+        message = str(exc).replace("\r", " ").replace("\n", " ")
+        message = re.sub(
+            r"(?i)(authorization|token|password|secret)\s*[:=]\s*\S+",
+            r"\1=[REDACTED]",
+            message,
+        )[:1000]
+        return ConnectorError(
+            "ARCHIVE_UNEXPECTED_EXECUTION_ERROR",
+            "An unexpected archive execution error was captured safely.",
+            retryable=False,
+            safe_details={
+                "phase": phase,
+                "exception_type": type(exc).__name__,
+                "message": message,
+            },
+        )
+
     def _record_receipt(self, task: TaskView) -> None:
         previous = self._ledger.get(task.task_id)
         version = 1 if previous is None else previous.receipt_version + 1
@@ -1567,6 +1830,7 @@ class ArchiveImportCoordinator:
                 reversible=False,
             )
         )
+        self._persist_task_locked(task)
 
     def _cleanup_stale_storage(self) -> None:
         cutoff = datetime.now(UTC).timestamp() - _RETENTION_LIFETIME.total_seconds()

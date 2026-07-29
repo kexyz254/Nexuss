@@ -278,48 +278,35 @@ def _create_task(
     return coordinator, task
 
 
-def test_two_phone_approvals_publish_and_verify(
+def test_one_phone_approval_publishes_and_verifies(
     tmp_path: Path,
 ) -> None:
     service = FakeGitHubService()
     session = _session()
-    coordinator, first = _create_task(
+    coordinator, task = _create_task(
         tmp_path,
         service,
         session,
     )
 
-    assert first.state is TaskState.AWAITING_APPROVAL
-    assert first.approval is not None
-    assert first.approval.capability_id == "github.repository.create"
-    assert first.approval.approval_channel is ApprovalChannel.PHONE
+    assert task.state is TaskState.AWAITING_APPROVAL
+    assert task.approval is not None
+    assert task.approval.capability_id == (
+        "github.repository.import_archive"
+    )
+    assert task.approval.approval_channel is ApprovalChannel.PHONE
     assert service.create_calls == 0
     assert service.publish_calls == 0
 
-    second = coordinator.approve_task(
-        first.task_id,
-        _decision(first, ApprovalDecisionKind.APPROVE),
-        session,
-        approval_channel=ApprovalChannel.PHONE,
-    )
-
-    assert second.state is TaskState.AWAITING_APPROVAL
-    assert second.approval is not None
-    assert second.approval.capability_id == (
-        "github.repository.publish_archive"
-    )
-    assert service.create_calls == 1
-    assert service.publish_calls == 0
-    assert len(second.results) == 1
-
     completed = coordinator.approve_task(
-        second.task_id,
-        _decision(second, ApprovalDecisionKind.APPROVE),
+        task.task_id,
+        _decision(task, ApprovalDecisionKind.APPROVE),
         session,
         approval_channel=ApprovalChannel.PHONE,
     )
 
     assert completed.state is TaskState.COMPLETED
+    assert service.create_calls == 1
     assert service.publish_calls == 1
     assert len(completed.results) == 2
     receipt = coordinator.get_receipt(completed.task_id)
@@ -327,7 +314,6 @@ def test_two_phone_approvals_publish_and_verify(
     assert receipt.reversible is False
     assert receipt.state is TaskState.COMPLETED
     assert len(coordinator.get_receipt_history(completed.task_id)) >= 5
-
 
 def test_desktop_cannot_approve_external_write(
     tmp_path: Path,
@@ -354,37 +340,30 @@ def test_desktop_cannot_approve_external_write(
     assert service.create_calls == 0
 
 
-def test_rejecting_phase_two_records_empty_repository(
+def test_rejecting_combined_approval_performs_no_github_write(
     tmp_path: Path,
 ) -> None:
     service = FakeGitHubService()
     session = _session()
-    coordinator, first = _create_task(
+    coordinator, task = _create_task(
         tmp_path,
         service,
         session,
     )
-    second = coordinator.approve_task(
-        first.task_id,
-        _decision(first, ApprovalDecisionKind.APPROVE),
-        session,
-        approval_channel=ApprovalChannel.PHONE,
-    )
 
     rejected = coordinator.approve_task(
-        second.task_id,
-        _decision(second, ApprovalDecisionKind.REJECT),
+        task.task_id,
+        _decision(task, ApprovalDecisionKind.REJECT),
         session,
         approval_channel=ApprovalChannel.PHONE,
     )
 
-    assert rejected.state is TaskState.PARTIALLY_COMPLETED
+    assert rejected.state is TaskState.DENIED
     assert rejected.approval is not None
     assert rejected.approval.status is ApprovalStatus.REJECTED
-    assert service.create_calls == 1
+    assert service.create_calls == 0
     assert service.publish_calls == 0
     assert coordinator.get_receipt(rejected.task_id).verified is False
-
 
 def test_request_id_is_idempotent(tmp_path: Path) -> None:
     service = FakeGitHubService()
@@ -423,7 +402,7 @@ def test_request_id_is_idempotent(tmp_path: Path) -> None:
     assert second.approval == first.approval
 
 
-def test_expired_second_approval_leaves_verified_empty_repository(
+def test_expired_combined_approval_performs_no_github_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -442,27 +421,96 @@ def test_expired_second_approval_leaves_verified_empty_repository(
     )
     service = FakeGitHubService()
     session = _session()
-    coordinator, first = _create_task(
+    coordinator, task = _create_task(
         tmp_path,
         service,
         session,
     )
-    second = coordinator.approve_task(
-        first.task_id,
-        _decision(first, ApprovalDecisionKind.APPROVE),
-        session,
-        approval_channel=ApprovalChannel.PHONE,
-    )
-    ControlledDateTime.current += timedelta(minutes=6)
+    ControlledDateTime.current += timedelta(minutes=31)
 
     pending = coordinator.list_pending_phone_approvals(
         session.session_id
     )
 
     assert pending == ()
-    task = coordinator.get_task(second.task_id)
-    assert task.state is TaskState.PARTIALLY_COMPLETED
-    assert task.approval is not None
-    assert task.approval.status is ApprovalStatus.EXPIRED
-    assert service.create_calls == 1
+    expired = coordinator.get_task(task.task_id)
+    assert expired.state is TaskState.DENIED
+    assert expired.approval is not None
+    assert expired.approval.status is ApprovalStatus.EXPIRED
+    assert service.create_calls == 0
     assert service.publish_calls == 0
+
+
+# NEXUSS_PROFESSIONAL_ARCHIVE_RECOVERY_TESTS_V2
+from nexuss.connectors.errors import ConnectorError as _RecoveryConnectorError
+
+
+class _FlakyRecoveryPublishService(FakeGitHubService):
+    def __init__(self) -> None:
+        super().__init__()
+        self.fail_publication = True
+
+    def publish_archive_to_empty_repository(
+        self,
+        prepared,
+        approval,
+        *,
+        now=None,
+    ):
+        if self.fail_publication:
+            self.fail_publication = False
+            raise _RecoveryConnectorError(
+                "GITHUB_TRANSIENT_TEST_FAILURE",
+                "simulated publication interruption",
+            )
+        return super().publish_archive_to_empty_repository(
+            prepared,
+            approval,
+            now=now,
+        )
+
+
+class _UnexpectedRecoveryCreateService(FakeGitHubService):
+    def create_private_repository(self, prepared, approval, *, now=None):
+        raise RuntimeError("unexpected create crash")
+
+
+def test_resume_consumed_partial_transaction(tmp_path: Path) -> None:
+    service = _FlakyRecoveryPublishService()
+    session = _session()
+    coordinator, task = _create_task(tmp_path, service, session)
+
+    partial = coordinator.approve_task(
+        task.task_id,
+        _decision(task, ApprovalDecisionKind.APPROVE),
+        session,
+        approval_channel=ApprovalChannel.PHONE,
+    )
+    assert partial.state is TaskState.PARTIALLY_COMPLETED
+
+    recovered = coordinator.resume_interrupted_task(task.task_id)
+    assert recovered.state is TaskState.COMPLETED
+    assert any(
+        event.event_type == "archive_transaction_recovery_started"
+        for event in recovered.events
+    )
+
+
+def test_unexpected_create_exception_becomes_failed_receipt(
+    tmp_path: Path,
+) -> None:
+    service = _UnexpectedRecoveryCreateService()
+    session = _session()
+    coordinator, task = _create_task(tmp_path, service, session)
+
+    failed = coordinator.approve_task(
+        task.task_id,
+        _decision(task, ApprovalDecisionKind.APPROVE),
+        session,
+        approval_channel=ApprovalChannel.PHONE,
+    )
+
+    assert failed.state is TaskState.FAILED
+    assert failed.results[-1].error_code == (
+        "ARCHIVE_UNEXPECTED_EXECUTION_ERROR"
+    )

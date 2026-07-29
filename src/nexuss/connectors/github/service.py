@@ -23,6 +23,7 @@ from nexuss.connectors.github.archive_publisher import (
 )
 from nexuss.connectors.github.client import GitHubApiClient
 from nexuss.connectors.github.device_flow import GitHubDeviceFlowClient
+from nexuss.connectors.github.git_cli_publisher import GitCliArchivePublisher
 from nexuss.connectors.github.models import (
     GitHubConnectChallenge,
     GitHubConnectionProfile,
@@ -35,6 +36,7 @@ from nexuss.connectors.github.models import (
     VerifiedRepositoryCreate,
     canonical_payload_bytes,
 )
+from nexuss.connectors.github.read_api import GitHubReadOnlyApi
 from nexuss.connectors.vault import SecretVault
 from nexuss.engineering.archive_intake import ArchiveIntakeReceipt
 from nexuss.engineering.archive_publication import ArchiveRepositoryImportProposal
@@ -245,12 +247,22 @@ class GitHubConnectorService:
         self._require_account_match(profile, account.account_id, account.login)
         if account.login.casefold() != prepared.owner_login.casefold():
             raise ConnectorError("GITHUB_ACCOUNT_MISMATCH", "The connected GitHub account changed.")
-        if api.repository_exists(account.login, prepared.repository_name):
-            raise ConnectorError("GITHUB_REPOSITORY_ALREADY_EXISTS", "A repository with this name already exists.")
+        # NEXUSS_IDEMPOTENT_REPOSITORY_CREATE_V2
+        already_exists = api.repository_exists(
+            account.login,
+            prepared.repository_name,
+        )
+        if not already_exists:
+            api.create_repository(prepared.payload)
 
-        api.create_repository(prepared.payload)
-        repository = api.get_repository(account.login, prepared.repository_name)
-        empty = api.repository_is_empty(account.login, prepared.repository_name)
+        repository = api.get_repository(
+            account.login,
+            prepared.repository_name,
+        )
+        empty = api.repository_is_empty(
+            account.login,
+            prepared.repository_name,
+        )
         private_verified = repository.private is True
         owner_verified = repository.owner_login.casefold() == account.login.casefold()
         name_verified = repository.name.casefold() == prepared.repository_name.casefold()
@@ -319,12 +331,32 @@ class GitHubConnectorService:
                 "The archive publication names another GitHub account.",
             )
         api = self._authenticated_client(now=checked_at)
-        return GitHubArchivePublisher().publish(
+        token = self._load_token()
+        return GitCliArchivePublisher().publish(
             api,
             prepared,
             approval,
+            access_token=token.access_token.get_secret_value(),
             now=checked_at,
         )
+    def read_only_api(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> GitHubReadOnlyApi:
+        """Return a read-only adapter after re-verifying the connected identity."""
+
+        checked_at = now or datetime.now(UTC)
+        profile = self._require_profile()
+        client = self._authenticated_client(now=checked_at)
+        account = client.authenticated_user()
+        self._require_account_match(
+            profile,
+            account.account_id,
+            account.login,
+        )
+        return GitHubReadOnlyApi(client)
+
     @staticmethod
     def suggest_repository_name(requested_name: str) -> str:
         requested = " ".join(requested_name.split()).strip()
