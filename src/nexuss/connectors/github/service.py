@@ -15,6 +15,12 @@ from nexuss.connectors.contracts import (
     ConnectorStatus,
 )
 from nexuss.connectors.errors import ConnectorError
+from nexuss.connectors.github.archive_publisher import (
+    ArchivePublishApproval,
+    GitHubArchivePublisher,
+    PreparedArchivePublish,
+    VerifiedArchivePublish,
+)
 from nexuss.connectors.github.client import GitHubApiClient
 from nexuss.connectors.github.device_flow import GitHubDeviceFlowClient
 from nexuss.connectors.github.models import (
@@ -30,6 +36,8 @@ from nexuss.connectors.github.models import (
     canonical_payload_bytes,
 )
 from nexuss.connectors.vault import SecretVault
+from nexuss.engineering.archive_intake import ArchiveIntakeReceipt
+from nexuss.engineering.archive_publication import ArchiveRepositoryImportProposal
 
 _VALID_REPOSITORY_NAME = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 _INVALID_REPOSITORY_CHARACTER = re.compile(r"[^A-Za-z0-9._-]+")
@@ -269,6 +277,54 @@ class GitHubConnectorService:
             verified_at=checked_at,
         )
 
+    def prepare_archive_publication(
+        self,
+        receipt: ArchiveIntakeReceipt,
+        proposal: ArchiveRepositoryImportProposal,
+        verified_repository: VerifiedRepositoryCreate,
+        *,
+        now: datetime | None = None,
+    ) -> PreparedArchivePublish:
+        profile = self._require_profile()
+        if (
+            proposal.account_login.casefold()
+            != profile.account.login.casefold()
+        ):
+            raise ConnectorError(
+                "GITHUB_ARCHIVE_ACCOUNT_MISMATCH",
+                "The archive proposal names another GitHub account.",
+            )
+        return GitHubArchivePublisher().prepare(
+            receipt,
+            proposal,
+            verified_repository,
+            now=now,
+        )
+
+    def publish_archive_to_empty_repository(
+        self,
+        prepared: PreparedArchivePublish,
+        approval: ArchivePublishApproval,
+        *,
+        now: datetime | None = None,
+    ) -> VerifiedArchivePublish:
+        checked_at = now or datetime.now(UTC)
+        profile = self._require_profile()
+        if (
+            prepared.owner_login.casefold()
+            != profile.account.login.casefold()
+        ):
+            raise ConnectorError(
+                "GITHUB_ARCHIVE_ACCOUNT_MISMATCH",
+                "The archive publication names another GitHub account.",
+            )
+        api = self._authenticated_client(now=checked_at)
+        return GitHubArchivePublisher().publish(
+            api,
+            prepared,
+            approval,
+            now=checked_at,
+        )
     @staticmethod
     def suggest_repository_name(requested_name: str) -> str:
         requested = " ".join(requested_name.split()).strip()

@@ -105,6 +105,211 @@ class GitHubApiClient:
         self._raise_for_response(response)
         raise AssertionError("unreachable")
 
+    def create_git_blob(
+        self,
+        owner: str,
+        repository: str,
+        content_base64: str,
+    ) -> str:
+        payload = self._request_json(
+            "POST",
+            (
+                f"/repos/{quote(owner, safe='')}/"
+                f"{quote(repository, safe='')}/git/blobs"
+            ),
+            expected={201},
+            json_body={
+                "content": content_base64,
+                "encoding": "base64",
+            },
+        )
+        return self._required_sha(payload, "created blob")
+
+    def create_git_tree(
+        self,
+        owner: str,
+        repository: str,
+        entries: list[dict[str, object]],
+    ) -> str:
+        payload = self._request_json(
+            "POST",
+            (
+                f"/repos/{quote(owner, safe='')}/"
+                f"{quote(repository, safe='')}/git/trees"
+            ),
+            expected={201},
+            json_body={"tree": entries},
+        )
+        return self._required_sha(payload, "created tree")
+
+    def create_git_commit(
+        self,
+        owner: str,
+        repository: str,
+        *,
+        message: str,
+        tree_sha: str,
+        parents: list[str],
+    ) -> str:
+        payload = self._request_json(
+            "POST",
+            (
+                f"/repos/{quote(owner, safe='')}/"
+                f"{quote(repository, safe='')}/git/commits"
+            ),
+            expected={201},
+            json_body={
+                "message": message,
+                "tree": tree_sha,
+                "parents": parents,
+            },
+        )
+        return self._required_sha(payload, "created commit")
+
+    def get_git_reference(
+        self,
+        owner: str,
+        repository: str,
+        reference: str,
+    ) -> str | None:
+        response = self._send(
+            "GET",
+            (
+                f"/repos/{quote(owner, safe='')}/"
+                f"{quote(repository, safe='')}/git/ref/"
+                f"{quote(reference, safe='/')}"
+            ),
+        )
+        if response.status_code == 404:
+            return None
+        if response.status_code != 200:
+            self._raise_for_response(response)
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise ConnectorError(
+                "GITHUB_RESPONSE_INVALID",
+                "GitHub returned non-JSON reference content.",
+            ) from exc
+        if not isinstance(payload, dict):
+            raise ConnectorError(
+                "GITHUB_RESPONSE_INVALID",
+                "GitHub returned an invalid reference object.",
+            )
+        target = payload.get("object")
+        if not isinstance(target, dict):
+            raise ConnectorError(
+                "GITHUB_RESPONSE_INVALID",
+                "GitHub reference target data is missing.",
+            )
+        sha = str(target.get("sha", ""))
+        if len(sha) != 40:
+            raise ConnectorError(
+                "GITHUB_RESPONSE_INVALID",
+                "GitHub returned an invalid reference SHA.",
+            )
+        return sha
+
+    def create_git_reference(
+        self,
+        owner: str,
+        repository: str,
+        *,
+        reference: str,
+        commit_sha: str,
+    ) -> str:
+        payload = self._request_json(
+            "POST",
+            (
+                f"/repos/{quote(owner, safe='')}/"
+                f"{quote(repository, safe='')}/git/refs"
+            ),
+            expected={201},
+            json_body={
+                "ref": reference,
+                "sha": commit_sha,
+            },
+        )
+        if not isinstance(payload, dict):
+            raise ConnectorError(
+                "GITHUB_RESPONSE_INVALID",
+                "GitHub returned an invalid created reference.",
+            )
+        target = payload.get("object")
+        if not isinstance(target, dict):
+            raise ConnectorError(
+                "GITHUB_RESPONSE_INVALID",
+                "GitHub reference target data is missing.",
+            )
+        sha = str(target.get("sha", ""))
+        if len(sha) != 40:
+            raise ConnectorError(
+                "GITHUB_RESPONSE_INVALID",
+                "GitHub returned an invalid reference SHA.",
+            )
+        return sha
+
+    def get_git_commit(
+        self,
+        owner: str,
+        repository: str,
+        commit_sha: str,
+    ) -> dict[str, object]:
+        payload = self._request_json(
+            "GET",
+            (
+                f"/repos/{quote(owner, safe='')}/"
+                f"{quote(repository, safe='')}/git/commits/"
+                f"{quote(commit_sha, safe='')}"
+            ),
+            expected={200},
+        )
+        if not isinstance(payload, dict):
+            raise ConnectorError(
+                "GITHUB_RESPONSE_INVALID",
+                "GitHub returned an invalid commit object.",
+            )
+        return payload
+
+    def get_git_tree(
+        self,
+        owner: str,
+        repository: str,
+        tree_sha: str,
+        *,
+        recursive: bool,
+    ) -> dict[str, object]:
+        payload = self._request_json(
+            "GET",
+            (
+                f"/repos/{quote(owner, safe='')}/"
+                f"{quote(repository, safe='')}/git/trees/"
+                f"{quote(tree_sha, safe='')}"
+            ),
+            expected={200},
+            params={"recursive": "1"} if recursive else None,
+        )
+        if not isinstance(payload, dict):
+            raise ConnectorError(
+                "GITHUB_RESPONSE_INVALID",
+                "GitHub returned an invalid tree object.",
+            )
+        return payload
+
+    @staticmethod
+    def _required_sha(payload: object, label: str) -> str:
+        if not isinstance(payload, dict):
+            raise ConnectorError(
+                "GITHUB_RESPONSE_INVALID",
+                f"GitHub returned an invalid {label}.",
+            )
+        sha = str(payload.get("sha", ""))
+        if len(sha) != 40:
+            raise ConnectorError(
+                "GITHUB_RESPONSE_INVALID",
+                f"GitHub returned an invalid {label} SHA.",
+            )
+        return sha
     def _request_json(
         self,
         method: str,
