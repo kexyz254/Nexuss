@@ -279,6 +279,66 @@ kbd { padding: 4px 7px; border: 1px solid var(--line); border-radius: 7px; color
 .composer textarea { flex: 1; min-width: 0; max-height: 135px; resize: none; border: 0; outline: 0; padding: 10px 2px; color: var(--text); background: transparent; font-size: 11px; line-height: 1.5; }
 .composer textarea::placeholder { color: #5b7285; }
 .composer-actions { display: flex; align-items: center; gap: 8px; }
+.archive-attach-button {
+  min-width: 42px;
+  min-height: 42px;
+  border: 1px solid rgba(112, 227, 255, .26);
+  border-radius: 12px;
+  color: #9eeeff;
+  background: rgba(12, 33, 52, .74);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  cursor: pointer;
+}
+.archive-attach-button:hover,
+.archive-attach-button.active {
+  border-color: rgba(112, 227, 255, .62);
+  background: rgba(24, 66, 96, .74);
+}
+.archive-attachment {
+  margin: 8px 20px 0;
+  padding: 9px 11px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(112, 227, 255, .18);
+  border-radius: 12px;
+  background: rgba(5, 18, 30, .82);
+}
+.archive-attachment[hidden] { display: none; }
+.archive-attachment-icon {
+  min-width: 38px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #05121e;
+  background: linear-gradient(135deg, #70e3ff, #80a4ff);
+  font-size: 8px;
+  font-weight: 900;
+}
+.archive-attachment div { flex: 1; min-width: 0; }
+.archive-attachment strong,
+.archive-attachment small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.archive-attachment strong { color: var(--text); font-size: 9px; }
+.archive-attachment small { margin-top: 2px; color: var(--muted); font-size: 8px; }
+.archive-attachment button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  background: rgba(255,255,255,.045);
+  cursor: pointer;
+}
+.archive-attachment button:hover { color: var(--text); background: rgba(255,255,255,.09); }
 .enter-hint { color: var(--muted-dark); font-size: 10px; }
 .execute-button, .approve-button { min-height: 42px; padding: 0 15px; display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 12px; color: #06111b; background: linear-gradient(135deg, #70e3ff, #80a4ff); font-size: 9px; font-weight: 900; cursor: pointer; box-shadow: 0 8px 25px rgba(96,188,255,.16); transition: transform .2s, filter .2s; }
 .execute-button:hover, .approve-button:hover { transform: translateY(-1px); filter: brightness(1.08); }

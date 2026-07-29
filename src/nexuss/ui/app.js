@@ -57,6 +57,12 @@ const elements = {
   reject: document.querySelector("#reject-button"),
   approve: document.querySelector("#approve-button"),
   toast: document.querySelector("#toast"),
+  archiveAttach: document.querySelector("#archive-attach-button"),
+  archiveInput: document.querySelector("#archive-input"),
+  archiveAttachment: document.querySelector("#archive-attachment"),
+  archiveAttachmentName: document.querySelector("#archive-attachment-name"),
+  archiveAttachmentMeta: document.querySelector("#archive-attachment-meta"),
+  archiveRemove: document.querySelector("#archive-remove-button"),
 };
 
 /*
@@ -92,6 +98,7 @@ let currentNotePath = null;
 let toastTimer = null;
 let pairingChallenge = null;
 let taskPollTimer = null;
+let selectedArchive = null;
 
 function apiHeaders() {
   return {
@@ -107,6 +114,83 @@ function setBusy(busy) {
   elements.approve.disabled = busy;
   elements.reject.disabled = busy;
   elements.rollback.disabled = busy;
+  elements.archiveAttach.disabled = busy;
+  elements.archiveRemove.disabled = busy;
+}
+
+
+function formatArchiveBytes(value) {
+  if (!Number.isFinite(value) || value < 0) return "Unknown size";
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function clearArchiveAttachment() {
+  selectedArchive = null;
+  elements.archiveInput.value = "";
+  elements.archiveAttachment.hidden = true;
+  elements.archiveAttach.classList.remove("active");
+  elements.archiveAttachmentName.textContent = "No archive selected";
+  elements.archiveAttachmentMeta.textContent = "Secure local intake";
+  elements.note.textContent = "Voice transcripts are reviewable before execution.";
+}
+
+function selectArchiveAttachment(file) {
+  if (!file) {
+    clearArchiveAttachment();
+    return;
+  }
+  if (!file.name.toLowerCase().endsWith(".zip")) {
+    clearArchiveAttachment();
+    throw new Error("Select a .zip archive.");
+  }
+  if (file.size <= 0) {
+    clearArchiveAttachment();
+    throw new Error("The selected ZIP is empty.");
+  }
+  if (file.size > 50_000_000) {
+    clearArchiveAttachment();
+    throw new Error("The selected ZIP exceeds the 50 MB intake limit.");
+  }
+  selectedArchive = file;
+  elements.archiveAttachment.hidden = false;
+  elements.archiveAttach.classList.add("active");
+  elements.archiveAttachmentName.textContent = file.name;
+  elements.archiveAttachmentMeta.textContent = `${formatArchiveBytes(file.size)} · quarantined before GitHub`;
+  elements.note.textContent = "ZIP attached · two paired-phone approvals required.";
+}
+
+function repositoryNameFromInstruction(utterance) {
+  const match = utterance.match(
+    /\b(?:repository|repo)\s+(?:named|called)\s+["'`]?([A-Za-z0-9._-]{1,100})["'`]?/i,
+  );
+  return match?.[1] || "";
+}
+
+function archiveApiHeaders(requestId, repositoryName, archiveName) {
+  return {
+    "Content-Type": "application/zip",
+    "X-Nexuss-Session-ID": sessionId,
+    "X-Nexuss-Session-Authenticated": "true",
+    "X-Nexuss-Request-ID": requestId,
+    "X-Nexuss-Repository-Name": repositoryName,
+    "X-Nexuss-Archive-Name": encodeURIComponent(archiveName),
+  };
+}
+
+async function hasPairedPhone() {
+  try {
+    const response = await fetch("/v1/mobile/devices", {
+      headers: apiHeaders(),
+      cache: "no-store",
+    });
+    if (!response.ok) return false;
+    const devices = await response.json();
+    return Array.isArray(devices) && devices.length > 0;
+  } catch (_error) {
+    return false;
+  }
 }
 
 function setHealth(state, label) {
@@ -398,10 +482,23 @@ function contentAnswer(task) {
     };
   }
 
+  const githubPublished = evidenceFor(task, "github.repository.publish_archive");
+  if (githubPublished) {
+    return {
+      text: `Published and independently verified ${githubPublished.file_count} files in ${githubPublished.full_name}:${githubPublished.branch}.`,
+      blocks: [{
+        type: "note",
+        text: `Initial commit ${githubPublished.commit_sha}\nTree ${githubPublished.tree_sha}\nArchive ${githubPublished.archive_sha256}\nManifest ${githubPublished.manifest_sha256}`,
+      }],
+    };
+  }
+
   const githubCreated = evidenceFor(task, "github.repository.create");
   if (githubCreated) {
     return {
-      text: `Created and independently verified ${githubCreated.full_name}.`,
+      text: task.state === "awaiting_approval"
+        ? `Created and verified ${githubCreated.full_name}. The repository is still empty and the exact ZIP manifest now requires a second phone approval.`
+        : `Created and independently verified ${githubCreated.full_name}.`,
       blocks: [{
         type: "note",
         text: `Private: ${githubCreated.private_verified ? "verified" : "not verified"} · Empty repository: ${githubCreated.empty_repository_verified ? "verified" : "not verified"} · Initial commit: none`,
@@ -787,14 +884,32 @@ async function pollTaskUntilResolved(taskId) {
       const response = await fetch(`/v1/tasks/${taskId}`, { cache: "no-store" });
       if (!response.ok) return;
       const task = await response.json();
-      if (task.state === "awaiting_approval") return;
+      const previousApprovalId = currentTask?.approval?.approval_id || null;
+
+      if (task.state === "awaiting_approval") {
+        const nextApprovalId = task.approval?.approval_id || null;
+        if (nextApprovalId && nextApprovalId !== previousApprovalId) {
+          const receipt = await fetchReceipt(task.task_id);
+          hideApproval();
+          renderTask(task, receipt);
+          addMessage("assistant", summarizeTask(task), false, { speak: true });
+          await showApproval(task.approval);
+          showToast("Phase one verified. Review phase two on your paired phone.");
+        }
+        return;
+      }
+
       clearInterval(taskPollTimer);
       taskPollTimer = null;
       const receipt = await fetchReceipt(task.task_id);
       hideApproval();
       renderTask(task, receipt);
       addMessage("assistant", summarizeTask(task), false, { speak: true });
-      showToast(task.state === "completed" ? "Phone approval accepted. Device command verified." : `Phone decision: ${titleCase(task.state)}.`);
+      showToast(
+        task.state === "completed"
+          ? "Phone-approved operation completed and independently verified."
+          : `Phone decision: ${titleCase(task.state)}.`,
+      );
     } catch (_error) {
       // Health polling and the phone client remain the source of truth during transient errors.
     }
@@ -817,9 +932,15 @@ async function showApproval(approval) {
   elements.approvalOverlay.hidden = false;
   if (phoneRequired) {
     elements.phonePairingCode.textContent = "--------";
-    elements.phoneApprovalStatus.textContent = "Preparing a one-time phone pairing challenge…";
+    elements.phoneApprovalStatus.textContent = "Checking the paired-phone trust anchor…";
     try {
-      await createPhonePairing();
+      if (await hasPairedPhone()) {
+        elements.phoneApprovalStatus.textContent = "Paired phone ready. Review the exact payload on the phone.";
+        elements.phoneMobileUrl.href = "/mobile";
+        elements.phoneMobileUrl.textContent = "/mobile";
+      } else {
+        await createPhonePairing();
+      }
       void pollTaskUntilResolved(approval.task_id);
     } catch (error) {
       elements.phoneApprovalStatus.textContent = error instanceof Error ? error.message : "Phone pairing unavailable";
@@ -836,6 +957,56 @@ function hideApproval() {
   elements.phonePanel.hidden = true;
   elements.approve.hidden = false;
   elements.input.focus();
+}
+
+
+async function executeArchiveInstruction(utterance) {
+  if (!selectedArchive) throw new Error("Attach a ZIP archive first.");
+  const repositoryName = repositoryNameFromInstruction(utterance);
+  if (!repositoryName) {
+    throw new Error(
+      'Name the repository explicitly, for example: "create a private repository named fenril-task and deploy this ZIP."',
+    );
+  }
+
+  const archive = selectedArchive;
+  const requestId = crypto.randomUUID();
+  setBusy(true);
+  addMessage("user", utterance);
+  stopSpeaking();
+  addMessage(
+    "assistant",
+    `Quarantining ${archive.name}, scanning paths and secrets, and preparing a two-phase GitHub approval…`,
+  );
+
+  try {
+    const response = await fetch("/v1/archive-imports", {
+      method: "POST",
+      headers: archiveApiHeaders(requestId, repositoryName, archive.name),
+      body: archive,
+    });
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`Archive intake failed (${response.status}): ${detail}`);
+    }
+    const task = await response.json();
+    clearArchiveAttachment();
+    const receipt = await fetchReceipt(task.task_id);
+    renderTask(task, receipt);
+    addMessage("assistant", summarizeTask(task), false, { speak: true });
+    if (task.state === "awaiting_approval" && task.approval) {
+      await showApproval(task.approval);
+    }
+  } catch (error) {
+    addMessage(
+      "assistant",
+      error instanceof Error ? error.message : "Unexpected archive intake error",
+      true,
+    );
+  } finally {
+    setBusy(false);
+    elements.input.focus();
+  }
 }
 
 async function executeInstruction(utterance, channel = "text") {
@@ -959,6 +1130,11 @@ elements.form.addEventListener("submit", (event) => {
   elements.input.value = "";
   elements.input.style.height = "auto";
 
+  if (selectedArchive) {
+    void executeArchiveInstruction(utterance);
+    return;
+  }
+
   const contextualResponse = window.NexussP5?.handleContextCommand?.(utterance);
   if (contextualResponse) {
     addMessage("user", utterance);
@@ -988,6 +1164,23 @@ elements.approvalClose.addEventListener("click", hideApproval);
 elements.reject.addEventListener("click", () => void decideApproval("reject"));
 elements.approve.addEventListener("click", () => void decideApproval("approve"));
 elements.rollback.addEventListener("click", () => void rollbackCurrentTask());
+elements.archiveAttach.addEventListener("click", () => elements.archiveInput.click());
+elements.archiveInput.addEventListener("change", () => {
+  try {
+    selectArchiveAttachment(elements.archiveInput.files?.[0] || null);
+    if (selectedArchive) {
+      elements.input.placeholder = "Example: Create a private repository named fenril-task and deploy this ZIP.";
+      elements.input.focus();
+    }
+  } catch (error) {
+    addMessage("assistant", error instanceof Error ? error.message : "ZIP attachment failed", true);
+  }
+});
+elements.archiveRemove.addEventListener("click", () => {
+  clearArchiveAttachment();
+  elements.input.placeholder = "Type or speak an instruction…";
+  elements.input.focus();
+});
 elements.copyPath.addEventListener("click", async () => {
   if (!currentNotePath) return;
   await navigator.clipboard.writeText(currentNotePath);

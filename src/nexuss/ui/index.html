@@ -180,6 +180,19 @@
           </div>
           <textarea id="command-input" rows="1" maxlength="10000" placeholder="Type or speak an instruction…" aria-label="Instruction"></textarea>
           <div class="composer-actions">
+            <button
+              type="button"
+              class="archive-attach-button"
+              id="archive-attach-button"
+              aria-label="Attach a ZIP archive"
+              title="Attach a ZIP archive"
+            >ZIP</button>
+            <input
+              type="file"
+              id="archive-input"
+              accept=".zip,application/zip,application/x-zip-compressed"
+              hidden
+            >
             <span class="enter-hint">↵</span>
             <button type="submit" class="execute-button" id="send-button">
               <span>Execute</span>
@@ -187,6 +200,18 @@
             </button>
           </div>
         </form>
+        <div class="archive-attachment" id="archive-attachment" hidden>
+          <span class="archive-attachment-icon">ZIP</span>
+          <div>
+            <strong id="archive-attachment-name">No archive selected</strong>
+            <small id="archive-attachment-meta">Secure local intake</small>
+          </div>
+          <button
+            type="button"
+            id="archive-remove-button"
+            aria-label="Remove attached ZIP"
+          >×</button>
+        </div>
         <div class="composer-meta">
           <span id="composer-note">Voice transcripts are reviewable before execution.</span>
           <span>Shift + Enter for a new line</span>

@@ -19,6 +19,13 @@ from fastapi import FastAPI, Header, HTTPException, Request, status
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from nexuss.archive.workflow import (
+    ArchiveApprovalValidationError,
+    ArchiveImportCoordinator,
+    ArchiveSessionError,
+    ArchiveTaskNotFoundError,
+    ArchiveWorkflowError,
+)
 from nexuss.core.registry import list_capabilities
 from nexuss.core.service import (
     ApprovalValidationError,
@@ -58,7 +65,7 @@ _MOBILE_URL = os.getenv("NEXUSS_MOBILE_PUBLIC_URL", "http://127.0.0.1:8100/mobil
 
 app = FastAPI(
     title="Nexuss Core API",
-    version="0.5.1",
+    version="0.5.2",
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
@@ -73,6 +80,7 @@ service = CoreSimulatorService(
     pairing_gateway=mobile_gateway,
     memory_store=memory_store_from_environment(),
 )
+archive_imports = ArchiveImportCoordinator.from_environment()
 _PAIR_ATTEMPT_WINDOW = timedelta(minutes=5)
 _PAIR_ATTEMPT_LIMIT = 5
 _pair_attempts: dict[str, deque[datetime]] = defaultdict(deque)
@@ -180,7 +188,7 @@ def health_live() -> dict[str, str]:
     return {
         "status": "alive",
         "service": "nexuss-core-api",
-        "version": "0.5.1",
+        "version": "0.5.2",
     }
 
 
@@ -188,7 +196,7 @@ def health_live() -> dict[str, str]:
 def health_ready() -> dict[str, str]:
     return {
         "status": "ready",
-        "mode": "p5_knowledge_media_mobile",
+        "mode": "p65f_native_zip_github_import",
         "phone_approval": "enabled",
     }
 
@@ -197,6 +205,68 @@ def health_ready() -> dict[str, str]:
 def get_capabilities(request: Request) -> list[CapabilityManifest]:
     _require_local_control(request)
     return list(list_capabilities())
+
+
+@app.post(
+    "/v1/archive-imports",
+    response_model=TaskView,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def create_archive_import(
+    request: Request,
+    request_id: Annotated[UUID, Header(alias="X-Nexuss-Request-ID")],
+    repository_name: Annotated[
+        str,
+        Header(alias="X-Nexuss-Repository-Name"),
+    ],
+    archive_name: Annotated[
+        str,
+        Header(alias="X-Nexuss-Archive-Name"),
+    ],
+    session_id: Annotated[
+        UUID,
+        Header(alias="X-Nexuss-Session-ID"),
+    ],
+    session_authenticated: Annotated[
+        bool,
+        Header(alias="X-Nexuss-Session-Authenticated"),
+    ],
+    content_length: Annotated[
+        int | None,
+        Header(alias="Content-Length"),
+    ] = None,
+) -> TaskView:
+    """Quarantine one ZIP and prepare two phone-approved GitHub writes."""
+
+    _require_local_control(request)
+    identity = _session(session_id, session_authenticated)
+    try:
+        return await archive_imports.create_task_from_stream(
+            request.stream(),
+            request_id=request_id,
+            session=identity,
+            repository_name=repository_name,
+            archive_name=archive_name,
+            content_type=request.headers.get(
+                "content-type",
+                "application/octet-stream",
+            ),
+            content_length=content_length,
+        )
+    except ArchiveSessionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        ) from exc
+    except ArchiveWorkflowError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "safe_details": exc.safe_details,
+            },
+        ) from exc
 
 
 @app.post("/v1/tasks", response_model=TaskView, status_code=status.HTTP_202_ACCEPTED)
@@ -222,18 +292,26 @@ def decide_task_approval(
     session_authenticated: Annotated[bool, Header(alias="X-Nexuss-Session-Authenticated")],
 ) -> TaskView:
     _require_local_control(request)
+    identity = _session(session_id, session_authenticated)
     try:
+        if archive_imports.contains_task(task_id):
+            return archive_imports.approve_task(
+                task_id,
+                decision,
+                identity,
+                approval_channel=ApprovalChannel.DESKTOP,
+            )
         return service.approve_task(
             task_id,
             decision,
-            _session(session_id, session_authenticated),
+            identity,
             approval_channel=ApprovalChannel.DESKTOP,
         )
-    except InvalidSessionError as exc:
+    except (InvalidSessionError, ArchiveSessionError) as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
-    except TaskNotFoundError as exc:
+    except (TaskNotFoundError, ArchiveTaskNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found") from exc
-    except ApprovalValidationError as exc:
+    except (ApprovalValidationError, ArchiveApprovalValidationError) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
@@ -261,8 +339,10 @@ def rollback_task(
 def get_task(task_id: UUID, request: Request) -> TaskView:
     _require_local_control(request)
     try:
+        if archive_imports.contains_task(task_id):
+            return archive_imports.get_task(task_id)
         return service.get_task(task_id)
-    except TaskNotFoundError as exc:
+    except (TaskNotFoundError, ArchiveTaskNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found") from exc
 
 
@@ -270,8 +350,10 @@ def get_task(task_id: UUID, request: Request) -> TaskView:
 def get_task_receipt(task_id: UUID, request: Request) -> ActionReceipt:
     _require_local_control(request)
     try:
+        if archive_imports.contains_task(task_id):
+            return archive_imports.get_receipt(task_id)
         return service.get_receipt(task_id)
-    except TaskNotFoundError as exc:
+    except (TaskNotFoundError, ArchiveTaskNotFoundError) as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Receipt not found",
@@ -282,8 +364,10 @@ def get_task_receipt(task_id: UUID, request: Request) -> ActionReceipt:
 def get_task_receipt_history(task_id: UUID, request: Request) -> list[ActionReceipt]:
     _require_local_control(request)
     try:
+        if archive_imports.contains_task(task_id):
+            return list(archive_imports.get_receipt_history(task_id))
         return list(service.get_receipt_history(task_id))
-    except TaskNotFoundError as exc:
+    except (TaskNotFoundError, ArchiveTaskNotFoundError) as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Receipt history not found",
@@ -386,7 +470,11 @@ def get_mobile_pending_approvals(
     device_token: Annotated[str, Header(alias="X-Nexuss-Mobile-Token")],
 ) -> list[MobileApprovalSummary]:
     identity = _mobile_identity(device_id, device_token)
-    return list(service.list_pending_phone_approvals(identity.session_id))
+    pending = [
+        *service.list_pending_phone_approvals(identity.session_id),
+        *archive_imports.list_pending_phone_approvals(identity.session_id),
+    ]
+    return sorted(pending, key=lambda item: item.expires_at)
 
 
 @app.get("/v1/mobile/handoffs", response_model=list[MobileHandoffSummary])
@@ -420,13 +508,31 @@ def decide_mobile_approval(
         decision=request.decision,
     )
     try:
+        if archive_imports.contains_task(task_id):
+            return archive_imports.approve_task(
+                task_id,
+                decision,
+                identity,
+                approval_channel=ApprovalChannel.PHONE,
+            )
         return service.approve_task(
             task_id,
             decision,
             identity,
             approval_channel=ApprovalChannel.PHONE,
         )
-    except TaskNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found") from exc
-    except (InvalidSessionError, ApprovalValidationError) as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except (TaskNotFoundError, ArchiveTaskNotFoundError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found",
+        ) from exc
+    except (
+        InvalidSessionError,
+        ApprovalValidationError,
+        ArchiveSessionError,
+        ArchiveApprovalValidationError,
+    ) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
