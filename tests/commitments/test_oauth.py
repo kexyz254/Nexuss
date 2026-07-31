@@ -49,3 +49,38 @@ def test_code_exchange_returns_token_bundle() -> None:
     )
     assert bundle.access_token.get_secret_value() == "access"
     assert bundle.refresh_token is not None
+
+def test_code_exchange_normalizes_google_identity_scope_aliases() -> None:
+    returned_scopes = (
+        "openid "
+        "https://www.googleapis.com/auth/userinfo.email "
+        "https://www.googleapis.com/auth/userinfo.profile "
+        "https://www.googleapis.com/auth/gmail.readonly "
+        "https://www.googleapis.com/auth/calendar.calendarlist.readonly "
+        "https://www.googleapis.com/auth/calendar.events.readonly "
+        "https://www.googleapis.com/auth/contacts.readonly"
+    )
+
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            json={
+                "access_token": "access",
+                "refresh_token": "refresh",
+                "expires_in": 3600,
+                "scope": returned_scopes,
+                "token_type": "Bearer",
+            },
+        )
+    )
+
+    bundle = GoogleOAuthClient(transport=transport).exchange_code(
+        client_id="client",
+        client_secret="secret",
+        code="code",
+        code_verifier="verifier",
+        redirect_uri="http://127.0.0.1/callback",
+        now=datetime(2026, 7, 31, tzinfo=UTC),
+    )
+
+    assert set(bundle.scopes) == set(GOOGLE_READ_ONLY_SCOPES)

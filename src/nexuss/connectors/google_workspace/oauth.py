@@ -25,6 +25,23 @@ GOOGLE_READ_ONLY_SCOPES = (
     "https://www.googleapis.com/auth/contacts.readonly",
 )
 
+_GOOGLE_SCOPE_ALIASES = {
+    "https://www.googleapis.com/auth/userinfo.email": "email",
+    "https://www.googleapis.com/auth/userinfo.profile": "profile",
+}
+
+
+def normalize_google_scopes(
+    scopes: tuple[str, ...] | list[str],
+) -> tuple[str, ...]:
+    """Normalize equivalent Google identity scope names."""
+    return tuple(
+        dict.fromkeys(
+            _GOOGLE_SCOPE_ALIASES.get(scope, scope)
+            for scope in scopes
+        )
+    )
+
 def generate_pkce_pair() -> tuple[str, str]:
     verifier = secrets.token_urlsafe(64)
     digest = hashlib.sha256(verifier.encode("ascii")).digest()
@@ -160,5 +177,5 @@ class GoogleOAuthClient:
             expires_at=checked_at + timedelta(
                 seconds=int(response.get("expires_in", 3600))
             ),
-            scopes=tuple(response_scope) if response_scope else scopes,
+            scopes=normalize_google_scopes(response_scope or scopes),
         )
