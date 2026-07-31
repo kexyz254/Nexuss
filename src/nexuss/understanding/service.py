@@ -15,6 +15,10 @@ from nexuss.understanding.clarification import (
     ClarificationStore,
 )
 from nexuss.understanding.classifier import GoalClassifier
+from nexuss.understanding.commitment_executor import (
+    CommitmentGoalExecutionError,
+    CommitmentGoalExecutor,
+)
 from nexuss.understanding.context import (
     GoalContextRecord,
     GoalContextStore,
@@ -45,6 +49,17 @@ class GoalUnderstandingError(RuntimeError):
         self.code = code
         self.message = message
 
+
+_COMMITMENT_READ_GOALS = {
+    GoalKind.GOOGLE_WORKSPACE_STATUS,
+    GoalKind.COMMITMENT_PREPARE_DAY,
+    GoalKind.COMMITMENT_LIST,
+    GoalKind.COMMUNICATION_NEEDS_REPLY,
+    GoalKind.CALENDAR_CONFLICTS,
+}
+_COMMITMENT_BLOCKED_GOALS = {
+    GoalKind.COMMUNICATION_EXTERNAL_WRITE,
+}
 
 _GITHUB_READ_GOALS = {
     GoalKind.GITHUB_CAPABILITIES,
@@ -86,34 +101,45 @@ class GoalUnderstandingService:
         self,
         *,
         github_executor: GitHubReadOnlyGoalExecutor | None = None,
+        commitment_executor: CommitmentGoalExecutor | None = None,
         classifier: GoalClassifier | None = None,
         context: GoalContextStore | None = None,
         clarifications: ClarificationStore | None = None,
     ) -> None:
         self._github = github_executor
+        self._commitments = commitment_executor
         self._classifier = classifier or GoalClassifier()
         self._context = context or GoalContextStore()
         self._clarifications = clarifications or ClarificationStore()
 
     @classmethod
-    def from_environment(cls) -> GoalUnderstandingService:
+    def from_environment(
+        cls,
+        *,
+        commitment_executor: CommitmentGoalExecutor | None = None,
+    ) -> GoalUnderstandingService:
         try:
             from nexuss.connectors.github.workspace_control import (
                 GitHubWorkspaceControlPlane,
             )
         except ImportError:
-            return cls()
+            return cls(commitment_executor=commitment_executor)
         try:
             plane = GitHubWorkspaceControlPlane.from_environment()
         except Exception:  # noqa: BLE001 - optional connector startup boundary
-            return cls()
+            return cls(commitment_executor=commitment_executor)
         return cls(
-            github_executor=GitHubReadOnlyGoalExecutor(plane)
+            github_executor=GitHubReadOnlyGoalExecutor(plane),
+            commitment_executor=commitment_executor,
         )
 
     @property
     def github_read_only_available(self) -> bool:
         return self._github is not None
+
+    @property
+    def commitment_read_only_available(self) -> bool:
+        return self._commitments is not None
 
     def resolve(
         self,
@@ -348,6 +374,19 @@ class GoalUnderstandingService:
                 ),
             )
 
+        if interpretation.goal in _COMMITMENT_BLOCKED_GOALS:
+            return self._blocked(
+                request,
+                session_id,
+                interpretation,
+                message=(
+                    "I understood the requested external communication or "
+                    "calendar change. P6.8A can read, correlate, and prepare "
+                    "the exact plan, but provider writes are disabled. "
+                    "No email, message, contact, or calendar event was changed."
+                ),
+            )
+
         if interpretation.goal in {
             GoalKind.GITHUB_APPROVAL_BYPASS,
             GoalKind.GITHUB_PUSH_DIRECT_MAIN,
@@ -421,6 +460,49 @@ class GoalUnderstandingService:
                 request.request_id,
                 session_id,
                 interpretation,
+            )
+
+        if interpretation.goal in _COMMITMENT_READ_GOALS:
+            if not request.execute_safe_reads:
+                return UnderstandingResponse(
+                    request_id=request.request_id,
+                    session_id=session_id,
+                    status=ResolutionStatus.READY,
+                    interpretation=interpretation,
+                    dispatch=DispatchKind.COMMITMENT_READ_ONLY,
+                    assistant_message=(
+                        "I resolved this as a read-only commitment request. "
+                        "No read was executed because safe-read dispatch was disabled."
+                    ),
+                )
+            if self._commitments is None:
+                return self._blocked(
+                    request,
+                    session_id,
+                    interpretation,
+                    message=(
+                        "I understood the commitment goal, but the P6.8A "
+                        "service is unavailable. No external source was contacted."
+                    ),
+                )
+            try:
+                execution = self._commitments.execute(interpretation)
+            except CommitmentGoalExecutionError as exc:
+                return self._blocked(
+                    request,
+                    session_id,
+                    interpretation,
+                    message=exc.message,
+                )
+            return UnderstandingResponse(
+                request_id=request.request_id,
+                session_id=session_id,
+                status=ResolutionStatus.COMPLETED,
+                interpretation=interpretation,
+                dispatch=DispatchKind.COMMITMENT_READ_ONLY,
+                assistant_message=execution.assistant_message,
+                execution=execution,
+                no_action_performed=False,
             )
 
         if interpretation.goal in _GITHUB_READ_GOALS:

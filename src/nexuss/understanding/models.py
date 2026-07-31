@@ -27,6 +27,7 @@ class IntentDomain(StrEnum):
     ARCHIVE = "archive"
     SYSTEM = "system"
     DEPLOYMENT = "deployment"
+    COMMITMENTS = "commitments"
     AMBIGUOUS = "ambiguous"
     UNSUPPORTED = "unsupported"
 
@@ -60,6 +61,12 @@ class GoalKind(StrEnum):
     ARCHIVE_PUBLISH = "archive_publish"
     DEPLOYMENT_PLAN = "deployment_plan"
     DEPLOYMENT_EXECUTE = "deployment_execute"
+    GOOGLE_WORKSPACE_STATUS = "google_workspace_status"
+    COMMITMENT_PREPARE_DAY = "commitment_prepare_day"
+    COMMITMENT_LIST = "commitment_list"
+    COMMUNICATION_NEEDS_REPLY = "communication_needs_reply"
+    CALENDAR_CONFLICTS = "calendar_conflicts"
+    COMMUNICATION_EXTERNAL_WRITE = "communication_external_write"
     AMBIGUOUS_REFERENCE = "ambiguous_reference"
     AMBIGUOUS_SCOPE = "ambiguous_scope"
     UNKNOWN = "unknown"
@@ -87,6 +94,7 @@ class DispatchKind(StrEnum):
     NONE = "none"
     LEGACY_TASK = "legacy_task"
     GITHUB_READ_ONLY = "github_read_only"
+    COMMITMENT_READ_ONLY = "commitment_read_only"
 
 
 class ClarificationKind(StrEnum):

@@ -307,6 +307,91 @@ _MANIFESTS = (
         approval_channel=ApprovalChannel.PHONE,
     ),
     CapabilityManifest(
+        capability_id="google.workspace.connection",
+        version="1.0.0",
+        title="Encrypted Google Workspace connection",
+        description=(
+            "Connect one Google identity through desktop OAuth with PKCE "
+            "and Windows user-scoped DPAPI storage."
+        ),
+        risk_tier=RiskTier.MEDIUM,
+        approval_policy=ApprovalPolicy.EXPLICIT,
+        reversible=True,
+        execution_mode="desktop_oauth_pkce",
+        status=CapabilityStatus.ACTIVE,
+        approval_channel=ApprovalChannel.DESKTOP,
+    ),
+    CapabilityManifest(
+        capability_id="google.gmail.read",
+        version="1.0.0",
+        title="Gmail read intelligence",
+        description=(
+            "Read bounded Gmail messages through the official Gmail API "
+            "using only the gmail.readonly scope."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="official_google_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="google.calendar.read",
+        version="1.0.0",
+        title="Calendar read intelligence",
+        description=(
+            "Read calendar inventory and bounded event windows through "
+            "official Google Calendar read-only scopes."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="official_google_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="google.contacts.read",
+        version="1.0.0",
+        title="Google Contacts resolution",
+        description=(
+            "Resolve bounded contact names, email addresses, phone numbers, "
+            "and organizations through the People API read-only scope."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="official_google_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="commitments.prepare_day",
+        version="1.0.0",
+        title="Prepare unified operational day",
+        description=(
+            "Correlate Gmail, Calendar, Contacts, and trusted-mobile signals "
+            "into evidence-backed commitments and schedule proposals."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="cross_channel_readonly_intelligence",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="communications.external_write",
+        version="0.1.0",
+        title="External communication and calendar writes",
+        description=(
+            "Sending Gmail, modifying Calendar, and changing Contacts remain "
+            "disabled until approval-bound execution is verified."
+        ),
+        risk_tier=RiskTier.HIGH,
+        approval_policy=ApprovalPolicy.PROHIBITED,
+        reversible=False,
+        execution_mode="not_enabled",
+        status=CapabilityStatus.PROHIBITED,
+    ),
+    CapabilityManifest(
         capability_id="calendar.read_summary",
         version="0.1.0",
         title="Calendar summary",

@@ -47,12 +47,16 @@ def register_understanding_routes(
         require_local_control(request)
         return {
             "status": "ready",
-            "mode": "p66b_goal_understanding_clarification",
+            "mode": "p68a_unified_commitment_intelligence",
             "clarification_types": ["yes_no", "single_select"],
             "github_read_only_available": (
                 understanding.github_read_only_available
             ),
+            "commitment_read_only_available": (
+                understanding.commitment_read_only_available
+            ),
             "github_write_authority_added": False,
+            "google_write_authority_added": False,
             "approval_authority_changed": False,
         }
 

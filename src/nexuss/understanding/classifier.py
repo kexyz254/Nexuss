@@ -209,6 +209,56 @@ _DEPLOY = (
     "release ",
     "ship ",
 )
+_PREPARE_DAY = (
+    "prepare my day",
+    "plan my day",
+    "organize my day",
+    "organise my day",
+    "daily operational brief",
+    "morning commitment brief",
+)
+_COMMITMENT_LIST = (
+    "what have i promised",
+    "my commitments",
+    "open commitments",
+    "what do i owe",
+    "commitments due",
+    "overdue commitments",
+    "my deadlines",
+)
+_RESPONSE_NEEDED = (
+    "which emails require a response",
+    "which messages need a response",
+    "messages needing a reply",
+    "emails needing a reply",
+    "unanswered messages",
+    "what should i reply to",
+)
+_CALENDAR_CONFLICTS = (
+    "calendar conflicts",
+    "meeting conflicts",
+    "schedule conflicts",
+    "double booked",
+    "overlapping meetings",
+)
+_GOOGLE_WORKSPACE_STATUS = (
+    "google workspace status",
+    "is gmail connected",
+    "is calendar connected",
+    "are contacts connected",
+    "connected google account",
+)
+_COMMUNICATION_WRITES = (
+    "send email",
+    "send the email",
+    "send message",
+    "move the meeting",
+    "reschedule the meeting",
+    "cancel the meeting",
+    "create calendar event",
+    "schedule a meeting",
+)
+
 _SYSTEM_HEALTH = (
     "system health",
     "nexuss health",
@@ -485,6 +535,68 @@ class GoalClassifier:
                 "repository change request",
                 repository_full_name,
                 repository_name,
+            )
+
+        if contains_any(text, _COMMUNICATION_WRITES):
+            return _Decision(
+                IntentDomain.COMMITMENTS,
+                GoalKind.COMMUNICATION_EXTERNAL_WRITE,
+                OperationKind.WRITE,
+                0.98,
+                ("external communication or calendar write",),
+                (
+                    "The action is understood, but P6.8A does not grant provider write authority.",
+                ),
+            )
+
+        if contains_any(text, _PREPARE_DAY):
+            return _Decision(
+                IntentDomain.COMMITMENTS,
+                GoalKind.COMMITMENT_PREPARE_DAY,
+                OperationKind.READ,
+                0.99,
+                ("prepare-day phrase",),
+                ("The user requested a cross-channel operational brief.",),
+            )
+
+        if contains_any(text, _COMMITMENT_LIST):
+            return _Decision(
+                IntentDomain.COMMITMENTS,
+                GoalKind.COMMITMENT_LIST,
+                OperationKind.READ,
+                0.98,
+                ("commitment-list phrase",),
+                ("The request asks for evidence-backed obligations.",),
+            )
+
+        if contains_any(text, _RESPONSE_NEEDED):
+            return _Decision(
+                IntentDomain.COMMITMENTS,
+                GoalKind.COMMUNICATION_NEEDS_REPLY,
+                OperationKind.READ,
+                0.98,
+                ("response-needed phrase",),
+                ("The request asks which communications need attention.",),
+            )
+
+        if contains_any(text, _CALENDAR_CONFLICTS):
+            return _Decision(
+                IntentDomain.COMMITMENTS,
+                GoalKind.CALENDAR_CONFLICTS,
+                OperationKind.READ,
+                0.98,
+                ("calendar-conflict phrase",),
+                ("The request asks for read-only schedule analysis.",),
+            )
+
+        if contains_any(text, _GOOGLE_WORKSPACE_STATUS):
+            return _Decision(
+                IntentDomain.COMMITMENTS,
+                GoalKind.GOOGLE_WORKSPACE_STATUS,
+                OperationKind.READ,
+                0.98,
+                ("Google Workspace status phrase",),
+                ("The request asks for connector status only.",),
             )
 
         if contains_any(text, _LOCAL_WORKSPACE):

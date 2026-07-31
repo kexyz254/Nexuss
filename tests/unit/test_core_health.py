@@ -14,6 +14,6 @@ def test_health_live() -> None:
 def test_health_ready() -> None:
     assert health_ready() == {
         "status": "ready",
-        "mode": "p67a_trusted_mobile_communication_fabric",
+        "mode": "p68a_unified_commitment_intelligence",
         "phone_approval": "enabled",
     }

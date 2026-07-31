@@ -221,7 +221,7 @@ if (
 
 if (
     $CoreHealth.status -ne "ready" -or
-    $CoreHealth.mode -ne "p67a_trusted_mobile_communication_fabric"
+    $CoreHealth.mode -ne "p68a_unified_commitment_intelligence"
 ) {
     foreach ($ProcessId in @($NodeProcess.Id, $CoreProcess.Id)) {
         & taskkill.exe /PID $ProcessId /T /F 2>$null | Out-Null

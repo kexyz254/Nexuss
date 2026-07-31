@@ -26,8 +26,16 @@ from nexuss.archive.workflow import (
     ArchiveTaskNotFoundError,
     ArchiveWorkflowError,
 )
+from nexuss.commitments.api import register_commitment_routes
+from nexuss.commitments.service import CommitmentIntelligenceService
 from nexuss.connectors.github.workspace_api import (
     register_github_workspace_routes,
+)
+from nexuss.connectors.google_workspace.api import (
+    register_google_workspace_routes,
+)
+from nexuss.connectors.google_workspace.service import (
+    GoogleWorkspaceConnectorService,
 )
 from nexuss.core.registry import list_capabilities
 from nexuss.core.service import (
@@ -64,6 +72,8 @@ from nexuss.mobile.models import (
 from nexuss.mobile.store import device_store_from_environment
 from nexuss.mobile_fabric.api import register_mobile_fabric_routes
 from nexuss.understanding.api import register_understanding_routes
+from nexuss.understanding.commitment_executor import CommitmentGoalExecutor
+from nexuss.understanding.service import GoalUnderstandingService
 
 _UI_DIRECTORY = Path(__file__).resolve().parents[1] / "ui"
 _MOBILE_URL = os.getenv("NEXUSS_MOBILE_PUBLIC_URL", "http://127.0.0.1:8100/mobile")
@@ -201,7 +211,7 @@ def health_live() -> dict[str, str]:
 def health_ready() -> dict[str, str]:
     return {
         "status": "ready",
-        "mode": "p67a_trusted_mobile_communication_fabric",
+        "mode": "p68a_unified_commitment_intelligence",
         "phone_approval": "enabled",
     }
 
@@ -544,10 +554,34 @@ def decide_mobile_approval(
 
 register_github_workspace_routes(app, _require_local_control)
 
-register_mobile_fabric_routes(
+mobile_fabric = register_mobile_fabric_routes(
     app,
     _require_local_control,
     mobile_gateway=mobile_gateway,
 )
 
-register_understanding_routes(app, _require_local_control)
+google_workspace = GoogleWorkspaceConnectorService.from_environment()
+register_google_workspace_routes(
+    app,
+    _require_local_control,
+    service=google_workspace,
+)
+
+commitment_service = CommitmentIntelligenceService(
+    google_workspace=google_workspace,
+    mobile_fabric=mobile_fabric,
+)
+register_commitment_routes(
+    app,
+    _require_local_control,
+    service=commitment_service,
+)
+
+understanding_service = GoalUnderstandingService.from_environment(
+    commitment_executor=CommitmentGoalExecutor(commitment_service)
+)
+register_understanding_routes(
+    app,
+    _require_local_control,
+    service=understanding_service,
+)
