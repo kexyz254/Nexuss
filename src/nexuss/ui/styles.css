@@ -767,3 +767,75 @@ kbd { padding: 4px 7px; border: 1px solid var(--line); border-radius: 7px; color
 .voice-stop:hover { border-color: rgba(112, 227, 255, 0.4); color: #dff7ff; }
 
 .voice-button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Copyright © kexyz254peter
+ * Nexuss AI - Confidential and Proprietary
+ * Unauthorized copying, redistribution or disclosure is prohibited.
+ */
+
+/* NEXUSS_P66B_GOAL_UNDERSTANDING_UI */
+.clarification-message .bubble {
+  max-width: min(720px, 100%);
+}
+
+.clarification-card {
+  border-color: rgba(112, 227, 255, 0.28);
+  background:
+    linear-gradient(145deg, rgba(112, 227, 255, 0.06), transparent 62%),
+    rgba(8, 19, 30, 0.94);
+}
+
+.clarification-question {
+  margin: 0;
+  color: #edf9ff;
+  font-weight: 650;
+  line-height: 1.55;
+}
+
+.clarification-options {
+  display: grid;
+  gap: 9px;
+  margin-top: 14px;
+}
+
+.clarification-option {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(145, 201, 235, 0.2);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #e9f5ff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.clarification-option:hover,
+.clarification-option:focus-visible {
+  border-color: rgba(112, 227, 255, 0.62);
+  background: rgba(112, 227, 255, 0.09);
+  outline: none;
+}
+
+.clarification-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.clarification-option strong {
+  font-size: 13px;
+}
+
+.clarification-option span {
+  color: #86a0b4;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.clarification-boundary {
+  margin: 12px 0 0;
+  color: #7890a3;
+  font-size: 11px;
+  line-height: 1.45;
+}

@@ -14,6 +14,6 @@ def test_health_live() -> None:
 def test_health_ready() -> None:
     assert health_ready() == {
         "status": "ready",
-        "mode": "p65f_native_zip_github_import",
+        "mode": "p66b_goal_understanding_clarification",
         "phone_approval": "enabled",
     }

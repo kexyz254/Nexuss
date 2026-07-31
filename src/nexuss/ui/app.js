@@ -1009,11 +1009,286 @@ async function executeArchiveInstruction(utterance) {
   }
 }
 
-async function executeInstruction(utterance, channel = "text") {
+// Copyright © kexyz254peter
+// Nexuss AI - Confidential and Proprietary
+// Unauthorized copying, redistribution or disclosure is prohibited.
+
+// NEXUSS_P66B_GOAL_UNDERSTANDING_UI
+function renderUnderstandingState(response) {
+  const interpretation = response?.interpretation;
+  if (!interpretation) return;
+
+  elements.metricIntent.textContent = String(interpretation.goal || "unknown")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+  elements.metricConfidence.textContent =
+    `${Math.round(Number(interpretation.confidence || 0) * 100)}%`;
+  elements.metricRisk.textContent = {
+    destructive: "Critical",
+    write: "High",
+    execute: "High",
+    plan: "Low",
+    read: "Informational",
+    inform: "Informational",
+  }[interpretation.operation] || "Unknown";
+  elements.metricState.textContent = String(response.status || "unknown")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+
+  if (elements.policySummary) {
+    const constraints = interpretation.constraints || {};
+    const preserved = [];
+    if (constraints.read_only) preserved.push("read only");
+    if (constraints.plan_only) preserved.push("plan only");
+    if (constraints.allow_code_execution === false) preserved.push("no code execution");
+    if (constraints.allow_external_writes === false) preserved.push("no external writes");
+    if (constraints.allow_network_access === false) preserved.push("no network access");
+    elements.policySummary.textContent = preserved.length
+      ? `Preserved constraints: ${preserved.join(", ")}.`
+      : "No additional user constraint changed the existing policy boundary.";
+  }
+}
+
+function appendClarificationCard(response, channel, originalUtterance) {
+  const clarification = response.clarification;
+  if (!clarification) return;
+
+  const article = document.createElement("article");
+  article.className = "message assistant-message clarification-message";
+
+  const avatar = document.createElement("div");
+  avatar.className = "avatar";
+  avatar.textContent = "N";
+
+  const content = document.createElement("div");
+  content.className = "message-content";
+
+  const meta = document.createElement("div");
+  meta.className = "message-meta";
+  const author = document.createElement("span");
+  author.textContent = "Nexuss";
+  const timestamp = document.createElement("time");
+  timestamp.textContent = timeLabel();
+  meta.append(author, timestamp);
+
+  const bubble = document.createElement("div");
+  bubble.className = "bubble clarification-card";
+
+  const question = document.createElement("p");
+  question.className = "clarification-question";
+  question.textContent = clarification.question;
+
+  const options = document.createElement("div");
+  options.className = "clarification-options";
+
+  for (const option of clarification.options || []) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "clarification-option";
+    button.dataset.optionId = option.option_id;
+
+    const label = document.createElement("strong");
+    label.textContent = option.label;
+    button.append(label);
+
+    if (option.description) {
+      const description = document.createElement("span");
+      description.textContent = option.description;
+      button.append(description);
+    }
+
+    button.addEventListener("click", () => {
+      for (const candidate of options.querySelectorAll("button")) {
+        candidate.disabled = true;
+      }
+      void answerUnderstandingClarification(
+        response,
+        option,
+        channel,
+        originalUtterance,
+      );
+    });
+    options.append(button);
+  }
+
+  const boundary = document.createElement("p");
+  boundary.className = "clarification-boundary";
+  boundary.textContent =
+    "No action is performed until the target and outcome are explicit.";
+
+  bubble.append(question, options, boundary);
+  content.append(meta, bubble);
+  article.append(avatar, content);
+  elements.timeline.append(article);
+  elements.timeline.scrollTop = elements.timeline.scrollHeight;
+}
+
+function understandingReceiptNote(response) {
+  const receiptIds = response?.execution?.receipt_ids || [];
+  if (!receiptIds.length) return "";
+  return `\n\nRead-only receipt${receiptIds.length === 1 ? "" : "s"}: ${
+    receiptIds.map((value) => String(value).slice(0, 8)).join(", ")
+  }.`;
+}
+
+async function handleUnderstandingResponse(
+  response,
+  channel,
+  originalUtterance,
+) {
+  renderUnderstandingState(response);
+
+  if (response.status === "pass_through") {
+    await executeInstruction(
+      response.resolved_utterance || originalUtterance,
+      channel,
+      {
+        userAlreadyAdded: true,
+        progressAlreadyAdded: true,
+      },
+    );
+    return true;
+  }
+
+  if (response.status === "clarification_required") {
+    addMessage("assistant", response.assistant_message);
+    appendClarificationCard(response, channel, originalUtterance);
+    return false;
+  }
+
+  const note = understandingReceiptNote(response);
+  addMessage(
+    "assistant",
+    `${response.assistant_message || "No action was performed."}${note}`,
+    response.status === "blocked",
+    { speak: response.status === "completed" },
+  );
+
+  if (response.status === "completed") {
+    showToast("Read-only goal completed and verified.");
+  } else if (response.status === "blocked") {
+    showToast("The request was blocked before execution.");
+  } else if (response.status === "cancelled") {
+    showToast("Clarification cancelled. No action occurred.");
+  }
+  return false;
+}
+
+async function understandAndExecute(utterance, channel = "text") {
   setBusy(true);
   addMessage("user", utterance);
   stopSpeaking();
-  addMessage("assistant", "Interpreting intent, generating a capability plan, and evaluating policy…");
+  addMessage(
+    "assistant",
+    "Resolving the goal, target, constraints, confidence, and policy boundary…",
+  );
+
+  let delegated = false;
+  try {
+    const response = await fetch("/v1/understanding/resolve", {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify({
+        request_id: crypto.randomUUID(),
+        utterance,
+        channel,
+        client_context: {
+          interface: "p66b-web-ui",
+          browser_voice: channel === "voice",
+        },
+        execute_safe_reads: true,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(
+        `Understanding failed (${response.status}): ${await response.text()}`,
+      );
+    }
+    const body = await response.json();
+    delegated = body.status === "pass_through";
+    await handleUnderstandingResponse(body, channel, utterance);
+  } catch (error) {
+    addMessage(
+      "assistant",
+      error instanceof Error
+        ? error.message
+        : "The understanding gateway failed closed.",
+      true,
+    );
+  } finally {
+    if (!delegated) setBusy(false);
+    elements.input.focus();
+  }
+}
+
+async function answerUnderstandingClarification(
+  priorResponse,
+  option,
+  channel,
+  originalUtterance,
+) {
+  setBusy(true);
+  addMessage("user", option.label);
+  addMessage(
+    "assistant",
+    "Applying the clarification and re-evaluating the exact goal and policy…",
+  );
+
+  let delegated = false;
+  try {
+    const clarificationId = priorResponse.clarification?.clarification_id;
+    if (!clarificationId) {
+      throw new Error("The clarification state is missing.");
+    }
+    const response = await fetch(
+      `/v1/understanding/clarifications/${clarificationId}/answer`,
+      {
+        method: "POST",
+        headers: apiHeaders(),
+        body: JSON.stringify({ option_id: option.option_id }),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Clarification failed (${response.status}): ${await response.text()}`,
+      );
+    }
+    const body = await response.json();
+    delegated = body.status === "pass_through";
+    await handleUnderstandingResponse(
+      body,
+      channel,
+      originalUtterance,
+    );
+  } catch (error) {
+    addMessage(
+      "assistant",
+      error instanceof Error
+        ? error.message
+        : "The clarification failed closed.",
+      true,
+    );
+  } finally {
+    if (!delegated) setBusy(false);
+    elements.input.focus();
+  }
+}
+
+// P66B_LEGACY_DELEGATION_OPTIONS
+async function executeInstruction(
+  utterance,
+  channel = "text",
+  options = {},
+) {
+  setBusy(true);
+  if (!options.userAlreadyAdded) addMessage("user", utterance);
+  stopSpeaking();
+  if (!options.progressAlreadyAdded) {
+    addMessage(
+      "assistant",
+      "Interpreting intent, generating a capability plan, and evaluating policy…",
+    );
+  }
 
   const payload = {
     request_id: crypto.randomUUID(),
@@ -1143,7 +1418,7 @@ elements.form.addEventListener("submit", (event) => {
     return;
   }
 
-  void executeInstruction(utterance, channel);
+  void understandAndExecute(utterance, channel);
 });
 
 elements.input.addEventListener("keydown", (event) => {

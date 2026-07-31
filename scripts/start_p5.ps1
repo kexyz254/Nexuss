@@ -221,7 +221,7 @@ if (
 
 if (
     $CoreHealth.status -ne "ready" -or
-    $CoreHealth.mode -ne "p65f_native_zip_github_import"
+    $CoreHealth.mode -ne "p66b_goal_understanding_clarification"
 ) {
     foreach ($ProcessId in @($NodeProcess.Id, $CoreProcess.Id)) {
         & taskkill.exe /PID $ProcessId /T /F 2>$null | Out-Null

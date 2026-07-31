@@ -62,6 +62,7 @@ from nexuss.mobile.models import (
     MobileRebindResult,
 )
 from nexuss.mobile.store import device_store_from_environment
+from nexuss.understanding.api import register_understanding_routes
 
 _UI_DIRECTORY = Path(__file__).resolve().parents[1] / "ui"
 _MOBILE_URL = os.getenv("NEXUSS_MOBILE_PUBLIC_URL", "http://127.0.0.1:8100/mobile")
@@ -199,7 +200,7 @@ def health_live() -> dict[str, str]:
 def health_ready() -> dict[str, str]:
     return {
         "status": "ready",
-        "mode": "p65f_native_zip_github_import",
+        "mode": "p66b_goal_understanding_clarification",
         "phone_approval": "enabled",
     }
 
@@ -541,3 +542,5 @@ def decide_mobile_approval(
         ) from exc
 
 register_github_workspace_routes(app, _require_local_control)
+
+register_understanding_routes(app, _require_local_control)
