@@ -249,6 +249,64 @@ _MANIFESTS = (
         approval_channel=ApprovalChannel.PHONE,
     ),
     CapabilityManifest(
+        capability_id="mobile.signals.ingest",
+        version="1.0.0",
+        title="Trusted mobile communication ingress",
+        description=(
+            "Accept allowlisted notification and user-shared communication signals "
+            "from an authenticated paired Android companion using HMAC request assertions."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="trusted_mobile_ingress",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="mobile.signals.read",
+        version="1.0.0",
+        title="Mobile communication feed",
+        description=(
+            "Read the normalized phone, SMS, WhatsApp, Instagram, and Facebook Lite "
+            "signal feed without modifying any application or external account."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="live_local_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="mobile.action.prepare",
+        version="1.0.0",
+        title="Prepare exact mobile application action",
+        description=(
+            "Create a device-bound action proposal with an exact preview, payload hash, "
+            "short expiry, and no execution before approval."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=True,
+        execution_mode="local_action_preparation",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="mobile.action.execute",
+        version="1.0.0",
+        title="Execute approved mobile application handoff",
+        description=(
+            "On a paired Android companion, execute only dialer handoff, SMS composition, "
+            "app-provided notification reply, or conversation opening after exact on-device "
+            "biometric approval and return execution evidence."
+        ),
+        risk_tier=RiskTier.HIGH,
+        approval_policy=ApprovalPolicy.EXPLICIT,
+        reversible=False,
+        execution_mode="trusted_mobile_companion",
+        status=CapabilityStatus.ACTIVE,
+        approval_channel=ApprovalChannel.PHONE,
+    ),
+    CapabilityManifest(
         capability_id="calendar.read_summary",
         version="0.1.0",
         title="Calendar summary",

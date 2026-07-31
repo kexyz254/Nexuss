@@ -62,6 +62,7 @@ from nexuss.mobile.models import (
     MobileRebindResult,
 )
 from nexuss.mobile.store import device_store_from_environment
+from nexuss.mobile_fabric.api import register_mobile_fabric_routes
 from nexuss.understanding.api import register_understanding_routes
 
 _UI_DIRECTORY = Path(__file__).resolve().parents[1] / "ui"
@@ -200,7 +201,7 @@ def health_live() -> dict[str, str]:
 def health_ready() -> dict[str, str]:
     return {
         "status": "ready",
-        "mode": "p66b_goal_understanding_clarification",
+        "mode": "p67a_trusted_mobile_communication_fabric",
         "phone_approval": "enabled",
     }
 
@@ -542,5 +543,11 @@ def decide_mobile_approval(
         ) from exc
 
 register_github_workspace_routes(app, _require_local_control)
+
+register_mobile_fabric_routes(
+    app,
+    _require_local_control,
+    mobile_gateway=mobile_gateway,
+)
 
 register_understanding_routes(app, _require_local_control)
