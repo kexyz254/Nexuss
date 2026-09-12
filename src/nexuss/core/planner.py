@@ -80,6 +80,46 @@ def _direct_specs(intent: Intent) -> list[StepSpec] | None:
             )
         ]
 
+    if intent.kind is IntentKind.ENGINEERING_BUILD_ARTIFACT:
+        goal = intent.entities.get("goal", "").strip()
+        return [
+            (
+                "engineering.build_artifact",
+                RiskTier.HIGH,
+                ["engineering_build_receipt", "sha256_verification"],
+                {"goal": goal},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.ENGINEERING_REPAIR_FAILED_BUILD:
+        target = intent.entities.get("target", "").strip()
+        return [
+            (
+                "engineering.repair_failed_build",
+                RiskTier.HIGH,
+                [
+                    "engineering_repair_receipt",
+                    "regression_verification",
+                    "sha256_verification",
+                ],
+                {"target": target or "latest failed Prompt-to-Build candidate"},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.ENGINEERING_VERIFY_ACCEPTANCE:
+        target = intent.entities.get("target", "").strip()
+        return [
+            (
+                "engineering.verify_acceptance",
+                RiskTier.LOW,
+                ["engineering_acceptance_receipt"],
+                {"target": target or "current engineering phase"},
+                False,
+            )
+        ]
+
     if intent.kind is IntentKind.CREATE_NOTE:
         prepared = prepare_note(
             intent.entities["title"],

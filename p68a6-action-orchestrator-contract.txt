@@ -1,0 +1,2416 @@
+========================================================================================
+src/nexuss/cognitive/models.py
+========================================================================================
+﻿"""Validated cognitive proposal models."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class CognitiveMode(StrEnum):
+    ANSWER = "answer"
+    ANALYZE = "analyze"
+    PLAN = "plan"
+    WRITE = "write"
+    REWRITE = "rewrite"
+    DESIGN = "design"
+    CODE = "code"
+    DEBUG = "debug"
+    REVIEW = "review"
+    RESEARCH_SYNTHESIS = "research_synthesis"
+    CREATE = "create"
+    BUILD_PROPOSAL = "build_proposal"
+
+
+class CognitiveProposal(BaseModel):
+    """A provider-generated proposal with no execution authority."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    provider_id: str = Field(min_length=1, max_length=100)
+    model: str = Field(min_length=1, max_length=200)
+    mode: CognitiveMode
+
+    summary: str = Field(min_length=1, max_length=8_000)
+    response: str = Field(min_length=1, max_length=50_000)
+
+    steps: tuple[str, ...] = ()
+    assumptions: tuple[str, ...] = ()
+    risks: tuple[str, ...] = ()
+    recommended_actions: tuple[str, ...] = ()
+    requested_capabilities: tuple[str, ...] = ()
+
+    requires_execution: Literal[False] = False
+    requires_approval: Literal[False] = False
+
+    provider_generated_proposal_only: Literal[True] = True
+    nexuss_retains_final_authority: Literal[True] = True
+
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC)
+    )
+
+
+========================================================================================
+src/nexuss/cognitive/service.py
+========================================================================================
+﻿"""Proposal-only cognitive orchestration."""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Callable
+
+from nexuss.cognitive.models import CognitiveMode, CognitiveProposal
+from nexuss.engineering.models import ModelProposal
+from nexuss.engineering.providers.base import ProviderRequest
+
+ProposalFunction = Callable[[ProviderRequest], ModelProposal]
+
+_STEP_PATTERN = re.compile(
+    r"^\s*(?:\d+[.)]|[-*])\s+(.+?)\s*$"
+)
+
+
+class CognitiveProposalError(RuntimeError):
+    """Raised when a provider violates the cognitive contract."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+class CognitiveProposalService:
+    """Use an external model for proposals without granting authority."""
+
+    def __init__(
+        self,
+        *,
+        provider_id: str,
+        model: str,
+        proposer: ProposalFunction,
+    ) -> None:
+        normalized_provider = provider_id.strip()
+        normalized_model = model.strip()
+
+        if not normalized_provider:
+            raise ValueError("provider_id must not be empty")
+
+        if not normalized_model:
+            raise ValueError("model must not be empty")
+
+        self._provider_id = normalized_provider
+        self._model = normalized_model
+        self._proposer = proposer
+
+    def propose(
+        self,
+        *,
+        instruction: str,
+        mode: CognitiveMode,
+        context_summary: str = "",
+    ) -> CognitiveProposal:
+        normalized_instruction = instruction.strip()
+        normalized_context = context_summary.strip()
+
+        if not normalized_instruction:
+            raise CognitiveProposalError(
+                "COGNITIVE_INSTRUCTION_EMPTY",
+                "A cognitive instruction is required.",
+            )
+
+        request = ProviderRequest(
+            system_prompt=self._system_prompt(),
+            user_prompt=self._user_prompt(
+                instruction=normalized_instruction,
+                mode=mode,
+                context_summary=normalized_context,
+            ),
+        )
+
+        proposal = self._proposer(request)
+
+        if proposal.tool_requests:
+            raise CognitiveProposalError(
+                "COGNITIVE_TOOL_REQUEST_DENIED",
+                (
+                    "The cognitive provider attempted to request "
+                    "tool authority."
+                ),
+            )
+
+        if not proposal.done or not proposal.completion_message:
+            raise CognitiveProposalError(
+                "COGNITIVE_PROPOSAL_INCOMPLETE",
+                (
+                    "The cognitive provider did not return a "
+                    "completed proposal."
+                ),
+            )
+
+        response = proposal.completion_message.strip()
+
+        if not response:
+            raise CognitiveProposalError(
+                "COGNITIVE_RESPONSE_EMPTY",
+                "The cognitive provider returned an empty response.",
+            )
+
+        return CognitiveProposal(
+            provider_id=self._provider_id,
+            model=self._model,
+            mode=mode,
+            summary=proposal.summary.strip(),
+            response=response,
+            steps=self._extract_steps(response),
+            requested_capabilities=(),
+            requires_execution=False,
+            requires_approval=False,
+            provider_generated_proposal_only=True,
+            nexuss_retains_final_authority=True,
+        )
+
+    @staticmethod
+    def _system_prompt() -> str:
+        return (
+            "You are the proposal-only cognitive provider for Nexuss. "
+            "You may reason, analyze, write, design, review, debug, and "
+            "produce code or implementation proposals. You have no tool, "
+            "shell, file, network, device, approval, credential, publishing, "
+            "or execution authority. Never claim that you performed an "
+            "action. Return only valid JSON matching this exact contract: "
+            '{"summary":"concise summary","tool_requests":[],'
+            '"done":true,"completion_message":"complete user-facing answer"}. '
+            "Do not return hidden reasoning, reasoning_content, chain of "
+            "thought, credentials, approval tokens, or tool requests. "
+            "Nexuss retains policy, approval, execution, verification, "
+            "receipt, audit, and final authority."
+        )
+
+    @staticmethod
+    def _user_prompt(
+        *,
+        instruction: str,
+        mode: CognitiveMode,
+        context_summary: str,
+    ) -> str:
+        context = (
+            context_summary
+            if context_summary
+            else "No additional private context was supplied."
+        )
+
+        return (
+            f"Cognitive mode: {mode.value}\n\n"
+            f"User instruction:\n{instruction}\n\n"
+            f"Privacy-filtered context:\n{context}\n\n"
+            "Produce a professional proposal or answer only. "
+            "Do not request tools or claim execution."
+        )
+
+    @staticmethod
+    def _extract_steps(response: str) -> tuple[str, ...]:
+        steps: list[str] = []
+
+        for line in response.splitlines():
+            match = _STEP_PATTERN.match(line)
+
+            if not match:
+                continue
+
+            step = match.group(1).strip()
+
+            if step and step not in steps:
+                steps.append(step)
+
+        return tuple(steps[:25])
+
+
+========================================================================================
+src/nexuss/cognitive/api.py
+========================================================================================
+"""Authenticated grounded cognitive API."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import FastAPI, Header, HTTPException, Request, status
+from pydantic import BaseModel, ConfigDict, Field
+
+from nexuss.cognitive.context import build_cognitive_context
+from nexuss.cognitive.models import CognitiveMode
+from nexuss.cognitive.receipt import (
+    CognitiveProposalEnvelope,
+    build_cognitive_receipt,
+)
+from nexuss.cognitive.service import (
+    CognitiveProposalError,
+    CognitiveProposalService,
+)
+from nexuss.connectors.vault import DpapiSecretVault
+from nexuss.engineering.errors import EngineeringError
+from nexuss.engineering.models import (
+    EngineeringTaskSpec,
+    TaskSensitivity,
+    WorkspaceKind,
+)
+from nexuss.engineering.provider_connections import (
+    EngineeringProviderConnectionService,
+)
+
+
+class CognitiveProposalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: UUID
+    user_session_id: UUID
+    instruction: str = Field(min_length=1, max_length=20_000)
+    mode: CognitiveMode = CognitiveMode.ANALYZE
+
+
+def register_cognitive_routes(
+    app: FastAPI,
+    *,
+    require_local_control: Callable[[Request], None],
+) -> None:
+    @app.post(
+        "/v1/cognitive/proposals",
+        response_model=CognitiveProposalEnvelope,
+        status_code=status.HTTP_200_OK,
+    )
+    def create_cognitive_proposal(
+        proposal_request: CognitiveProposalRequest,
+        http_request: Request,
+        session_id: Annotated[
+            UUID,
+            Header(alias="X-Nexuss-Session-ID"),
+        ],
+        session_authenticated: Annotated[
+            bool,
+            Header(alias="X-Nexuss-Session-Authenticated"),
+        ],
+    ) -> CognitiveProposalEnvelope:
+        require_local_control(http_request)
+
+        if (
+            not session_authenticated
+            or session_id != proposal_request.user_session_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authenticated session does not match the request.",
+            )
+
+        try:
+            connections = EngineeringProviderConnectionService(
+                DpapiSecretVault(),
+                timeout_seconds=120.0,
+            )
+
+            access = connections.deepseek_access()
+
+            if not access.available:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail={
+                        "code": access.code.value,
+                        "message": access.user_message,
+                        "fallback": (
+                            "No cognitive proposal was generated. "
+                            "Nexuss remains operational and no action "
+                            "was performed."
+                        ),
+                    },
+                )
+
+            router = connections.build_deepseek_router()
+            profile = router.profile("deepseek")
+
+            context = build_cognitive_context(
+                provider_status=access.code.value,
+            )
+            context_summary = context.to_provider_summary()
+
+            task = EngineeringTaskSpec(
+                task_id=proposal_request.request_id,
+                goal=proposal_request.instruction,
+                provider_id="deepseek",
+                workspace_kind=WorkspaceKind.LOCAL,
+                sensitivity=TaskSensitivity.PRIVATE,
+                external_processing_approved=True,
+                allowed_tools=(),
+                max_rounds=1,
+                max_files_changed=1,
+                max_runtime_seconds=120,
+            )
+
+            cognitive = CognitiveProposalService(
+                provider_id="deepseek",
+                model=profile.model,
+                proposer=lambda request: router.propose(task, request),
+            )
+
+            proposal = cognitive.propose(
+                instruction=proposal_request.instruction,
+                mode=proposal_request.mode,
+                context_summary=context_summary,
+            )
+
+            receipt = build_cognitive_receipt(
+                request_id=proposal_request.request_id,
+                instruction=proposal_request.instruction,
+                context_summary=context_summary,
+                proposal=proposal,
+            )
+
+            return CognitiveProposalEnvelope(
+                proposal=proposal,
+                receipt=receipt,
+            )
+        except HTTPException:
+            raise
+        except CognitiveProposalError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "code": exc.code,
+                    "message": str(exc),
+                },
+            ) from exc
+        except EngineeringError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "code": getattr(
+                        exc,
+                        "code",
+                        "ENGINEERING_PROVIDER_UNAVAILABLE",
+                    ),
+                    "message": str(exc),
+                    "fallback": (
+                        "No cognitive proposal was generated. "
+                        "Nexuss remains operational and no action "
+                        "was performed."
+                    ),
+                },
+            ) from exc
+
+
+========================================================================================
+src/nexuss/cognitive/receipt.py
+========================================================================================
+"""Verified non-write receipts for cognitive proposals."""
+
+from __future__ import annotations
+
+import hashlib
+from datetime import UTC, datetime
+from typing import Literal
+from uuid import NAMESPACE_URL, UUID, uuid5
+
+from pydantic import BaseModel, ConfigDict
+
+from nexuss.cognitive.models import CognitiveProposal
+
+
+class CognitiveLifecycleEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    sequence: int
+    state: str
+    event_type: str
+    occurred_at: datetime
+    detail: str
+
+
+class CognitiveReceipt(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    receipt_id: UUID
+    receipt_type: Literal["cognitive_proposal"]
+    request_id: UUID
+    provider_id: str
+    model: str
+    mode: str
+
+    request_sha256: str
+    context_sha256: str
+    response_sha256: str
+
+    provider_invoked: Literal[True] = True
+    proposal_validated: Literal[True] = True
+    external_processing_used: Literal[True] = True
+
+    execution_authorized: Literal[False] = False
+    tool_capabilities_executed: int = 0
+    approval_requested: Literal[False] = False
+    files_modified: Literal[False] = False
+    external_writes: Literal[False] = False
+    hidden_reasoning_stored: Literal[False] = False
+    nexuss_retains_final_authority: Literal[True] = True
+
+    events: tuple[CognitiveLifecycleEvent, ...]
+    created_at: datetime
+
+
+class CognitiveProposalEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    proposal: CognitiveProposal
+    receipt: CognitiveReceipt
+
+
+def _sha256(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def build_cognitive_receipt(
+    *,
+    request_id: UUID,
+    instruction: str,
+    context_summary: str,
+    proposal: CognitiveProposal,
+) -> CognitiveReceipt:
+    created_at = datetime.now(UTC)
+    request_hash = _sha256(instruction)
+    context_hash = _sha256(context_summary)
+    response_hash = _sha256(proposal.response)
+
+    receipt_id = uuid5(
+        NAMESPACE_URL,
+        (
+            "nexuss:cognitive-receipt:"
+            f"{request_id}:{response_hash}"
+        ),
+    )
+
+    events = (
+        CognitiveLifecycleEvent(
+            sequence=1,
+            state="received",
+            event_type="cognitive_request_received",
+            occurred_at=created_at,
+            detail=(
+                "Authenticated cognitive request accepted with explicit "
+                "external provider selection."
+            ),
+        ),
+        CognitiveLifecycleEvent(
+            sequence=2,
+            state="planned",
+            event_type="cognitive_policy_applied",
+            occurred_at=created_at,
+            detail=(
+                "Proposal-only policy applied. Tools, writes, approvals, "
+                "and execution authority were excluded."
+            ),
+        ),
+        CognitiveLifecycleEvent(
+            sequence=3,
+            state="verifying",
+            event_type="provider_proposal_received",
+            occurred_at=created_at,
+            detail=(
+                "DeepSeek returned structured output for schema and "
+                "authority-boundary verification."
+            ),
+        ),
+        CognitiveLifecycleEvent(
+            sequence=4,
+            state="completed",
+            event_type="cognitive_proposal_verified",
+            occurred_at=created_at,
+            detail=(
+                "The proposal passed validation and a non-write cognitive "
+                "receipt was generated."
+            ),
+        ),
+    )
+
+    return CognitiveReceipt(
+        receipt_id=receipt_id,
+        receipt_type="cognitive_proposal",
+        request_id=request_id,
+        provider_id=proposal.provider_id,
+        model=proposal.model,
+        mode=proposal.mode.value,
+        request_sha256=request_hash,
+        context_sha256=context_hash,
+        response_sha256=response_hash,
+        events=events,
+        created_at=created_at,
+    )
+
+
+========================================================================================
+src/nexuss/engineering/models.py
+========================================================================================
+"""Validated engineering-plane data contracts."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from enum import StrEnum
+from uuid import UUID, uuid4
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class ProviderKind(StrEnum):
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+    DEEPSEEK = "deepseek"
+    LOCAL = "local"
+
+
+class WorkspaceKind(StrEnum):
+    LOCAL = "local"
+    CODESPACE = "codespace"
+
+
+class TaskSensitivity(StrEnum):
+    PUBLIC = "public"
+    PRIVATE = "private"
+    RESTRICTED = "restricted"
+
+
+class ToolName(StrEnum):
+    READ_FILE = "workspace.read_file"
+    WRITE_FILE = "workspace.write_file"
+    LIST_FILES = "workspace.list_files"
+    RUN_COMMAND = "workspace.run_command"
+
+
+class EngineeringTaskSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    task_id: UUID = Field(default_factory=uuid4)
+    goal: str = Field(min_length=1, max_length=20_000)
+    provider_id: str = Field(min_length=1, max_length=80)
+    workspace_kind: WorkspaceKind = WorkspaceKind.LOCAL
+    sensitivity: TaskSensitivity = TaskSensitivity.PRIVATE
+    external_processing_approved: bool = False
+    allowed_tools: tuple[ToolName, ...] = (
+        ToolName.READ_FILE,
+        ToolName.WRITE_FILE,
+        ToolName.LIST_FILES,
+        ToolName.RUN_COMMAND,
+    )
+    max_rounds: int = Field(default=8, ge=1, le=30)
+    max_files_changed: int = Field(default=20, ge=1, le=200)
+    max_runtime_seconds: int = Field(default=300, ge=5, le=3600)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class ToolRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    request_id: UUID = Field(default_factory=uuid4)
+    tool_name: ToolName
+    arguments: dict[str, object] = Field(default_factory=dict)
+    rationale: str = Field(min_length=1, max_length=2_000)
+
+
+class ModelProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    summary: str = Field(min_length=1, max_length=8_000)
+    tool_requests: tuple[ToolRequest, ...] = ()
+    done: bool = False
+    completion_message: str | None = Field(default=None, max_length=8_000)
+
+    @field_validator("completion_message")
+    @classmethod
+    def completion_required_when_done(cls, value: str | None, info):
+        if info.data.get("done") and not value:
+            raise ValueError("completion_message is required when done")
+        return value
+
+
+class ToolResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    request_id: UUID
+    tool_name: ToolName
+    success: bool
+    output: str = Field(max_length=100_000)
+    error_code: str | None = None
+    evidence_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class EngineeringRunReceipt(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    run_id: UUID = Field(default_factory=uuid4)
+    task_id: UUID
+    provider_id: str
+    provider_kind: ProviderKind
+    workspace_kind: WorkspaceKind
+    rounds: int = Field(ge=1)
+    completed: bool
+    changed_files: tuple[str, ...]
+    tool_results: tuple[ToolResult, ...]
+    final_message: str
+    credentials_exposed: bool = False
+    external_processing_used: bool
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+========================================================================================
+src/nexuss/engineering/router.py
+========================================================================================
+"""Explicit engineering-provider routing."""
+
+from __future__ import annotations
+
+from nexuss.engineering.errors import EngineeringError
+from nexuss.engineering.models import EngineeringTaskSpec, ModelProposal
+from nexuss.engineering.policy import EngineeringPolicy, ProviderProfile
+from nexuss.engineering.providers.base import EngineeringProvider, ProviderRequest
+
+
+class EngineeringProviderRouter:
+    def __init__(self, providers: tuple[EngineeringProvider, ...]) -> None:
+        self._providers = {
+            provider.profile.provider_id: provider
+            for provider in providers
+        }
+
+    def profile(self, provider_id: str) -> ProviderProfile:
+        provider = self._providers.get(provider_id)
+        if provider is None:
+            raise EngineeringError(
+                "ENGINEERING_PROVIDER_UNKNOWN",
+                "The requested engineering provider is not registered.",
+            )
+        return provider.profile
+
+    def propose(
+        self,
+        task: EngineeringTaskSpec,
+        request: ProviderRequest,
+    ) -> ModelProposal:
+        provider = self._providers.get(task.provider_id)
+        if provider is None:
+            raise EngineeringError(
+                "ENGINEERING_PROVIDER_UNKNOWN",
+                "The requested engineering provider is not registered.",
+            )
+        EngineeringPolicy.authorize_provider(task, provider.profile)
+        return provider.propose(request)
+
+
+========================================================================================
+src/nexuss/core/registry.py
+========================================================================================
+"""Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
+
+Explicit capability registry for the Nexuss P5 knowledge, media, and mobile action plane.
+"""
+
+from nexuss.domain.models import (
+    ApprovalChannel,
+    ApprovalPolicy,
+    CapabilityManifest,
+    CapabilityStatus,
+    RiskTier,
+)
+
+_MANIFESTS = (
+    CapabilityManifest(
+        capability_id="memory.remember",
+        version="1.0.0",
+        title="Remember",
+        description=(
+            "Store a user-asserted statement in durable memory with full "
+            "provenance. Credential-shaped content is refused, not masked."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=True,
+        execution_mode="live_local_controlled_write",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="memory.recall",
+        version="1.0.0",
+        title="Recall",
+        description=(
+            "Search durable memory. Results always carry source, trust tier "
+            "and decayed confidence; provenance is never stripped."
+        ),
+        risk_tier=RiskTier.INFORMATIONAL,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="live_local_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="memory.forget",
+        version="1.0.0",
+        title="Forget a topic",
+        description=(
+            "Delete every claim on a topic permanently. Desktop approval is "
+            "required because deletion is irreversible."
+        ),
+        risk_tier=RiskTier.HIGH,
+        approval_policy=ApprovalPolicy.EXPLICIT,
+        reversible=False,
+        execution_mode="live_local_controlled_write",
+        status=CapabilityStatus.ACTIVE,
+        approval_channel=ApprovalChannel.DESKTOP,
+    ),
+    CapabilityManifest(
+        capability_id="device.pair_phone",
+        version="1.0.0",
+        title="Pair a phone",
+        description=(
+            "Issue a single-use pairing challenge for a trusted phone. "
+            "Trust transfers only when the code is entered on the handset."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=True,
+        execution_mode="live_local_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="device.list_phones",
+        version="1.0.0",
+        title="List paired phones",
+        description="Read the paired-device inventory without exposing token digests.",
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="live_local_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="device.unpair_phone",
+        version="1.0.0",
+        title="Unpair a phone",
+        description=(
+            "Revoke a paired phone permanently. Approved on the desktop, never "
+            "on the phone: a handset you have lost cannot authorise its own removal."
+        ),
+        risk_tier=RiskTier.HIGH,
+        approval_policy=ApprovalPolicy.EXPLICIT,
+        reversible=False,
+        execution_mode="live_local_controlled_write",
+        status=CapabilityStatus.ACTIVE,
+        approval_channel=ApprovalChannel.DESKTOP,
+    ),
+    CapabilityManifest(
+        capability_id="assistant.converse",
+        version="1.0.0",
+        title="Converse",
+        description=(
+            "Answer greetings, courtesies and clock questions deterministically. "
+            "No external source is consulted and nothing is written."
+        ),
+        risk_tier=RiskTier.INFORMATIONAL,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="live_local_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="knowledge.answer",
+        version="1.0.0",
+        title="Answer a question",
+        description=(
+            "Answer an open question from memory when memory is confident, "
+            "and from cited public sources when it is not. The answer always "
+            "states which of the two it used."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="live_public_web_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="assistant.respond",
+        version="1.1.0",
+        title="Nexuss constitutional conversation",
+        description=(
+            "Answer identity, governance, help, and capability questions "
+            "through verified local constitutional or deterministic evidence."
+        ),
+        risk_tier=RiskTier.INFORMATIONAL,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="deterministic_local",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="workspace.read_status",
+        version="1.0.0",
+        title="Workspace status",
+        description="Read bounded local repository and runtime metadata.",
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="live_local_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="workspace.create_note",
+        version="1.0.0",
+        title="Create managed note",
+        description="Create a verified Markdown note in the Nexuss managed workspace.",
+        risk_tier=RiskTier.MEDIUM,
+        approval_policy=ApprovalPolicy.EXPLICIT,
+        reversible=True,
+        execution_mode="live_local_controlled_write",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="workspace.rollback_create_note",
+        version="1.0.0",
+        title="Undo note creation",
+        description="Remove only the unchanged note created by the associated receipt.",
+        risk_tier=RiskTier.MEDIUM,
+        approval_policy=ApprovalPolicy.EXPLICIT,
+        reversible=False,
+        execution_mode="live_local_receipt_bound_rollback",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="device.launch_notepad",
+        version="1.0.0",
+        title="Launch Notepad on trusted Windows node",
+        description=(
+            "Launch only the fixed Windows Notepad executable through a signed, "
+            "loopback-only device-node command envelope."
+        ),
+        risk_tier=RiskTier.HIGH,
+        approval_policy=ApprovalPolicy.EXPLICIT,
+        reversible=True,
+        execution_mode="trusted_device_node",
+        status=CapabilityStatus.ACTIVE,
+        approval_channel=ApprovalChannel.PHONE,
+    ),
+    CapabilityManifest(
+        capability_id="device.rollback_launch_notepad",
+        version="1.0.0",
+        title="Close receipt-bound Notepad process",
+        description=(
+            "Terminate only the process created by the associated signed device command."
+        ),
+        risk_tier=RiskTier.HIGH,
+        approval_policy=ApprovalPolicy.EXPLICIT,
+        reversible=False,
+        execution_mode="trusted_device_node_rollback",
+        status=CapabilityStatus.ACTIVE,
+        approval_channel=ApprovalChannel.PHONE,
+    ),
+    CapabilityManifest(
+        capability_id="knowledge.web_research",
+        version="1.0.0",
+        title="Public web research",
+        description="Retrieve bounded public reference sources and prepare a cited brief.",
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="live_public_web_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="media.youtube.discover",
+        version="1.0.0",
+        title="YouTube discovery",
+        description="Search through the official YouTube Data API or return a safe handoff state.",
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="official_media_connector",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="phone.open_youtube",
+        version="1.1.0",
+        title="Open YouTube on paired phone",
+        description=(
+            "Dispatch only an allowlisted HTTPS YouTube search to the paired phone "
+            "from an authenticated user request."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="paired_phone_direct_youtube_handoff",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="device.open_web_search",
+        version="1.0.0",
+        title="Open approved web search",
+        description="Open an allowlisted HTTPS search URL in Chrome on the trusted Windows node.",
+        risk_tier=RiskTier.HIGH,
+        approval_policy=ApprovalPolicy.EXPLICIT,
+        reversible=False,
+        execution_mode="trusted_device_browser_handoff",
+        status=CapabilityStatus.ACTIVE,
+        approval_channel=ApprovalChannel.PHONE,
+    ),
+    CapabilityManifest(
+        capability_id="mobile.signals.ingest",
+        version="1.0.0",
+        title="Trusted mobile communication ingress",
+        description=(
+            "Accept allowlisted notification and user-shared communication signals "
+            "from an authenticated paired Android companion using HMAC request assertions."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="trusted_mobile_ingress",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="mobile.signals.read",
+        version="1.0.0",
+        title="Mobile communication feed",
+        description=(
+            "Read the normalized phone, SMS, WhatsApp, Instagram, and Facebook Lite "
+            "signal feed without modifying any application or external account."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="live_local_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="mobile.action.prepare",
+        version="1.0.0",
+        title="Prepare exact mobile application action",
+        description=(
+            "Create a device-bound action proposal with an exact preview, payload hash, "
+            "short expiry, and no execution before approval."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=True,
+        execution_mode="local_action_preparation",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="mobile.action.execute",
+        version="1.0.0",
+        title="Execute approved mobile application handoff",
+        description=(
+            "On a paired Android companion, execute only dialer handoff, SMS composition, "
+            "app-provided notification reply, or conversation opening after exact on-device "
+            "biometric approval and return execution evidence."
+        ),
+        risk_tier=RiskTier.HIGH,
+        approval_policy=ApprovalPolicy.EXPLICIT,
+        reversible=False,
+        execution_mode="trusted_mobile_companion",
+        status=CapabilityStatus.ACTIVE,
+        approval_channel=ApprovalChannel.PHONE,
+    ),
+    CapabilityManifest(
+        capability_id="google.workspace.connection",
+        version="1.0.0",
+        title="Encrypted Google Workspace connection",
+        description=(
+            "Connect one Google identity through desktop OAuth with PKCE "
+            "and Windows user-scoped DPAPI storage."
+        ),
+        risk_tier=RiskTier.MEDIUM,
+        approval_policy=ApprovalPolicy.EXPLICIT,
+        reversible=True,
+        execution_mode="desktop_oauth_pkce",
+        status=CapabilityStatus.ACTIVE,
+        approval_channel=ApprovalChannel.DESKTOP,
+    ),
+    CapabilityManifest(
+        capability_id="google.gmail.read",
+        version="1.0.0",
+        title="Gmail read intelligence",
+        description=(
+            "Read bounded Gmail messages through the official Gmail API "
+            "using only the gmail.readonly scope."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="official_google_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="google.calendar.read",
+        version="1.0.0",
+        title="Calendar read intelligence",
+        description=(
+            "Read calendar inventory and bounded event windows through "
+            "official Google Calendar read-only scopes."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="official_google_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="google.contacts.read",
+        version="1.0.0",
+        title="Google Contacts resolution",
+        description=(
+            "Resolve bounded contact names, email addresses, phone numbers, "
+            "and organizations through the People API read-only scope."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="official_google_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="commitments.prepare_day",
+        version="1.0.0",
+        title="Prepare unified operational day",
+        description=(
+            "Correlate Gmail, Calendar, Contacts, and trusted-mobile signals "
+            "into evidence-backed commitments and schedule proposals."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="cross_channel_readonly_intelligence",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="communications.external_write",
+        version="0.1.0",
+        title="External communication and calendar writes",
+        description=(
+            "Sending Gmail, modifying Calendar, and changing Contacts remain "
+            "disabled until approval-bound execution is verified."
+        ),
+        risk_tier=RiskTier.HIGH,
+        approval_policy=ApprovalPolicy.PROHIBITED,
+        reversible=False,
+        execution_mode="not_enabled",
+        status=CapabilityStatus.PROHIBITED,
+    ),
+    CapabilityManifest(
+        capability_id="calendar.read_summary",
+        version="0.1.0",
+        title="Calendar summary",
+        description="P1 deterministic simulation only.",
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="simulated",
+        status=CapabilityStatus.SIMULATED,
+    ),
+    CapabilityManifest(
+        capability_id="email.read_summary",
+        version="0.1.0",
+        title="Email summary",
+        description="P1 deterministic simulation only.",
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="simulated",
+        status=CapabilityStatus.SIMULATED,
+    ),
+    CapabilityManifest(
+        capability_id="github.read_summary",
+        version="0.1.0",
+        title="GitHub summary",
+        description=(
+            "Legacy deterministic simulation retained for "
+            "daily briefing compatibility."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="simulated",
+        status=CapabilityStatus.SIMULATED,
+    ),
+    CapabilityManifest(
+        capability_id="github.connection.status",
+        version="1.0.0",
+        title="GitHub connection status",
+        description=(
+            "Verify the encrypted GitHub connector identity without "
+            "exposing credentials."
+        ),
+        risk_tier=RiskTier.INFORMATIONAL,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="live_github_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="github.repositories.list",
+        version="1.0.0",
+        title="GitHub repository inventory",
+        description=(
+            "Read bounded repository metadata for the verified GitHub account."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="live_github_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="github.repository.create",
+        version="1.0.0",
+        title="Create private GitHub repository",
+        description=(
+            "Create one exact private, uninitialized repository after "
+            "payload-bound phone approval and independent verification."
+        ),
+        risk_tier=RiskTier.HIGH,
+        approval_policy=ApprovalPolicy.EXPLICIT,
+        reversible=False,
+        execution_mode="live_github_controlled_write",
+        status=CapabilityStatus.ACTIVE,
+        approval_channel=ApprovalChannel.PHONE,
+    ),
+    CapabilityManifest(
+        capability_id="ats.read_health",
+        version="0.1.0",
+        title="ATS health",
+        description="Protected read-only simulation; no live ATS connection.",
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="simulated",
+        status=CapabilityStatus.SIMULATED,
+    ),
+    CapabilityManifest(
+        capability_id="ats.read_intelligence",
+        version="0.1.0",
+        title="ATS intelligence",
+        description="Protected read-only simulation; no live market data.",
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="simulated",
+        status=CapabilityStatus.SIMULATED,
+    ),
+)
+
+_BY_ID = {manifest.capability_id: manifest for manifest in _MANIFESTS}
+
+
+def list_capabilities() -> tuple[CapabilityManifest, ...]:
+    return _MANIFESTS
+
+
+def get_capability(capability_id: str) -> CapabilityManifest | None:
+    return _BY_ID.get(capability_id)
+
+
+========================================================================================
+src/nexuss/core/policy.py
+========================================================================================
+"""Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
+
+Fail-closed policy evaluation for the Nexuss P5 capability registry.
+"""
+
+from nexuss.core.registry import get_capability
+from nexuss.domain.models import (
+    ApprovalChannel,
+    ApprovalPolicy,
+    CapabilityStatus,
+    PlanStep,
+    PolicyDecision,
+    PolicyOutcome,
+)
+
+_PROHIBITED_CAPABILITIES = {
+    "ats.write_order",
+    "finance.transfer",
+    "social.publish",
+    "nexuss.unsupported",
+    "device.workspace.prepare",
+}
+
+
+def evaluate_step(step: PlanStep) -> PolicyDecision:
+    if step.capability_id in _PROHIBITED_CAPABILITIES:
+        return PolicyDecision(
+            step_id=step.step_id,
+            capability_id=step.capability_id,
+            outcome=PolicyOutcome.DENY,
+            reason_code="CAPABILITY_PROHIBITED_BY_POLICY",
+            explanation="This capability is outside the approved P5 execution boundary.",
+        )
+
+    if step.capability_id == "github.repository.create":
+        if not str(step.parameters.get("account_login", "")).strip():
+            return PolicyDecision(
+                step_id=step.step_id,
+                capability_id=step.capability_id,
+                outcome=PolicyOutcome.DENY,
+                reason_code="GITHUB_NOT_CONNECTED",
+                explanation=(
+                    "A verified GitHub account must be connected before "
+                    "repository creation can be approved."
+                ),
+            )
+        if (
+            step.parameters.get("private") is not True
+            or step.parameters.get("auto_init") is not False
+        ):
+            return PolicyDecision(
+                step_id=step.step_id,
+                capability_id=step.capability_id,
+                outcome=PolicyOutcome.DENY,
+                reason_code="GITHUB_REPOSITORY_CONTRACT_INVALID",
+                explanation=(
+                    "Only a private, uninitialized repository is permitted."
+                ),
+            )
+
+    manifest = get_capability(step.capability_id)
+    if manifest is None:
+        return PolicyDecision(
+            step_id=step.step_id,
+            capability_id=step.capability_id,
+            outcome=PolicyOutcome.DENY,
+            reason_code="CAPABILITY_NOT_REGISTERED",
+            explanation="Unregistered capabilities cannot execute in Nexuss.",
+        )
+
+    if manifest.status is CapabilityStatus.PROHIBITED:
+        return PolicyDecision(
+            step_id=step.step_id,
+            capability_id=step.capability_id,
+            outcome=PolicyOutcome.DENY,
+            reason_code="CAPABILITY_REGISTRY_PROHIBITED",
+            explanation="The capability registry marks this capability as prohibited.",
+        )
+
+    if manifest.approval_policy is ApprovalPolicy.EXPLICIT:
+        phone_required = manifest.approval_channel is ApprovalChannel.PHONE
+        return PolicyDecision(
+            step_id=step.step_id,
+            capability_id=step.capability_id,
+            outcome=PolicyOutcome.REQUIRE_APPROVAL,
+            reason_code=(
+                "TRUSTED_PHONE_APPROVAL_REQUIRED"
+                if phone_required
+                else "EXPLICIT_USER_APPROVAL_REQUIRED"
+            ),
+            explanation=(
+                "This trusted-device command requires approval from a paired phone bound to "
+                "the requesting Nexuss session and the exact payload hash."
+                if phone_required
+                else (
+                    "This controlled write is authorized only after the user approves the exact "
+                    "payload bound to the current authenticated session."
+                )
+            ),
+        )
+
+    if (
+        step.capability_id == "assistant.respond"
+        and step.parameters.get("response_key")
+    ):
+        return PolicyDecision(
+            step_id=step.step_id,
+            capability_id=step.capability_id,
+            outcome=PolicyOutcome.ALLOW,
+            reason_code="CONSTITUTIONAL_INFORMATIONAL_RESPONSE",
+            explanation=(
+                "The active hash-verified Nexuss Constitution "
+                "authorizes this informational response. It creates "
+                "no external side effect and grants no authority."
+            ),
+        )
+
+    if manifest.approval_policy is ApprovalPolicy.NONE:
+        reason_code = (
+            "INFORMATIONAL_NO_SIDE_EFFECT"
+            if manifest.execution_mode == "deterministic_local"
+            else "REGISTERED_READ_ONLY_OR_SIMULATED"
+        )
+        return PolicyDecision(
+            step_id=step.step_id,
+            capability_id=step.capability_id,
+            outcome=PolicyOutcome.ALLOW,
+            reason_code=reason_code,
+            explanation="The registered capability has no approved external side effect.",
+        )
+
+    return PolicyDecision(
+        step_id=step.step_id,
+        capability_id=step.capability_id,
+        outcome=PolicyOutcome.DENY,
+        reason_code="FAIL_CLOSED_POLICY_CONFIGURATION",
+        explanation="No explicit policy outcome authorizes this capability.",
+    )
+
+
+========================================================================================
+src/nexuss/core/planner.py
+========================================================================================
+"""Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
+
+Deterministic task planning for the Nexuss P5 knowledge, media, and mobile plane.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+from uuid import NAMESPACE_URL, UUID, uuid5
+
+from nexuss.core.managed_notes import prepare_note
+from nexuss.core.web_actions import google_search_url, youtube_search_url
+from nexuss.domain.models import Intent, IntentKind, PlanStep, RiskTier, TaskPlan
+
+StepSpec = tuple[
+    str,
+    RiskTier,
+    list[str],
+    dict[str, object],
+    bool,
+]
+
+
+def _step_id(task_id: UUID, order: int, capability_id: str) -> UUID:
+    return uuid5(NAMESPACE_URL, f"nexuss:{task_id}:{order}:{capability_id}")
+
+
+def _assistant_response(intent: Intent) -> str:
+    responses = {
+        IntentKind.ASSISTANT_CAPABILITIES: (
+            "I can inspect this workspace, research bounded public sources, "
+            "discover and rank YouTube media, create verified notes, and use "
+            "governed device actions with approval only where policy requires it."
+        ),
+        IntentKind.ASSISTANT_HELP: (
+            "Try: ‘Research the fundamentals of forex’, ‘Play Silence by "
+            "Popcaan’, ‘Open YouTube on my phone and search Silence by Popcaan’, "
+            "or ‘Open Chrome and search forex risk management’."
+        ),
+    }
+    return responses[intent.kind]
+
+
+def _direct_specs(intent: Intent) -> list[StepSpec] | None:
+    if intent.kind is IntentKind.ASSISTANT_IDENTITY:
+        return [
+            (
+                "assistant.respond",
+                RiskTier.INFORMATIONAL,
+                ["assistant_response"],
+                {"response_key": "who_are_you"},
+                False,
+            )
+        ]
+
+    if intent.kind in {
+        IntentKind.ASSISTANT_CAPABILITIES,
+        IntentKind.ASSISTANT_HELP,
+    }:
+        return [
+            (
+                "assistant.respond",
+                RiskTier.INFORMATIONAL,
+                ["assistant_response"],
+                {"response": _assistant_response(intent)},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.CONSTITUTION_OVERRIDE:
+        return [
+            (
+                "assistant.respond",
+                RiskTier.INFORMATIONAL,
+                ["assistant_response"],
+                {"response_key": "ignore_constitution"},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.CREATE_NOTE:
+        prepared = prepare_note(
+            intent.entities["title"],
+            intent.entities["content"],
+        )
+        return [
+            (
+                "workspace.create_note",
+                RiskTier.MEDIUM,
+                ["created_note_metadata", "sha256_verification"],
+                {
+                    "title": prepared.title,
+                    "filename": prepared.filename,
+                    "content": prepared.content,
+                    "content_sha256": prepared.content_sha256,
+                    "byte_count": len(prepared.content_bytes),
+                },
+                True,
+            )
+        ]
+
+    query = intent.entities.get("query", intent.normalized_text)
+
+    if intent.kind is IntentKind.WEB_RESEARCH:
+        return [
+            (
+                "knowledge.web_research",
+                RiskTier.LOW,
+                ["sources", "brief"],
+                {"query": query},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.YOUTUBE_SEARCH:
+        return [
+            (
+                "media.youtube.discover",
+                RiskTier.LOW,
+                ["youtube_discovery_state"],
+                {"query": query},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.IDENTITY_RECALL:
+        response_key = intent.entities.get("response_key", "")
+        if response_key:
+            return [
+                (
+                    "assistant.respond",
+                    RiskTier.INFORMATIONAL,
+                    ["assistant_response"],
+                    {"response_key": response_key},
+                    False,
+                )
+            ]
+
+        return [
+            (
+                "memory.recall",
+                RiskTier.INFORMATIONAL,
+                ["memory_recall_results"],
+                {"query": intent.entities.get("query", "")},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.USER_IDENTITY_CLAIM:
+        claim = intent.entities.get("claim", "")
+        normalized_claim = " ".join(claim.casefold().split())
+
+        if normalized_claim == "peter":
+            response_parameters: dict[str, object] = {
+                "response_key": "user_claims_to_be_peter",
+            }
+        else:
+            response_parameters = {
+                "response": (
+                    f"You are claiming to be {claim}. I can retain that as an "
+                    "unverified identity claim, but authority still requires "
+                    "authentication."
+                )
+            }
+
+        return [
+            (
+                "memory.remember",
+                RiskTier.LOW,
+                ["memory_claim_recorded"],
+                {
+                    "statement": f"The operator states that they are {claim}.",
+                    "topic": derive_topic(claim),
+                    "unverified_identity_claim": True,
+                },
+                True,
+            ),
+            (
+                "assistant.respond",
+                RiskTier.INFORMATIONAL,
+                ["assistant_response"],
+                response_parameters,
+                False,
+            ),
+        ]
+
+    if intent.kind is IntentKind.SMALL_TALK:
+        return [
+            (
+                "assistant.converse",
+                RiskTier.INFORMATIONAL,
+                ["conversational_reply"],
+                {"small_talk_kind": intent.entities.get("small_talk_kind", "greeting")},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.DATETIME_QUERY:
+        return [
+            (
+                "assistant.converse",
+                RiskTier.INFORMATIONAL,
+                ["conversational_reply"],
+                {"datetime_field": intent.entities.get("datetime_field", "time")},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.GITHUB_CONNECTION_STATUS:
+        return [
+            (
+                "github.connection.status",
+                RiskTier.INFORMATIONAL,
+                ["github_connection_status"],
+                {},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.GITHUB_REPOSITORIES:
+        return [
+            (
+                "github.repositories.list",
+                RiskTier.LOW,
+                ["github_repository_inventory"],
+                {},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.GITHUB_CREATE_REPOSITORY:
+        repository_name = intent.entities.get("repository_name", "")
+        payload: dict[str, object] = {
+            "name": repository_name,
+            "private": True,
+            "auto_init": False,
+        }
+        digest = hashlib.sha256(
+            json.dumps(
+                payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        return [
+            (
+                "github.repository.create",
+                RiskTier.HIGH,
+                ["github_repository_created_verified"],
+                {
+                    "requested_name": intent.entities.get(
+                        "requested_name",
+                        repository_name,
+                    ),
+                    "repository_name": repository_name,
+                    "account_login": intent.entities.get("account_login", ""),
+                    "account_id": intent.entities.get("account_id", ""),
+                    "private": True,
+                    "auto_init": False,
+                    "connector_payload_sha256": digest,
+                },
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.OPEN_QUESTION:
+        return [
+            (
+                "knowledge.answer",
+                RiskTier.LOW,
+                ["answer_with_provenance"],
+                {"question": intent.entities.get("question", "")},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.MEMORY_REMEMBER:
+        statement = intent.entities.get("statement", "")
+        topic = derive_topic(statement)
+        return [
+            (
+                "memory.remember",
+                RiskTier.LOW,
+                ["memory_claim_recorded"],
+                {"statement": statement, "topic": topic},
+                True,
+            )
+        ]
+
+    if intent.kind is IntentKind.MEMORY_RECALL:
+        return [
+            (
+                "memory.recall",
+                RiskTier.INFORMATIONAL,
+                ["memory_recall_results"],
+                {"query": intent.entities.get("query", "")},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.MEMORY_FORGET:
+        return [
+            (
+                "memory.forget",
+                RiskTier.HIGH,
+                ["memory_topic_forgotten"],
+                {"topic": intent.entities.get("topic", "")},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.PAIR_PHONE:
+        return [
+            (
+                "device.pair_phone",
+                RiskTier.LOW,
+                ["mobile_pairing_challenge"],
+                {},
+                True,
+            )
+        ]
+
+    if intent.kind is IntentKind.LIST_PAIRED_DEVICES:
+        return [
+            (
+                "device.list_phones",
+                RiskTier.LOW,
+                ["paired_device_inventory"],
+                {},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.UNPAIR_PHONE:
+        return [
+            (
+                "device.unpair_phone",
+                RiskTier.HIGH,
+                ["paired_device_revocation"],
+                {"device_label": intent.entities.get("device_label", "")},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.PHONE_OPEN_YOUTUBE:
+        return [
+            (
+                "phone.open_youtube",
+                RiskTier.LOW,
+                ["paired_phone_youtube_handoff"],
+                {
+                    "query": query,
+                    "launch_url": youtube_search_url(query),
+                },
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.OPEN_WEB_SEARCH:
+        return [
+            (
+                "device.open_web_search",
+                RiskTier.HIGH,
+                ["trusted_node_identity", "browser_launch_handoff"],
+                {
+                    "query": query,
+                    "launch_url": google_search_url(query),
+                    "target_node_id": "windows-primary",
+                },
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.LAUNCH_NOTEPAD:
+        return [
+            (
+                "device.launch_notepad",
+                RiskTier.HIGH,
+                ["trusted_node_identity", "process_start_verification"],
+                {
+                    "target_node_id": intent.entities.get(
+                        "target_node_id",
+                        "windows-primary",
+                    ),
+                    "application": "notepad",
+                },
+                True,
+            )
+        ]
+
+    return None
+
+
+def _fallback_specs(intent: Intent) -> list[StepSpec]:
+    capability_specs: dict[IntentKind, list[StepSpec]] = {
+        IntentKind.DAILY_BRIEFING: [
+            (
+                "calendar.read_summary",
+                RiskTier.LOW,
+                ["calendar_snapshot"],
+                {},
+                False,
+            ),
+            (
+                "email.read_summary",
+                RiskTier.LOW,
+                ["email_snapshot"],
+                {},
+                False,
+            ),
+            (
+                "github.read_summary",
+                RiskTier.LOW,
+                ["repository_snapshot"],
+                {},
+                False,
+            ),
+            (
+                "ats.read_health",
+                RiskTier.LOW,
+                ["ats_health_snapshot"],
+                {},
+                False,
+            ),
+        ],
+        IntentKind.SYSTEM_HEALTH: [
+            (
+                "nexuss.read_health",
+                RiskTier.LOW,
+                ["health_snapshot"],
+                {},
+                False,
+            )
+        ],
+        IntentKind.LOCAL_WORKSPACE_STATUS: [
+            (
+                "workspace.read_status",
+                RiskTier.LOW,
+                ["workspace_status_snapshot"],
+                {},
+                False,
+            )
+        ],
+        IntentKind.PREPARE_WORKSPACE: [
+            (
+                "device.workspace.prepare",
+                RiskTier.MEDIUM,
+                ["workspace_state"],
+                {},
+                True,
+            )
+        ],
+        IntentKind.PLAY_MEDIA: [
+            (
+                "media.prepare_playback",
+                RiskTier.LOW,
+                ["playback_state"],
+                {},
+                False,
+            )
+        ],
+        IntentKind.ATS_READ: [
+            (
+                "ats.read_intelligence",
+                RiskTier.LOW,
+                ["ats_intelligence_snapshot"],
+                {},
+                False,
+            )
+        ],
+        IntentKind.ATS_WRITE: [
+            (
+                "ats.write_order",
+                RiskTier.CRITICAL,
+                ["trade_confirmation"],
+                {},
+                False,
+            )
+        ],
+        IntentKind.FINANCIAL_TRANSFER: [
+            (
+                "finance.transfer",
+                RiskTier.CRITICAL,
+                ["transaction_receipt"],
+                {},
+                False,
+            )
+        ],
+        IntentKind.SOCIAL_PUBLISH: [
+            (
+                "social.publish",
+                RiskTier.HIGH,
+                ["published_post"],
+                {},
+                False,
+            )
+        ],
+        IntentKind.UNKNOWN: [
+            (
+                "nexuss.unsupported",
+                RiskTier.HIGH,
+                ["unsupported_reason"],
+                {},
+                False,
+            )
+        ],
+    }
+    return capability_specs.get(intent.kind, [])
+
+
+# Topic labels group and display claims; the full statement is always stored
+# separately. Taking the first N words produced labels like "maker fees are
+# lower than taker fees on", which is a truncated sentence, not a topic.
+_TOPIC_STOPWORDS = frozenset({
+    "a", "about", "all", "also", "am", "an", "and", "any", "are", "as", "at",
+    "be", "been", "being", "but", "by", "can", "did", "do", "does", "for",
+    "from", "had", "has", "have", "he", "her", "his", "how", "i", "if", "in",
+    "into", "is", "it", "its", "just", "me", "more", "most", "my", "no", "not",
+    "of", "on", "one", "only", "or", "our", "out", "over", "own", "she", "so",
+    "some", "than", "that", "the", "their", "them", "then", "there", "these",
+    "they", "this", "those", "to", "up", "us", "very", "was", "we", "were",
+    "what", "when", "where", "which", "while", "who", "why", "will", "with",
+    "would", "you", "your",
+})
+
+_TOPIC_WORD_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9'\-]*")
+_TOPIC_MAX_WORDS = 4
+
+
+def derive_topic(statement: str) -> str:
+    """Derive a short topic label from a statement.
+
+    Keeps the content words in order and drops filler, so
+    "maker fees are lower than taker fees on most venues" becomes
+    "maker fees lower taker" rather than a clipped sentence.
+
+    This is deliberately a heuristic. ADR-0009 places real topic extraction in
+    the claim extractor, where a language model can do it properly; until then
+    an honest approximation beats a truncation that reads like a bug.
+    """
+    words = _TOPIC_WORD_PATTERN.findall(statement.lower())
+    content = [word for word in words if word not in _TOPIC_STOPWORDS]
+    selected = content[:_TOPIC_MAX_WORDS] or words[:_TOPIC_MAX_WORDS]
+    return " ".join(selected) or "general"
+
+
+def build_plan(task_id: UUID, intent: Intent) -> TaskPlan:
+    specs = _direct_specs(intent)
+    if specs is None:
+        specs = _fallback_specs(intent)
+
+    steps = [
+        PlanStep(
+            step_id=_step_id(task_id, order, capability_id),
+            order=order,
+            capability_id=capability_id,
+            risk_tier=risk,
+            expected_evidence=evidence,
+            parameters=parameters,
+            reversible=reversible,
+        )
+        for order, (
+            capability_id,
+            risk,
+            evidence,
+            parameters,
+            reversible,
+        ) in enumerate(specs, start=1)
+    ]
+    plan_id = uuid5(NAMESPACE_URL, f"nexuss:{task_id}:plan:{intent.kind}")
+    return TaskPlan(
+        plan_id=plan_id,
+        task_id=task_id,
+        intent=intent,
+        steps=steps,
+    )
+
+
+========================================================================================
+src/nexuss/ui/app.js ? selected functions
+========================================================================================
+
+
+--- executeCognitiveInstruction ---
+async function executeCognitiveInstruction(utterance, channel) {
+  addMessage(
+    "assistant",
+    "DeepSeek is generating a grounded proposal inside the Nexuss cognitive trust boundary...",
+  );
+
+  try {
+    const response = await fetch("/v1/cognitive/proposals", {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify({
+        request_id: crypto.randomUUID(),
+        user_session_id: sessionId,
+        instruction: utterance,
+        mode: inferCognitiveMode(utterance),
+      }),
+    });
+
+    if (!response.ok) {
+      let problem = null;
+
+      try {
+        problem = await response.json();
+      } catch {
+        problem = null;
+      }
+
+      const detail = problem?.detail || {};
+      const message =
+        detail.fallback ||
+        detail.message ||
+        `Cognitive request failed (${response.status}).`;
+
+      throw new Error(message);
+    }
+
+    const body = await response.json();
+    const proposal = body.proposal;
+    const receipt = body.receipt;
+
+    const attribution = [
+      `Reasoning provider: DeepSeek (${proposal.model})`,
+      "DeepSeek generated a proposal only.",
+      "External processing used: yes.",
+      "Tool capabilities executed: none.",
+      "Files modified: none.",
+      "External writes: none.",
+      "Approval requested: none.",
+      "Hidden reasoning stored: none.",
+      "Nexuss retains policy, approval, execution, verification, receipt, audit, and final authority.",
+    ].join("\n");
+
+    addMessage(
+      "assistant",
+      {
+        text: proposal.response,
+        blocks: [],
+        cognitive: {
+          provider: "DeepSeek",
+          model: proposal.model,
+          mode: proposal.mode,
+          trust: attribution.split("\n"),
+        },
+      },
+      false,
+      {
+        speak: channel === "voice",
+        rich: true,
+      },
+    );
+
+    const intent = {
+      kind: "cognitive_proposal",
+      normalized_text: `DeepSeek ${proposal.mode} proposal`,
+      confidence: 1,
+      entities: {
+        provider_id: proposal.provider_id,
+        model: proposal.model,
+        receipt_type: receipt.receipt_type,
+      },
+    };
+
+    const stepId = receipt.receipt_id;
+
+    const plan = {
+      plan_id: receipt.receipt_id,
+      task_id: receipt.receipt_id,
+      intent,
+      steps: [{
+        step_id: stepId,
+        order: 1,
+        capability_id: "cognitive.deepseek.propose",
+        risk_tier: "informational",
+        expected_evidence: ["cognitive_proposal_receipt"],
+        parameters: {
+          mode: proposal.mode,
+          external_processing: true,
+          tools_allowed: false,
+        },
+        reversible: false,
+      }],
+    };
+
+    const decisions = [{
+      step_id: stepId,
+      capability_id: "cognitive.deepseek.propose",
+      outcome: "allow",
+      reason_code: "PROPOSAL_ONLY_EXTERNAL_REASONING",
+      explanation:
+        "Explicit DeepSeek selection authorized proposal-only external processing without tool or write authority.",
+    }];
+
+    const results = [{
+      step_id: stepId,
+      capability_id: "cognitive.deepseek.propose",
+      status: "verified",
+      evidence: [{
+        source: "external:deepseek",
+        observed_at: receipt.created_at,
+        attributes: {
+          provider_id: receipt.provider_id,
+          model: receipt.model,
+          mode: receipt.mode,
+          provider_invoked: receipt.provider_invoked,
+          proposal_validated: receipt.proposal_validated,
+          external_processing_used:
+            receipt.external_processing_used,
+          execution_authorized:
+            receipt.execution_authorized,
+          tool_capabilities_executed:
+            receipt.tool_capabilities_executed,
+          approval_requested:
+            receipt.approval_requested,
+          files_modified:
+            receipt.files_modified,
+          external_writes:
+            receipt.external_writes,
+          hidden_reasoning_stored:
+            receipt.hidden_reasoning_stored,
+          request_sha256:
+            receipt.request_sha256,
+          context_sha256:
+            receipt.context_sha256,
+          response_sha256:
+            receipt.response_sha256,
+        },
+      }],
+      error_code: null,
+    }];
+
+    const events = receipt.events.map((event) => ({
+      event_id: crypto.randomUUID(),
+      sequence: event.sequence,
+      state: event.state,
+      event_type: event.event_type,
+      occurred_at: event.occurred_at,
+      detail: event.detail,
+    }));
+
+    const task = {
+      task_id: receipt.receipt_id,
+      request_id: receipt.request_id,
+      user_session_id: sessionId,
+      state: "completed",
+      intent,
+      plan,
+      policy_decisions: decisions,
+      results,
+      events,
+      approval: null,
+      created_at: receipt.created_at,
+      updated_at: receipt.created_at,
+    };
+
+    const actionReceipt = {
+      receipt_id: receipt.receipt_id,
+      receipt_version: 1,
+      task_id: receipt.receipt_id,
+      request_id: receipt.request_id,
+      state: "completed",
+      intent,
+      plan_id: receipt.receipt_id,
+      policy_decisions: decisions,
+      results,
+      events,
+      created_at: receipt.created_at,
+      updated_at: receipt.created_at,
+      verified: true,
+      reversible: false,
+    };
+
+    renderTask(task, actionReceipt);
+  } catch (error) {
+    addMessage(
+      "assistant",
+      error instanceof Error
+        ? error.message
+        : "The cognitive provider request failed closed.",
+      true,
+    );
+  } finally {
+    setBusy(false);
+  }
+}
+
+
+--- renderCognitiveAnswer ---
+function renderCognitiveAnswer(answer) {
+  const root = document.createElement("section");
+  root.className = "cognitive-response";
+
+  if (answer.cognitive) {
+    const header = document.createElement("header");
+    header.className = "cognitive-response-header";
+
+    const identity = document.createElement("div");
+    identity.className = "cognitive-provider-identity";
+
+    const mark = document.createElement("span");
+    mark.className = "cognitive-provider-mark";
+    mark.textContent = "AI";
+
+    const titleGroup = document.createElement("div");
+
+    const title = document.createElement("strong");
+    title.textContent = answer.cognitive.provider || "DeepSeek";
+
+    const subtitle = document.createElement("span");
+    subtitle.textContent = [
+      answer.cognitive.model,
+      answer.cognitive.mode,
+    ].filter(Boolean).join(" ?? ");
+
+    titleGroup.append(title, subtitle);
+    identity.append(mark, titleGroup);
+
+    const verified = document.createElement("span");
+    verified.className = "cognitive-verified";
+    verified.textContent = "Verified proposal";
+
+    header.append(identity, verified);
+    root.append(header);
+  }
+
+  root.append(renderSafeCognitiveMarkdown(answer.text));
+
+  if (answer.cognitive?.trust?.length) {
+    const trust = document.createElement("footer");
+    trust.className = "cognitive-trust-strip";
+
+    const labels = [
+      ["NO TOOLS", "tool"],
+      ["NO WRITES", "write"],
+      ["NO APPROVAL", "approval"],
+      ["NEXUSS AUTHORITY", "authority"],
+    ];
+
+    for (const [label, kind] of labels) {
+      const badge = document.createElement("span");
+      badge.dataset.kind = kind;
+      badge.textContent = label;
+      trust.append(badge);
+    }
+
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = "Trust and processing details";
+
+    const list = document.createElement("ul");
+
+    for (const line of answer.cognitive.trust) {
+      const item = document.createElement("li");
+      item.textContent = line;
+      list.append(item);
+    }
+
+    details.append(summary, list);
+    trust.append(details);
+    root.append(trust);
+  }
+
+  return root;
+}
+
+
+--- renderTask ---
+function renderTask(task, receipt) {
+  currentTask = task;
+  currentNotePath = null;
+  elements.receiptState.textContent = titleCase(task.state);
+  elements.metricIntent.textContent = titleCase(task.intent.kind);
+  elements.metricConfidence.textContent = `${Math.round(task.intent.confidence * 100)}%`;
+  elements.metricRisk.textContent = titleCase(task.plan.steps[0]?.risk_tier || "—");
+  elements.metricState.textContent = titleCase(task.state);
+
+  elements.verificationBadge.className = "verification-badge";
+  if (task.state === "awaiting_approval") {
+    elements.verificationBadge.classList.add("pending");
+    elements.verificationBadge.textContent = "APPROVAL";
+  } else if (task.state === "rolled_back") {
+    elements.verificationBadge.classList.add("rolled-back");
+    elements.verificationBadge.textContent = "ROLLED BACK";
+  } else if (receipt.verified) {
+    elements.verificationBadge.classList.add("verified");
+    elements.verificationBadge.textContent = "VERIFIED";
+  } else {
+    elements.verificationBadge.classList.add("failed");
+    elements.verificationBadge.textContent = titleCase(task.state).toUpperCase();
+  }
+
+  renderEvents(task.events || []);
+
+  elements.planList.className = "detail-list";
+  elements.planList.replaceChildren();
+  const decisions = new Map(task.policy_decisions.map((item) => [item.step_id, item]));
+  const policyCounts = { allow: 0, require_approval: 0, deny: 0 };
+  for (const step of task.plan.steps) {
+    const decision = decisions.get(step.step_id);
+    if (decision?.outcome in policyCounts) policyCounts[decision.outcome] += 1;
+    elements.planList.append(createDetailCard(
+      `${step.order}. ${step.capability_id}`,
+      decision?.outcome || "unknown",
+      {
+        risk: step.risk_tier,
+        reversible: step.reversible,
+        policy_reason: decision?.reason_code || "unavailable",
+        expected_evidence: step.expected_evidence.join(", "),
+      },
+    ));
+  }
+  elements.policySummary.textContent = `${policyCounts.allow} allowed · ${policyCounts.require_approval} approval · ${policyCounts.deny} denied`;
+
+  elements.evidenceList.className = "detail-list";
+  elements.evidenceList.replaceChildren();
+  let evidenceCount = 0;
+  for (const result of task.results) {
+    if (!result.evidence.length) {
+      elements.evidenceList.append(createDetailCard(
+        result.capability_id,
+        result.status,
+        { error_code: result.error_code || "No evidence returned" },
+      ));
+      continue;
+    }
+    for (const record of result.evidence) {
+      evidenceCount += 1;
+      if (record.attributes.managed_path) currentNotePath = String(record.attributes.managed_path);
+      elements.evidenceList.append(createDetailCard(
+        result.capability_id,
+        result.status,
+        { source: record.source, observed_at: record.observed_at, ...record.attributes },
+      ));
+    }
+  }
+  if (!task.results.length) {
+    elements.evidenceList.className = "detail-list empty-state";
+    elements.evidenceList.textContent = task.state === "awaiting_approval"
+      ? "Execution is paused. No write occurred before approval."
+      : "Execution was not authorized, so no evidence was produced.";
+  }
+  elements.evidenceSummary.textContent = `${evidenceCount} record${evidenceCount === 1 ? "" : "s"}`;
+  elements.reviewApproval.hidden = task.state !== "awaiting_approval" || !task.approval;
+  renderReceipt(receipt);
+  window.NexussP5?.renderTask(task, receipt);
+}
+
+
+--- renderEvents ---
+function renderEvents(events) {
+  elements.eventList.className = "event-list";
+  elements.eventList.replaceChildren();
+  for (const event of events) {
+    const item = document.createElement("div");
+    item.className = "event-item";
+    const title = document.createElement("strong");
+    title.textContent = titleCase(event.event_type);
+    const detail = document.createElement("p");
+    detail.textContent = event.detail;
+    const timestamp = document.createElement("time");
+    timestamp.textContent = `${titleCase(event.state)} · ${timeLabel(new Date(event.occurred_at))}`;
+    item.append(title, detail, timestamp);
+    elements.eventList.append(item);
+  }
+  if (!events.length) {
+    elements.eventList.className = "event-list empty-state";
+    elements.eventList.textContent = "The verified lifecycle will appear here.";
+  }
+  elements.eventSummary.textContent = `${events.length} event${events.length === 1 ? "" : "s"}`;
+}
+
+
+--- renderReceipt ---
+function renderReceipt(receipt) {
+  currentReceipt = receipt;
+  elements.receiptId.textContent = receipt.receipt_id;
+  elements.receiptVersion.textContent = String(receipt.receipt_version);
+  elements.receiptVerified.textContent = receipt.verified ? "Yes" : "No";
+  elements.receiptReversible.textContent = receipt.reversible ? "Yes" : "No";
+  elements.receiptTitle.textContent = `${titleCase(receipt.state)} receipt`;
+  elements.copyPath.hidden = !currentNotePath;
+  elements.rollback.hidden = !receipt.reversible;
+}
+
+
+--- showApproval ---
+async function showApproval(approval) {
+  elements.approvalAction.textContent = approval.action_title;
+  elements.approvalRisk.textContent = titleCase(approval.risk_tier);
+  elements.approvalDestination.textContent = approval.destination_label;
+  elements.approvalReversible.textContent = approval.reversible ? "Yes · receipt-bound" : "No";
+  elements.approvalSummary.textContent = approval.action_summary;
+  elements.approvalHash.textContent = approval.payload_sha256;
+  elements.approvalPreview.textContent = approval.exact_preview;
+  elements.approvalExpiry.textContent = `Approval expires ${new Date(approval.expires_at).toLocaleTimeString()}. The token is single-use and payload-bound.`;
+  const phoneRequired = approval.approval_channel === "phone";
+  elements.approvalDialog.classList.toggle("phone-required", phoneRequired);
+  elements.phonePanel.hidden = !phoneRequired;
+  elements.approve.hidden = phoneRequired;
+  elements.approvalOverlay.hidden = false;
+  if (phoneRequired) {
+    elements.phonePairingCode.textContent = "--------";
+    elements.phoneApprovalStatus.textContent = "Checking the paired-phone trust anchor…";
+    try {
+      if (await hasPairedPhone()) {
+        elements.phoneApprovalStatus.textContent = "Paired phone ready. Review the exact payload on the phone.";
+        elements.phoneMobileUrl.href = "/mobile";
+        elements.phoneMobileUrl.textContent = "/mobile";
+      } else {
+        await createPhonePairing();
+      }
+      void pollTaskUntilResolved(approval.task_id);
+    } catch (error) {
+      elements.phoneApprovalStatus.textContent = error instanceof Error ? error.message : "Phone pairing unavailable";
+    }
+    elements.reject.focus();
+  } else {
+    elements.approve.focus();
+  }
+}
+
+
+========================================================================================
+REPOSITORY STATUS
+========================================================================================
+ M FILE_MANIFEST.txt
+ M SHA256SUMS.txt
+ M src/nexuss/api/app.py
+ M src/nexuss/engineering/providers/openai_compatible.py
+ M src/nexuss/ui/app.js
+ M src/nexuss/ui/index.html
+ M src/nexuss/ui/styles.css
+?? .patch-backups/
+?? github-production-integration-map.txt
+?? intelligence-existing-intent-diff.txt
+?? intelligence-production-integration-map.txt
+?? scripts/check_github_real.py
+?? scripts/connect_github_real.py
+?? src/nexuss/cognitive/
+?? src/nexuss/ui/nexuss_ai_cognitive_control_dashboard.png
+?? tests/cognitive/
+
+STAGED FILES
+None\n

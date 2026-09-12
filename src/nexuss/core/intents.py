@@ -9,12 +9,30 @@ import re
 
 from nexuss.domain.models import Intent, IntentKind
 
+# P6.12 MANAGED NOTE AND CLOCK ROUTING
 _NOTE_PATTERN = re.compile(
-    r"^(?:please\s+)?(?:create|make|write|save)\s+(?:a\s+)?note"
+    r"^(?:please\s+)?(?:create|make|write|save)\s+(?:a\s+)?(?:managed\s+)?note"
     r"(?:\s+(?:called|titled|named)\s+)(?P<title>.+?)"
     r"(?:\s+(?:with(?:\s+the)?\s+(?:tasks?|content)\s*:?|containing|that\s+says)\s+"
     r"(?P<body>.+))?$",
     re.IGNORECASE,
+)
+
+_ENGINEERING_BUILD_PATTERN = re.compile(
+    r"^(?:build|modify|change|improve|update)\s+nexuss"
+    r"(?:\s+change)?\s*[:;,\-]?\s*(?P<goal>.+?)\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+_ENGINEERING_REPAIR_PATTERN = re.compile(
+    r"^repair\s+latest\s+failed\s+engineering\s+build\s*:\s*"
+    r"(?P<target>.+?)\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+_ENGINEERING_ACCEPTANCE_PATTERN = re.compile(
+    r"^verify\s+engineering\s+acceptance\s*:\s*(?P<target>.+?)\s*$",
+    re.IGNORECASE | re.DOTALL,
 )
 
 _RESEARCH_PREFIXES = (
@@ -468,7 +486,7 @@ _TIME_TERMS = ("what time is it", "what's the time", "whats the time", "the time
                "current time", "time now", "what time")
 _DATE_TERMS = ("what is the date", "what's the date", "whats the date", "today's date",
                "todays date", "what day is it", "what is today", "what's today",
-               "current date", "what date")
+               "when is today", "current date", "what date")
 
 # Only question-shaped input may reach a public source. An unmatched imperative
 # such as "close media" is a missing capability, not a research topic, and
@@ -626,9 +644,30 @@ def classify_intent(utterance: str) -> Intent:
     display_text = _strip_leading_noise(utterance)
     normalized = display_text.casefold()
     note_match = _NOTE_PATTERN.match(display_text)
+    engineering_match = _ENGINEERING_BUILD_PATTERN.match(display_text)
+    engineering_repair_match = _ENGINEERING_REPAIR_PATTERN.match(display_text)
+    engineering_acceptance_match = _ENGINEERING_ACCEPTANCE_PATTERN.match(
+        display_text
+    )
     entities: dict[str, str] = {}
 
-    if note_match:
+    if engineering_repair_match:
+        kind = IntentKind.ENGINEERING_REPAIR_FAILED_BUILD
+        confidence = 1.0
+        entities = {
+            "target": engineering_repair_match.group("target").strip(),
+        }
+    elif engineering_acceptance_match:
+        kind = IntentKind.ENGINEERING_VERIFY_ACCEPTANCE
+        confidence = 1.0
+        entities = {
+            "target": engineering_acceptance_match.group("target").strip(),
+        }
+    elif engineering_match:
+        kind = IntentKind.ENGINEERING_BUILD_ARTIFACT
+        confidence = 0.99
+        entities = {"goal": engineering_match.group("goal").strip()}
+    elif note_match:
         raw_title = note_match.group("title").strip(" \"'")
         raw_body = note_match.group("body")
         entities = {

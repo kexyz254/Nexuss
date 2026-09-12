@@ -9,7 +9,7 @@ import hashlib
 import json
 import secrets
 from datetime import UTC, datetime, timedelta
-from threading import RLock
+from threading import RLock, Thread
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from nexuss.connectors.contracts import ConnectorStatus
@@ -282,6 +282,40 @@ class CoreSimulatorService:
             )
             destination_label = "Paired approval phone · YouTube"
             approval_channel = ApprovalChannel.PHONE
+        elif step.capability_id in {
+            "engineering.build_artifact",
+            "engineering.repair_failed_build",
+        }:
+            is_repair = step.capability_id == "engineering.repair_failed_build"
+            action_title = (
+                "Repair failed Nexuss engineering build"
+                if is_repair
+                else "Run Nexuss Developer Engineering mission"
+            )
+            action_summary = (
+                "Resume the retained failed isolated candidate with bounded repair "
+                "and deterministic re-verification."
+                if is_repair
+                else (
+                    "Run one bounded isolated Developer Engineering mission; live "
+                    "application remains gated by deterministic verification."
+                )
+            )
+            requested = str(
+                step.parameters.get(
+                    "target" if is_repair else "goal",
+                    "No engineering target supplied.",
+                )
+            )
+            exact_preview = (
+                f"Capability: {step.capability_id}\n"
+                f"Requested scope: {requested}\n"
+                "Execution: isolated engineering workspace\n"
+                "Provider authority: worker only; no self-approval or publication\n"
+                "Live apply: only after deterministic regression/acceptance gates"
+            )
+            destination_label = "Nexuss · Developer Engineering"
+            approval_channel = ApprovalChannel.DESKTOP
         else:
             filename = str(step.parameters.get("filename", "managed action"))
             action_title = "Create managed note"
@@ -309,6 +343,128 @@ class CoreSimulatorService:
             reversible=step.reversible,
             approval_channel=approval_channel,
         )
+
+    @staticmethod
+    def _is_background_engineering_plan(plan: TaskPlan) -> bool:
+        return (
+            len(plan.steps) == 1
+            and plan.steps[0].capability_id in {
+                "engineering.build_artifact",
+                "engineering.repair_failed_build",
+            }
+        )
+
+    def _start_background_engineering_task(self, task_id: UUID) -> None:
+        worker = Thread(
+            target=self._run_background_engineering_task,
+            args=(task_id,),
+            name=f"nexuss-engineering-{str(task_id)[:8]}",
+            daemon=True,
+        )
+        worker.start()
+
+    def _run_background_engineering_task(self, task_id: UUID) -> None:
+        # Resolve the authoritative persisted task under the Core lock, then
+        # release it before provider/network/test work.
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if task is None or task.state is not TaskState.EXECUTING:
+                return
+            if not self._is_background_engineering_plan(task.plan):
+                return
+            step = task.plan.steps[0]
+            session_id = task.user_session_id
+
+        observed_at = datetime.now(UTC)
+        try:
+            result = execute_step(
+                step,
+                observed_at=observed_at,
+                note_store=self._note_store,
+                device_client=self._device_client,
+                task_id=task_id,
+                knowledge_provider=self._knowledge_provider,
+                youtube_provider=self._youtube_provider,
+                session_id=session_id,
+                pairing_gateway=self._pairing_gateway,
+                memory_store=self._memory_store,
+                approval=None,
+            )
+        except Exception as exc:
+            result = CapabilityResult(
+                step_id=step.step_id,
+                capability_id=step.capability_id,
+                status=StepStatus.FAILED,
+                evidence=[
+                    EvidenceRecord(
+                        source="local:governed_background_engineering",
+                        observed_at=datetime.now(UTC),
+                        attributes={
+                            "source_mode": "governed_background_engineering",
+                            "error_type": type(exc).__name__,
+                            "credentials_exposed": False,
+                            "live_repository_modified": False,
+                        },
+                    )
+                ],
+                error_code="ENGINEERING_BACKGROUND_EXECUTION_FAILED",
+            )
+
+        with self._lock:
+            current = self._tasks.get(task_id)
+            if current is None or current.state is not TaskState.EXECUTING:
+                return
+            events = list(current.events)
+            verify_at = datetime.now(UTC)
+            validate_transition(TaskState.EXECUTING, TaskState.VERIFYING)
+            self._append_event(
+                task_id,
+                events,
+                state=TaskState.VERIFYING,
+                event_type="verification_started",
+                detail=(
+                    "Nexuss is verifying returned engineering evidence against "
+                    "the action contract."
+                ),
+                occurred_at=verify_at,
+            )
+            verified = (
+                result.status is StepStatus.VERIFIED
+                and bool(result.evidence)
+            )
+            final_state = (
+                TaskState.COMPLETED if verified else TaskState.FAILED
+            )
+            validate_transition(TaskState.VERIFYING, final_state)
+            self._append_event(
+                task_id,
+                events,
+                state=final_state,
+                event_type=(
+                    "verification_completed"
+                    if verified
+                    else "verification_failed"
+                ),
+                detail=(
+                    "The governed engineering build returned verified evidence."
+                    if verified
+                    else (
+                        "The governed engineering build stopped without verified "
+                        "completion evidence."
+                    )
+                ),
+                occurred_at=datetime.now(UTC),
+            )
+            updated = current.model_copy(
+                update={
+                    "state": final_state,
+                    "results": [result],
+                    "events": events,
+                    "updated_at": datetime.now(UTC),
+                }
+            )
+            self._tasks[task_id] = updated
+            self._record_receipt(updated)
 
     def _execute_authorized_steps(
         self,
@@ -459,6 +615,7 @@ class CoreSimulatorService:
 
             approval: ApprovalRequest | None = None
             results: list[CapabilityResult] = []
+            background_engineering = False
 
             if any(decision.outcome is PolicyOutcome.DENY for decision in decisions):
                 validate_transition(TaskState.PLANNED, TaskState.DENIED)
@@ -486,9 +643,26 @@ class CoreSimulatorService:
                     occurred_at=now,
                 )
             else:
-                state, results = self._execute_authorized_steps(
-                    task_id, plan, events, now, request.user_session_id
-                )
+                if self._is_background_engineering_plan(plan):
+                    # Persist the authoritative task before long provider/test work.
+                    validate_transition(TaskState.PLANNED, TaskState.EXECUTING)
+                    state = TaskState.EXECUTING
+                    background_engineering = True
+                    self._append_event(
+                        task_id,
+                        events,
+                        state=TaskState.EXECUTING,
+                        event_type="engineering_execution_started",
+                        detail=(
+                            "The governed Prompt-to-Build task was persisted before "
+                            "isolated background engineering began."
+                        ),
+                        occurred_at=datetime.now(UTC),
+                    )
+                else:
+                    state, results = self._execute_authorized_steps(
+                        task_id, plan, events, now, request.user_session_id
+                    )
 
             task = TaskView(
                 task_id=task_id,
@@ -507,6 +681,8 @@ class CoreSimulatorService:
             self._tasks[task_id] = task
             self._request_index[request.request_id] = task_id
             self._record_receipt(task)
+            if background_engineering:
+                self._start_background_engineering_task(task_id)
             return task.model_copy(deep=True)
 
     def approve_task(
@@ -612,6 +788,40 @@ class CoreSimulatorService:
                 ),
                 occurred_at=now,
             )
+            consumed = approval.model_copy(
+                update={
+                    "status": ApprovalStatus.CONSUMED,
+                    _APPROVAL_TOKEN_FIELD: None,
+                }
+            )
+
+            if self._is_background_engineering_plan(task.plan):
+                validate_transition(TaskState.APPROVED, TaskState.EXECUTING)
+                self._append_event(
+                    task_id,
+                    task.events,
+                    state=TaskState.EXECUTING,
+                    event_type="engineering_execution_started",
+                    detail=(
+                        "The approved Developer Engineering mission entered bounded "
+                        "background execution. The exact approval is consumed once; "
+                        "normal isolated work inside this mission does not request it again."
+                    ),
+                    occurred_at=datetime.now(UTC),
+                )
+                task = task.model_copy(
+                    update={
+                        "state": TaskState.EXECUTING,
+                        "results": [],
+                        "approval": consumed,
+                        "updated_at": datetime.now(UTC),
+                    }
+                )
+                self._tasks[task_id] = task
+                self._record_receipt(task)
+                self._start_background_engineering_task(task_id)
+                return task.model_copy(deep=True)
+
             state, results = self._execute_authorized_steps(
                 task_id,
                 task.plan,
@@ -619,12 +829,6 @@ class CoreSimulatorService:
                 now,
                 task.user_session_id,
                 approval,
-            )
-            consumed = approval.model_copy(
-                update={
-                    "status": ApprovalStatus.CONSUMED,
-                    _APPROVAL_TOKEN_FIELD: None,
-                }
             )
             task = task.model_copy(
                 update={

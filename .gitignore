@@ -19,3 +19,5 @@ secrets/
 private-data/
 
 .nexuss-runtime/
+
+.patch-backups/

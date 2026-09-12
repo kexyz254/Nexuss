@@ -225,8 +225,12 @@ def _execute_launch_notepad(
     )
     try:
         evidence = device_client.launch_notepad(task_id, target_node_id)
-    except DeviceCommandError:
-        return _failed(step, "TRUSTED_DEVICE_COMMAND_FAILED")
+    # P6.12 DEVICE FAILURE FIDELITY
+    except DeviceCommandError as exc:
+        return _failed(
+            step,
+            str(exc) or "TRUSTED_DEVICE_COMMAND_FAILED",
+        )
     return CapabilityResult(
         step_id=step.step_id,
         capability_id=step.capability_id,
@@ -359,8 +363,11 @@ def _execute_web_search(
             ),
             str(step.parameters.get("launch_url", "")),
         )
-    except DeviceCommandError:
-        return _failed(step, "TRUSTED_BROWSER_HANDOFF_FAILED")
+    except DeviceCommandError as exc:
+        return _failed(
+            step,
+            str(exc) or "TRUSTED_BROWSER_HANDOFF_FAILED",
+        )
     return CapabilityResult(
         step_id=step.step_id,
         capability_id=step.capability_id,
@@ -1248,6 +1255,45 @@ def execute_step(
             timestamp,
             task_id,
             device_client,
+        )
+
+    if step.capability_id == "engineering.build_artifact":
+        from nexuss.engineering.prompt_build import execute_prompt_build
+
+        return execute_prompt_build(step, timestamp, task_id=task_id)
+
+    if step.capability_id == "engineering.repair_failed_build":
+        from nexuss.engineering.prompt_build import execute_latest_failed_build_repair
+
+        return execute_latest_failed_build_repair(
+            step,
+            timestamp,
+            task_id=task_id,
+        )
+
+    if step.capability_id == "engineering.verify_acceptance":
+        from nexuss.engineering.acceptance import collect_engineering_acceptance
+
+        attributes = collect_engineering_acceptance(
+            target=str(
+                step.parameters.get("target", "current engineering phase")
+            ),
+            observed_at=timestamp,
+        )
+        return CapabilityResult(
+            step_id=step.step_id,
+            capability_id=step.capability_id,
+            status=StepStatus.VERIFIED,
+            evidence=[
+                EvidenceRecord(
+                    source="local:engineering_acceptance",
+                    observed_at=timestamp,
+                    attributes={
+                        "engineering_acceptance_receipt": attributes,
+                        **attributes,
+                    },
+                )
+            ],
         )
 
     if step.capability_id == "workspace.read_status":

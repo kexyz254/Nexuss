@@ -158,6 +158,7 @@
 ./tests/unit/test_p5_intents.py
 ./tests/unit/test_p5_providers.py
 ./tests/unit/test_p5_web_actions.py
+./tests/unit/test_p61_conversation.py
 ./tests/unit/test_planner_policy.py
 ./tests/unit/test_registry_and_state_machine.py
 ./tests/unit/test_simulator.py

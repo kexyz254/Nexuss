@@ -1,0 +1,1229 @@
+/* P6.10F PROFESSIONAL MULTITASKING WORKSPACE */
+
+:root {
+  --nx-platform-accent: #67e8f9;
+  --nx-platform-accent-2: #8b7cff;
+  --nx-platform-success: #7ee7b7;
+  --nx-platform-warning: #f7d58b;
+  --nx-platform-danger: #ff9d9d;
+  --nx-platform-panel: color-mix(
+    in srgb,
+    var(--panel, #0c1724) 95%,
+    transparent
+  );
+  --nx-platform-line: color-mix(
+    in srgb,
+    var(--nx-platform-accent) 20%,
+    transparent
+  );
+  --nx-platform-shadow: 0 30px 90px rgb(0 0 0 / 0.52);
+}
+
+body.nx-platform-ready {
+  padding-bottom: 92px;
+}
+
+body.nx-platform-ready .focus-deck {
+  display: none;
+}
+
+body.nx-approval-open {
+  overflow: hidden;
+}
+
+.approval-overlay {
+  z-index: var(--nx-approval-z, 10000) !important;
+}
+
+.approval-dialog {
+  box-shadow:
+    0 50px 160px rgb(0 0 0 / 0.7),
+    0 0 0 1px
+      color-mix(in srgb, var(--nx-platform-accent) 20%, transparent);
+}
+
+.nx-capability-dock {
+  position: fixed;
+  z-index: 3600;
+  left: 50%;
+  bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: calc(100vw - 24px);
+  padding: 7px;
+  overflow-x: auto;
+  transform: translateX(-50%);
+  border: 1px solid var(--nx-platform-line);
+  border-radius: 19px;
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, #0c1d2e 96%, transparent),
+      color-mix(in srgb, #07111d 97%, transparent)
+    );
+  box-shadow:
+    0 20px 65px rgb(0 0 0 / 0.5),
+    inset 0 1px 0 rgb(255 255 255 / 0.045);
+  backdrop-filter: blur(24px);
+  scrollbar-width: none;
+}
+
+.nx-capability-dock::-webkit-scrollbar {
+  display: none;
+}
+
+.nx-dock-button {
+  position: relative;
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-rows: 22px auto;
+  place-items: center;
+  gap: 3px;
+  min-width: 58px;
+  min-height: 52px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 13px;
+  background: transparent;
+  color: var(--muted, #91a8b8);
+  cursor: pointer;
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease,
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.nx-dock-button:hover,
+.nx-dock-button:focus-visible {
+  color: var(--text, #eff8ff);
+  border-color:
+    color-mix(in srgb, var(--nx-platform-accent) 28%, transparent);
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--nx-platform-accent) 10%, transparent),
+      color-mix(in srgb, var(--nx-platform-accent-2) 7%, transparent)
+    );
+  outline: none;
+  transform: translateY(-2px);
+}
+
+.nx-dock-button svg {
+  width: 20px;
+  height: 20px;
+  color: var(--nx-platform-accent);
+}
+
+.nx-dock-button > span {
+  overflow: hidden;
+  max-width: 68px;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-dock-badge {
+  position: absolute;
+  top: 1px;
+  right: 4px;
+  display: grid;
+  min-width: 17px;
+  min-height: 17px;
+  padding: 0 4px;
+  place-items: center;
+  border: 2px solid #08131f;
+  border-radius: 999px;
+  background: var(--nx-platform-warning);
+  color: #261a00;
+  font-size: 8px;
+}
+
+.nx-dock-badge[hidden] {
+  display: none;
+}
+
+body.nx-compact-dock .nx-dock-button {
+  min-width: 42px;
+  grid-template-rows: 24px;
+}
+
+body.nx-compact-dock .nx-dock-button > span {
+  display: none;
+}
+
+.nx-platform-window {
+  position: fixed;
+  z-index: var(--nx-z, 2600);
+  left: var(--nx-left, 50%);
+  top: var(--nx-top, 84px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: var(--nx-width, 440px);
+  height: var(--nx-height, 480px);
+  min-width: 320px;
+  min-height: 220px;
+  max-width: calc(100vw - 20px);
+  max-height: calc(100vh - 20px);
+  overflow: hidden;
+  resize: both;
+  border: 1px solid var(--nx-platform-line);
+  border-radius: 18px;
+  background: var(--nx-platform-panel);
+  color: var(--text, #edf7ff);
+  box-shadow: var(--nx-platform-shadow);
+  backdrop-filter: blur(24px);
+}
+
+.nx-platform-window[hidden],
+.nx-platform-window[data-mode="hidden"] {
+  display: none;
+}
+
+.nx-platform-window[data-mode="mini"] {
+  height: auto !important;
+  min-height: 0;
+  resize: none;
+}
+
+.nx-platform-window[data-mode="mini"] .nx-window-content {
+  display: none;
+}
+
+.nx-platform-window.is-dragging {
+  user-select: none;
+  cursor: grabbing;
+}
+
+.nx-window-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 9px 10px 9px 13px;
+  border-bottom: 1px solid
+    color-mix(in srgb, currentColor 11%, transparent);
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--nx-platform-accent) 7%, transparent),
+      transparent
+    );
+  cursor: grab;
+  touch-action: none;
+}
+
+.nx-window-identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  margin-right: auto;
+}
+
+.nx-window-identity > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.nx-window-identity strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-window-identity small {
+  overflow: hidden;
+  color: var(--muted, #91a8b8);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-window-icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid
+    color-mix(in srgb, var(--nx-platform-accent) 22%, transparent);
+  border-radius: 11px;
+  background:
+    color-mix(in srgb, var(--nx-platform-accent) 7%, transparent);
+  color: var(--nx-platform-accent);
+}
+
+.nx-window-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.nx-window-controls,
+.nx-activity-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.nx-window-controls button,
+.nx-activity-controls button {
+  display: grid;
+  width: 29px;
+  height: 29px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid
+    color-mix(in srgb, currentColor 13%, transparent);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted, #91a8b8);
+  cursor: pointer;
+}
+
+.nx-window-controls button:hover,
+.nx-window-controls button:focus-visible,
+.nx-activity-controls button:hover,
+.nx-activity-controls button:focus-visible {
+  border-color:
+    color-mix(in srgb, var(--nx-platform-accent) 34%, transparent);
+  color: var(--text, #edf7ff);
+  outline: none;
+}
+
+.nx-window-controls svg,
+.nx-activity-controls svg {
+  width: 14px;
+  height: 14px;
+}
+
+.nx-window-content {
+  min-height: 0;
+  padding: 14px;
+  overflow: auto;
+}
+
+.nx-center-intro,
+.nx-center-status {
+  margin: 0 0 14px;
+  padding: 12px;
+  border: 1px solid
+    color-mix(in srgb, currentColor 10%, transparent);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 0.018);
+  color: var(--muted, #91a8b8);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.nx-center-status {
+  display: grid;
+  gap: 4px;
+}
+
+.nx-center-status strong {
+  color: var(--text, #edf7ff);
+  font-size: 12px;
+}
+
+.nx-capability-group + .nx-capability-group {
+  margin-top: 18px;
+}
+
+.nx-capability-group h3 {
+  margin: 0 0 8px;
+  color: var(--muted, #91a8b8);
+  font-size: 9px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.nx-capability-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px;
+}
+
+.nx-capability-card {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 10px;
+  width: 100%;
+  padding: 11px;
+  border: 1px solid
+    color-mix(in srgb, currentColor 10%, transparent);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 0.015);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.nx-capability-card:hover,
+.nx-capability-card:focus-visible {
+  border-color:
+    color-mix(in srgb, var(--nx-platform-accent) 36%, transparent);
+  background:
+    color-mix(in srgb, var(--nx-platform-accent) 5%, transparent);
+  outline: none;
+}
+
+.nx-capability-card > span:first-child {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 11px;
+  background:
+    color-mix(in srgb, var(--nx-platform-accent) 7%, transparent);
+  color: var(--nx-platform-accent);
+}
+
+.nx-capability-card svg {
+  width: 19px;
+  height: 19px;
+}
+
+.nx-capability-card > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.nx-capability-card strong {
+  font-size: 11px;
+}
+
+.nx-capability-card small {
+  color: var(--muted, #91a8b8);
+  font-size: 8.5px;
+  line-height: 1.4;
+}
+
+.nx-capability-card em {
+  color: var(--nx-platform-success);
+  font-size: 7px;
+  font-style: normal;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.nx-roadmap-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+  gap: 7px;
+}
+
+.nx-roadmap-card {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  border: 1px dashed
+    color-mix(in srgb, currentColor 12%, transparent);
+  border-radius: 11px;
+  opacity: 0.72;
+}
+
+.nx-roadmap-card strong {
+  font-size: 10px;
+}
+
+.nx-roadmap-card span {
+  color: var(--nx-platform-accent);
+  font-size: 7px;
+  text-transform: uppercase;
+}
+
+.nx-roadmap-card small {
+  color: var(--muted, #91a8b8);
+  font-size: 8px;
+  line-height: 1.35;
+}
+
+.nx-empty-state {
+  display: grid;
+  min-height: 250px;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  padding: 24px;
+  color: var(--muted, #91a8b8);
+  text-align: center;
+}
+
+.nx-empty-state > svg {
+  width: 42px;
+  height: 42px;
+  color: var(--nx-platform-accent);
+  opacity: 0.6;
+}
+
+.nx-empty-state p {
+  max-width: 380px;
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.nx-approval-card,
+.nx-receipt-card {
+  display: grid;
+  gap: 12px;
+}
+
+.nx-approval-card h3,
+.nx-receipt-card h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.nx-approval-card p {
+  margin: 0;
+  color: var(--muted, #91a8b8);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.nx-approval-card dl,
+.nx-receipt-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin: 0;
+}
+
+.nx-approval-card dl > div,
+.nx-receipt-card dl > div {
+  padding: 9px;
+  border: 1px solid
+    color-mix(in srgb, currentColor 9%, transparent);
+  border-radius: 10px;
+}
+
+.nx-approval-card dt,
+.nx-receipt-card dt {
+  color: var(--muted, #91a8b8);
+  font-size: 7px;
+}
+
+.nx-approval-card dd,
+.nx-receipt-card dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 9px;
+}
+
+.nx-approval-card > code {
+  padding: 10px;
+  overflow-wrap: anywhere;
+  border: 1px solid
+    color-mix(in srgb, var(--nx-platform-warning) 18%, transparent);
+  border-radius: 10px;
+  color: var(--nx-platform-warning);
+  font-size: 8px;
+}
+
+.nx-approval-card pre {
+  min-height: 130px;
+  max-height: 240px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid
+    color-mix(in srgb, currentColor 10%, transparent);
+  border-radius: 11px;
+  background: #050d16;
+  color: #cde1ef;
+  font: 9px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+.nx-center-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 5px;
+}
+
+.nx-primary-action,
+.nx-secondary-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 7px 11px;
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 9px;
+}
+
+.nx-primary-action {
+  border: 1px solid
+    color-mix(in srgb, var(--nx-platform-accent) 35%, transparent);
+  background:
+    color-mix(in srgb, var(--nx-platform-accent) 10%, transparent);
+  color: var(--text, #edf7ff);
+}
+
+.nx-secondary-action {
+  border: 1px solid
+    color-mix(in srgb, currentColor 14%, transparent);
+  background: transparent;
+  color: var(--muted, #91a8b8);
+}
+
+.nx-primary-action svg,
+.nx-secondary-action svg {
+  width: 15px;
+  height: 15px;
+}
+
+.nx-notification-list,
+.nx-diagnostic-list,
+.nx-settings-list {
+  display: grid;
+  gap: 8px;
+}
+
+.nx-notification,
+.nx-diagnostic,
+.nx-setting-row {
+  padding: 11px;
+  border: 1px solid
+    color-mix(in srgb, currentColor 10%, transparent);
+  border-radius: 11px;
+  background: rgb(255 255 255 / 0.015);
+}
+
+.nx-notification {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.nx-notification p {
+  margin: 0;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.nx-notification time {
+  color: var(--muted, #91a8b8);
+  font-size: 7px;
+}
+
+.nx-notification.is-error {
+  border-color:
+    color-mix(in srgb, var(--nx-platform-danger) 25%, transparent);
+}
+
+.nx-notification.is-success {
+  border-color:
+    color-mix(in srgb, var(--nx-platform-success) 22%, transparent);
+}
+
+.nx-diagnostic {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.nx-diagnostic > span {
+  align-self: start;
+  padding: 5px;
+  border-radius: 8px;
+  background:
+    color-mix(in srgb, var(--nx-platform-success) 8%, transparent);
+  color: var(--nx-platform-success);
+  font-size: 7px;
+  text-align: center;
+}
+
+.nx-diagnostic.is-failed > span {
+  background:
+    color-mix(in srgb, var(--nx-platform-warning) 9%, transparent);
+  color: var(--nx-platform-warning);
+}
+
+.nx-diagnostic > div {
+  display: grid;
+  gap: 4px;
+}
+
+.nx-diagnostic strong {
+  font-size: 10px;
+}
+
+.nx-diagnostic small {
+  overflow-wrap: anywhere;
+  color: var(--muted, #91a8b8);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.nx-diagnostic-running {
+  padding: 20px;
+  color: var(--muted, #91a8b8);
+  text-align: center;
+  font-size: 10px;
+}
+
+.nx-setting-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+}
+
+.nx-setting-row > span {
+  display: grid;
+  gap: 4px;
+  margin-right: auto;
+}
+
+.nx-setting-row strong {
+  font-size: 10px;
+}
+
+.nx-setting-row small {
+  color: var(--muted, #91a8b8);
+  font-size: 8px;
+  line-height: 1.4;
+}
+
+.nx-setting-row input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--nx-platform-accent);
+}
+
+.nx-command-palette {
+  position: fixed;
+  z-index: 9000;
+  inset: 0;
+  display: grid;
+  padding: min(10vh, 90px) 14px 14px;
+  place-items: start center;
+  background: rgb(1 6 11 / 0.7);
+  backdrop-filter: blur(16px);
+}
+
+.nx-command-palette[hidden] {
+  display: none;
+}
+
+.nx-command-dialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(680px, 100%);
+  max-height: min(72vh, 720px);
+  overflow: hidden;
+  border: 1px solid var(--nx-platform-line);
+  border-radius: 17px;
+  background: var(--nx-platform-panel);
+  box-shadow: var(--nx-platform-shadow);
+}
+
+.nx-command-header {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 9px;
+  padding: 11px;
+  border-bottom: 1px solid
+    color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.nx-command-header > span {
+  color: var(--nx-platform-accent);
+}
+
+.nx-command-header svg {
+  width: 19px;
+  height: 19px;
+}
+
+.nx-command-header input {
+  width: 100%;
+  min-height: 38px;
+  border: 0;
+  background: transparent;
+  color: var(--text, #edf7ff);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.nx-command-header button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid
+    color-mix(in srgb, currentColor 12%, transparent);
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.nx-command-results {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  overflow: auto;
+}
+
+.nx-command-result {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.nx-command-result:hover,
+.nx-command-result:focus-visible {
+  border-color:
+    color-mix(in srgb, var(--nx-platform-accent) 26%, transparent);
+  background:
+    color-mix(in srgb, var(--nx-platform-accent) 5%, transparent);
+  outline: none;
+}
+
+.nx-command-result > span:first-child {
+  color: var(--nx-platform-accent);
+}
+
+.nx-command-result svg {
+  width: 19px;
+  height: 19px;
+}
+
+.nx-command-result > span:nth-child(2) {
+  display: grid;
+  gap: 3px;
+}
+
+.nx-command-result strong {
+  font-size: 10px;
+}
+
+.nx-command-result small {
+  color: var(--muted, #91a8b8);
+  font-size: 8px;
+}
+
+.nx-command-result em {
+  color: var(--nx-platform-success);
+  font-size: 7px;
+  font-style: normal;
+  text-transform: uppercase;
+}
+
+.nx-command-dialog footer {
+  padding: 9px 12px;
+  border-top: 1px solid
+    color-mix(in srgb, currentColor 9%, transparent);
+  color: var(--muted, #91a8b8);
+  font-size: 8px;
+}
+
+.nx-window-taskbar {
+  position: fixed;
+  z-index: 3550;
+  right: 14px;
+  bottom: 86px;
+  display: flex;
+  max-width: calc(100vw - 28px);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.nx-taskbar-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 10px;
+  pointer-events: auto;
+  border: 1px solid var(--nx-platform-line);
+  border-radius: 999px;
+  background: var(--nx-platform-panel);
+  color: var(--text, #edf7ff);
+  box-shadow: 0 12px 36px rgb(0 0 0 / 0.35);
+  cursor: pointer;
+}
+
+.nx-taskbar-button[hidden] {
+  display: none;
+}
+
+.nx-taskbar-button svg {
+  width: 15px;
+  height: 15px;
+  color: var(--nx-platform-accent);
+}
+
+.nx-taskbar-button span {
+  font-size: 8px;
+}
+
+.nx-managed-activity {
+  position: fixed !important;
+  z-index: 2800 !important;
+  left: var(--nx-activity-left, auto) !important;
+  top: var(--nx-activity-top, auto) !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: var(--nx-activity-width, 390px) !important;
+  height: var(--nx-activity-height, 500px);
+  min-width: 320px;
+  min-height: 220px;
+  max-width: calc(100vw - 20px);
+  max-height: calc(100vh - 20px);
+  resize: both;
+}
+
+.nx-managed-activity[data-nx-activity-mode="mini"] {
+  height: auto !important;
+  min-height: 0;
+  resize: none;
+}
+
+.nx-managed-activity[data-nx-activity-mode="mini"]
+  .nexuss-interaction-tray-list {
+  display: none;
+}
+
+.nx-managed-activity[data-nx-activity-mode="hidden"] {
+  display: none !important;
+}
+
+.nx-managed-activity .nexuss-interaction-tray-header {
+  cursor: grab;
+  touch-action: none;
+}
+
+.nx-managed-activity.is-dragging,
+.nx-managed-activity.is-dragging
+  .nexuss-interaction-tray-header {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.nx-managed-activity .nexuss-interaction-tray-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.nx-focus-highlight {
+  animation: nx-focus-highlight 650ms ease;
+}
+
+@keyframes nx-focus-highlight {
+  0%,
+  100% {
+    box-shadow: inherit;
+  }
+  45% {
+    box-shadow:
+      0 0 0 2px
+        color-mix(in srgb, var(--nx-platform-accent) 40%, transparent),
+      0 0 48px
+        color-mix(in srgb, var(--nx-platform-accent) 16%, transparent);
+  }
+}
+
+.nx-platform-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 6px 9px;
+  border: 1px solid
+    color-mix(in srgb, var(--nx-platform-success) 18%, transparent);
+  border-radius: 11px;
+  background:
+    color-mix(in srgb, var(--nx-platform-success) 4%, transparent);
+}
+
+.nx-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--nx-platform-success);
+  box-shadow:
+    0 0 12px
+      color-mix(in srgb, var(--nx-platform-success) 75%, transparent);
+}
+
+.nx-platform-status > span:last-child {
+  display: grid;
+  gap: 1px;
+}
+
+.nx-platform-status strong {
+  font-size: 8px;
+}
+
+.nx-platform-status small {
+  color: var(--muted, #91a8b8);
+  font-size: 7px;
+}
+
+.nx-platform-status.is-degraded {
+  border-color:
+    color-mix(in srgb, var(--nx-platform-warning) 26%, transparent);
+}
+
+.nx-platform-status.is-degraded .nx-status-dot {
+  background: var(--nx-platform-warning);
+}
+
+body.nx-reduced-motion *,
+@media (prefers-reduced-motion: reduce) {
+  .nx-platform-window,
+  .nx-dock-button,
+  .nx-focus-highlight {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@media (max-width: 980px) {
+  .nx-capability-dock {
+    width: calc(100vw - 18px);
+    justify-content: flex-start;
+  }
+
+  .nx-platform-window {
+    max-width: calc(100vw - 14px);
+  }
+
+  .nx-platform-status small {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  body.nx-platform-ready {
+    padding-bottom: 78px;
+  }
+
+  .nx-capability-dock {
+    left: 6px;
+    right: 6px;
+    bottom: 6px;
+    width: auto;
+    max-width: none;
+    transform: none;
+    border-radius: 15px;
+  }
+
+  .nx-dock-button {
+    min-width: 48px;
+    min-height: 46px;
+    grid-template-rows: 21px;
+  }
+
+  .nx-dock-button > span {
+    display: none;
+  }
+
+  .nx-platform-window {
+    left: 6px !important;
+    right: 6px !important;
+    top: max(66px, env(safe-area-inset-top)) !important;
+    bottom: 68px !important;
+    width: auto !important;
+    height: auto !important;
+    max-width: none;
+    max-height: none;
+    min-width: 0;
+    min-height: 0;
+    resize: none;
+    border-radius: 15px;
+  }
+
+  .nx-platform-window[data-mode="mini"] {
+    top: auto !important;
+    bottom: 68px !important;
+  }
+
+  .nx-window-header {
+    cursor: default;
+  }
+
+  .nx-window-taskbar {
+    right: 8px;
+    bottom: 66px;
+  }
+
+  .nx-managed-activity {
+    left: 6px !important;
+    right: 6px !important;
+    top: auto !important;
+    bottom: 68px !important;
+    width: auto !important;
+    height: min(46vh, 520px) !important;
+    min-width: 0;
+    max-width: none;
+    resize: none;
+  }
+
+  .nx-managed-activity .nexuss-interaction-tray-header {
+    cursor: default;
+  }
+
+  .nx-capability-grid,
+  .nx-roadmap-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .nx-approval-card dl,
+  .nx-receipt-card dl {
+    grid-template-columns: 1fr;
+  }
+
+  .nx-command-palette {
+    padding: 8px;
+    align-items: start;
+  }
+
+  .nx-command-dialog {
+    max-height: calc(100vh - 16px);
+  }
+
+  .nx-platform-status {
+    display: none;
+  }
+}
+
+/* P6.12 TASK RUNTIME CENTER */
+.nx-task-runtime-card {
+  display: grid;
+  gap: 13px;
+}
+
+.nx-task-runtime-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nx-task-runtime-heading h3 {
+  margin: 0;
+  margin-right: auto;
+  font-size: 17px;
+}
+
+.nx-task-runtime-heading code {
+  padding: 5px 8px;
+  border: 1px solid
+    color-mix(in srgb, var(--nx-platform-accent) 20%, transparent);
+  border-radius: 999px;
+  color: var(--nx-platform-accent);
+  font-size: 8px;
+}
+
+.nx-task-progress {
+  height: 8px;
+  overflow: hidden;
+  border: 1px solid
+    color-mix(in srgb, currentColor 10%, transparent);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.025);
+}
+
+.nx-task-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    var(--nx-platform-accent),
+    var(--nx-platform-accent-2)
+  );
+}
+
+.nx-task-runtime-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin: 0;
+}
+
+.nx-task-runtime-card dl > div {
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid
+    color-mix(in srgb, currentColor 9%, transparent);
+  border-radius: 10px;
+}
+
+.nx-task-runtime-card dt {
+  color: var(--muted, #91a8b8);
+  font-size: 7px;
+}
+
+.nx-task-runtime-card dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 9px;
+}
+
+.nx-task-event-list {
+  display: grid;
+  gap: 6px;
+}
+
+.nx-task-event-list > strong {
+  color: var(--muted, #91a8b8);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.nx-task-event-list > div {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 7px 9px;
+  border-radius: 9px;
+  background: rgb(255 255 255 / 0.018);
+  font-size: 8px;
+}
+
+.nx-task-event-list time {
+  color: var(--muted, #91a8b8);
+}
+
+.nx-task-runtime-note {
+  margin: 0;
+  padding: 10px;
+  border-left: 2px solid var(--nx-platform-warning);
+  color: var(--muted, #91a8b8);
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .nx-task-runtime-card dl {
+    grid-template-columns: 1fr;
+  }
+}
+

@@ -47,6 +47,350 @@ function resultFor(task, capability) {
   return result?.evidence?.[0]?.attributes || null;
 }
 
+// PROMPT-TO-BUILD MANAGED WINDOW V2
+let engineeringProgressPollTimer = null;
+let engineeringProgressLastTerminalRun = "";
+let engineeringProgressLatest = null;
+let engineeringProgressDragging = null;
+const engineeringProgressSeenRuns = new Set();
+const ENGINEERING_WINDOW_STORAGE = "nexuss.prompt-build.window.v2";
+
+function engineeringProgressWindowState() {
+  try {
+    const state = JSON.parse(
+      localStorage.getItem(ENGINEERING_WINDOW_STORAGE) || "{}",
+    );
+    return state && typeof state === "object" ? state : {};
+  } catch (_error) {
+    return {};
+  }
+}
+
+function saveEngineeringProgressWindowState(next) {
+  try {
+    localStorage.setItem(
+      ENGINEERING_WINDOW_STORAGE,
+      JSON.stringify(next),
+    );
+  } catch (_error) {
+    // Presentation persistence is optional.
+  }
+}
+
+function clampEngineeringProgressPosition(panel, left, top) {
+  const margin = 12;
+  const rect = panel.getBoundingClientRect();
+  return {
+    left: Math.min(
+      Math.max(left, margin),
+      Math.max(margin, window.innerWidth - rect.width - margin),
+    ),
+    top: Math.min(
+      Math.max(top, margin),
+      Math.max(margin, window.innerHeight - rect.height - margin),
+    ),
+  };
+}
+
+function ensureEngineeringProgressRestore() {
+  let button = document.querySelector("#engineering-progress-restore");
+  if (!button) {
+    button = document.createElement("button");
+    button.id = "engineering-progress-restore";
+    button.type = "button";
+    button.className = "engineering-progress-restore";
+    button.textContent = "Engineering";
+    button.setAttribute("aria-label", "Restore Prompt-to-Build");
+    button.addEventListener("click", () => {
+      setEngineeringProgressMode("expanded");
+    });
+  }
+
+  const taskbar = document.querySelector("#nx-window-taskbar");
+  if (taskbar && button.parentElement !== taskbar) {
+    taskbar.append(button);
+  } else if (!button.isConnected) {
+    document.body.append(button);
+  }
+  return button;
+}
+
+function setEngineeringProgressMode(mode) {
+  const runId = String(engineeringProgressLatest?.run_id || "");
+  saveEngineeringProgressWindowState({
+    ...engineeringProgressWindowState(),
+    run_id: runId,
+    mode,
+  });
+  renderEngineeringProgress(engineeringProgressLatest || {});
+}
+
+function ensureEngineeringProgressPanel() {
+  let panel = document.querySelector("#engineering-progress-card");
+  if (panel) return panel;
+
+  panel = document.createElement("aside");
+  panel.id = "engineering-progress-card";
+  panel.className = "engineering-progress-card";
+  panel.hidden = true;
+
+  const header = document.createElement("div");
+  header.className = "engineering-progress-header";
+  const badge = document.createElement("span");
+  badge.className = "engineering-progress-badge";
+  badge.textContent = "ENGINEERING";
+  const title = document.createElement("strong");
+  title.textContent = "Prompt-to-Build";
+
+  const controls = document.createElement("span");
+  controls.className = "engineering-progress-controls";
+
+  const minimize = document.createElement("button");
+  minimize.id = "engineering-progress-minimize";
+  minimize.type = "button";
+  minimize.textContent = "−";
+  minimize.title = "Minimize";
+  minimize.setAttribute("aria-label", "Minimize Prompt-to-Build");
+  minimize.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setEngineeringProgressMode("minimized");
+  });
+
+  const restore = document.createElement("button");
+  restore.id = "engineering-progress-expand";
+  restore.type = "button";
+  restore.textContent = "□";
+  restore.title = "Restore";
+  restore.setAttribute("aria-label", "Restore Prompt-to-Build");
+  restore.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setEngineeringProgressMode("expanded");
+  });
+
+  const hide = document.createElement("button");
+  hide.id = "engineering-progress-hide";
+  hide.type = "button";
+  hide.textContent = "×";
+  hide.title = "Hide";
+  hide.setAttribute("aria-label", "Hide Prompt-to-Build");
+  hide.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setEngineeringProgressMode("hidden");
+  });
+
+  controls.append(minimize, restore, hide);
+  header.append(badge, title, controls);
+
+  const current = document.createElement("div");
+  current.className = "engineering-progress-current";
+  current.dataset.role = "current";
+
+  const meta = document.createElement("div");
+  meta.className = "engineering-progress-meta";
+  meta.dataset.role = "meta";
+
+  const events = document.createElement("ol");
+  events.className = "engineering-progress-events";
+  events.dataset.role = "events";
+
+  header.addEventListener("pointerdown", (event) => {
+    if (
+      window.matchMedia("(max-width: 720px)").matches ||
+      event.button !== 0 ||
+      event.target.closest("button")
+    ) {
+      return;
+    }
+    const rect = panel.getBoundingClientRect();
+    engineeringProgressDragging = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    };
+    header.setPointerCapture?.(event.pointerId);
+  });
+
+  header.addEventListener("pointermove", (event) => {
+    if (
+      !engineeringProgressDragging ||
+      engineeringProgressDragging.pointerId !== event.pointerId
+    ) {
+      return;
+    }
+    const position = clampEngineeringProgressPosition(
+      panel,
+      event.clientX - engineeringProgressDragging.offsetX,
+      event.clientY - engineeringProgressDragging.offsetY,
+    );
+    panel.style.left = `${position.left}px`;
+    panel.style.top = `${position.top}px`;
+    panel.style.right = "auto";
+    saveEngineeringProgressWindowState({
+      ...engineeringProgressWindowState(),
+      run_id: String(engineeringProgressLatest?.run_id || ""),
+      mode: "expanded",
+      left: Math.round(position.left),
+      top: Math.round(position.top),
+    });
+  });
+
+  const stopDragging = (event) => {
+    if (
+      engineeringProgressDragging &&
+      engineeringProgressDragging.pointerId === event.pointerId
+    ) {
+      engineeringProgressDragging = null;
+    }
+  };
+  header.addEventListener("pointerup", stopDragging);
+  header.addEventListener("pointercancel", stopDragging);
+
+  panel.append(header, current, meta, events);
+  document.body.append(panel);
+  return panel;
+}
+
+function applyEngineeringProgressWindowState(panel, data) {
+  const runId = String(data.run_id || "");
+  const active = Boolean(data.active);
+  const terminal = Boolean(data.terminal);
+  let state = engineeringProgressWindowState();
+
+  if (!engineeringProgressSeenRuns.has(runId)) {
+    engineeringProgressSeenRuns.add(runId);
+    if (terminal && !active) {
+      state = { ...state, run_id: runId, mode: "hidden" };
+      saveEngineeringProgressWindowState(state);
+    } else if (state.run_id !== runId) {
+      state = { run_id: runId, mode: "expanded" };
+      saveEngineeringProgressWindowState(state);
+    }
+  } else if (state.run_id !== runId) {
+    state = {
+      run_id: runId,
+      mode: terminal && !active ? "hidden" : "expanded",
+    };
+    saveEngineeringProgressWindowState(state);
+  }
+
+  const mode = state.mode || (terminal && !active ? "hidden" : "expanded");
+  const restore = ensureEngineeringProgressRestore();
+  restore.textContent = active ? "Engineering · Running" : "Engineering";
+  restore.hidden = mode !== "hidden";
+
+  panel.classList.toggle("is-minimized", mode === "minimized");
+  panel.hidden = mode === "hidden";
+
+  if (
+    !window.matchMedia("(max-width: 720px)").matches &&
+    Number.isFinite(Number(state.left)) &&
+    Number.isFinite(Number(state.top))
+  ) {
+    const position = clampEngineeringProgressPosition(
+      panel,
+      Number(state.left),
+      Number(state.top),
+    );
+    panel.style.left = `${position.left}px`;
+    panel.style.top = `${position.top}px`;
+    panel.style.right = "auto";
+  } else if (window.matchMedia("(max-width: 720px)").matches) {
+    panel.style.removeProperty("left");
+    panel.style.removeProperty("top");
+    panel.style.removeProperty("right");
+  }
+
+  const dock = document.querySelector("#nx-capability-dock");
+  if (dock) {
+    dock.hidden = false;
+    dock.removeAttribute("aria-hidden");
+    dock.style.removeProperty("display");
+  }
+}
+
+function renderEngineeringProgress(data) {
+  engineeringProgressLatest = data;
+  const panel = ensureEngineeringProgressPanel();
+  const runId = String(data.run_id || "");
+  const terminal = Boolean(data.terminal);
+
+  if (!runId) {
+    panel.hidden = true;
+    ensureEngineeringProgressRestore().hidden = true;
+    return;
+  }
+
+  panel.classList.toggle("is-terminal", terminal);
+  panel.classList.toggle("is-failed", String(data.phase || "") === "failed");
+
+  const actor = String(data.actor || "Nexuss");
+  const message = String(data.message || "Engineering work is active.");
+  const current = panel.querySelector('[data-role="current"]');
+  const meta = panel.querySelector('[data-role="meta"]');
+  const eventsNode = panel.querySelector('[data-role="events"]');
+
+  if (current) current.textContent = `${actor} · ${message}`;
+  if (meta) {
+    const bits = [];
+    if (Number(data.round || 0) > 0) bits.push(`round ${Number(data.round)}`);
+    bits.push(`${Number(data.changed_file_count || 0)} changed`);
+    bits.push(String(data.phase || "running").replaceAll("_", " "));
+    meta.textContent = bits.join(" · ");
+  }
+
+  if (eventsNode) {
+    eventsNode.replaceChildren();
+    const events = Array.isArray(data.events) ? data.events.slice(-6) : [];
+    for (const item of events) {
+      const row = document.createElement("li");
+      const who = document.createElement("strong");
+      const detail = document.createElement("span");
+      who.textContent = String(item.actor || "Nexuss");
+      detail.textContent = String(item.message || "Working...");
+      row.append(who, detail);
+      eventsNode.append(row);
+    }
+  }
+
+  if (terminal) {
+    engineeringProgressLastTerminalRun = runId;
+  }
+
+  applyEngineeringProgressWindowState(panel, data);
+}
+
+async function pollEngineeringProgress() {
+  let active = false;
+  try {
+    const response = await fetch("/v1/engineering/prompt-build/progress", {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    if (response.ok) {
+      const data = await response.json();
+      active = Boolean(data.active);
+      renderEngineeringProgress(data);
+    }
+  } catch (_error) {
+    // Progress is presentation-only. A telemetry read failure must never affect a build.
+  } finally {
+    engineeringProgressPollTimer = setTimeout(
+      pollEngineeringProgress,
+      active ? 900 : 4000,
+    );
+  }
+}
+
+function startEngineeringProgressPolling() {
+  if (engineeringProgressPollTimer) return;
+  void pollEngineeringProgress();
+  window.addEventListener("resize", () => {
+    if (engineeringProgressLatest) {
+      renderEngineeringProgress(engineeringProgressLatest);
+    }
+  });
+}
+
 function ensureWorkspace() {
   if (p5Elements.workspace) {
     p5Elements.workspace.hidden = false;
@@ -514,6 +858,8 @@ document.addEventListener("fullscreenchange", () => {
   p5Elements.fullscreen.textContent = document.fullscreenElement ? "↙" : "⛶";
 });
 
+startEngineeringProgressPolling();
+
 window.NexussP5 = {
   handleContextCommand,
   renderTask(task) {
@@ -560,6 +906,37 @@ window.NexussP5 = {
         "The exact allowlisted YouTube search was queued directly for the paired " +
         "phone. No approval step was required; native app opening remains " +
         "unverified until a companion node can attest it."
+      );
+    }
+
+    const engineering = resultFor(task, "engineering.build_artifact");
+    if (engineering) {
+      const changed = Number(engineering.changed_file_count || 0);
+      const artifact = String(engineering.artifact_zip || "");
+      if (engineering.applied_to_live_repository) {
+        return (
+          `Developer self-build passed regression validation and applied ${changed} ` +
+          `source file${changed === 1 ? "" : "s"} with a rollback backup. ` +
+          `Restart Nexuss, then run requirement-level engineering acceptance ` +
+          `verification. Build artifact: ${artifact}`
+        );
+      }
+      return (
+        `Developer self-build produced a regression-clean ${changed}-file proposal ` +
+        `without modifying live Nexuss. Build artifact: ${artifact}`
+      );
+    }
+
+    const acceptance = resultFor(task, "engineering.verify_acceptance");
+    if (acceptance) {
+      const receipt = acceptance.engineering_acceptance_receipt || acceptance;
+      const status = String(receipt.acceptance_status || "incomplete");
+      const manual = Array.isArray(receipt.manual_checks_required)
+        ? receipt.manual_checks_required.length
+        : 0;
+      return (
+        `Engineering acceptance is ${status.replaceAll("_", " ")}. ` +
+        `Paid model calls: 0. ${manual} manual UI check${manual === 1 ? "" : "s"} remain.`
       );
     }
 

@@ -5,6 +5,14 @@ FastAPI surface for the Nexuss P5 knowledge, media, and mobile action plane.
 
 from __future__ import annotations
 
+from nexuss.interactions.api import register_interaction_routes
+
+from nexuss.conversation.api import register_conversation_routes
+
+from nexuss.collaboration.api import register_collaboration_routes
+
+from nexuss.orchestration.api import register_orchestration_routes
+
 import ipaddress
 import os
 from collections import defaultdict, deque
@@ -26,6 +34,7 @@ from nexuss.archive.workflow import (
     ArchiveTaskNotFoundError,
     ArchiveWorkflowError,
 )
+from nexuss.cognitive.api import register_cognitive_routes
 from nexuss.commitments.api import register_commitment_routes
 from nexuss.commitments.service import CommitmentIntelligenceService
 from nexuss.connectors.github.workspace_api import (
@@ -38,6 +47,10 @@ from nexuss.connectors.google_workspace.service import (
     GoogleWorkspaceConnectorService,
 )
 from nexuss.core.registry import list_capabilities
+from nexuss.core.task_status import (
+    TaskProgressSnapshot,
+    task_progress,
+)
 from nexuss.core.service import (
     ApprovalValidationError,
     CoreSimulatorService,
@@ -45,7 +58,10 @@ from nexuss.core.service import (
     RollbackValidationError,
     TaskNotFoundError,
 )
-from nexuss.device.client import HttpDeviceNodeClient
+from nexuss.device.client import (
+    HttpDeviceNodeClient,
+    inspect_device_node_runtime,
+)
 from nexuss.domain.models import (
     ActionReceipt,
     ApprovalChannel,
@@ -56,6 +72,13 @@ from nexuss.domain.models import (
     RollbackRequest,
     TaskRequest,
     TaskView,
+)
+from nexuss.engineering.development_packages import (
+    DevelopmentPackageApprovalError,
+    DevelopmentPackageCoordinator,
+    DevelopmentPackageError,
+    DevelopmentPackageSessionError,
+    DevelopmentPackageTaskNotFoundError,
 )
 from nexuss.memory.store import memory_store_from_environment
 from nexuss.mobile.gateway import MobileApprovalGateway, MobilePairingError
@@ -96,6 +119,7 @@ service = CoreSimulatorService(
     memory_store=memory_store_from_environment(),
 )
 archive_imports = ArchiveImportCoordinator.from_environment()
+development_packages = DevelopmentPackageCoordinator.from_environment()
 _PAIR_ATTEMPT_WINDOW = timedelta(minutes=5)
 _PAIR_ATTEMPT_LIMIT = 5
 _pair_attempts: dict[str, deque[datetime]] = defaultdict(deque)
@@ -198,6 +222,25 @@ def mobile_index() -> FileResponse:
     )
 
 
+# P6.12 RUNTIME RELIABILITY API
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> FileResponse:
+    return FileResponse(
+        _UI_DIRECTORY / "favicon.svg",
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+# PROMPT-TO-BUILD LIVE PROGRESS V1
+@app.get("/v1/engineering/prompt-build/progress")
+def prompt_build_progress(request: Request) -> dict[str, object]:
+    _require_local_control(request)
+    from nexuss.engineering.prompt_build import latest_prompt_build_progress
+
+    return latest_prompt_build_progress()
+
+
 @app.get("/health/live")
 def health_live() -> dict[str, str]:
     return {
@@ -214,6 +257,12 @@ def health_ready() -> dict[str, str]:
         "mode": "p68a_unified_commitment_intelligence",
         "phone_approval": "enabled",
     }
+
+
+@app.get("/v1/device-node/status")
+def device_node_status(request: Request) -> dict[str, object]:
+    _require_local_control(request)
+    return inspect_device_node_runtime()
 
 
 @app.get("/v1/capabilities", response_model=list[CapabilityManifest])
@@ -284,6 +333,90 @@ async def create_archive_import(
         ) from exc
 
 
+# P6.13 APPROVED DEVELOPMENT PACKAGE INTAKE
+@app.post(
+    "/v1/development-packages",
+    response_model=TaskView,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def create_development_package(
+    request: Request,
+    request_id: Annotated[UUID, Header(alias="X-Nexuss-Request-ID")],
+    archive_name: Annotated[str, Header(alias="X-Nexuss-Archive-Name")],
+    session_id: Annotated[UUID, Header(alias="X-Nexuss-Session-ID")],
+    session_authenticated: Annotated[
+        bool,
+        Header(alias="X-Nexuss-Session-Authenticated"),
+    ],
+    content_length: Annotated[
+        int | None,
+        Header(alias="Content-Length"),
+    ] = None,
+) -> TaskView:
+    """Quarantine and inspect one approved Nexuss development-package ZIP."""
+
+    _require_local_control(request)
+    identity = _session(session_id, session_authenticated)
+    try:
+        return await development_packages.create_task_from_stream(
+            request.stream(),
+            request_id=request_id,
+            session=identity,
+            archive_name=archive_name,
+            content_type=request.headers.get(
+                "content-type",
+                "application/octet-stream",
+            ),
+            content_length=content_length,
+        )
+    except DevelopmentPackageSessionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "safe_details": exc.safe_details,
+            },
+        ) from exc
+    except DevelopmentPackageError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={
+                "code": exc.code,
+                "message": exc.message,
+                "safe_details": exc.safe_details,
+            },
+        ) from exc
+
+
+register_cognitive_routes(
+    app,
+    require_local_control=_require_local_control,
+)
+
+register_orchestration_routes(
+    app,
+    require_local_control=_require_local_control,
+    core_service=service,
+)
+register_interaction_routes(
+    app,
+    require_local_control=_require_local_control,
+    core_service=service,
+)
+
+register_collaboration_routes(
+    app,
+    require_local_control=_require_local_control,
+)
+register_conversation_routes(
+    app,
+    require_local_control=_require_local_control,
+)
+
+
+
+
 @app.post("/v1/tasks", response_model=TaskView, status_code=status.HTTP_202_ACCEPTED)
 def create_task(
     request: TaskRequest,
@@ -309,6 +442,13 @@ def decide_task_approval(
     _require_local_control(request)
     identity = _session(session_id, session_authenticated)
     try:
+        if development_packages.contains_task(task_id):
+            return development_packages.approve_task(
+                task_id,
+                decision,
+                identity,
+                approval_channel=ApprovalChannel.DESKTOP,
+            )
         if archive_imports.contains_task(task_id):
             return archive_imports.approve_task(
                 task_id,
@@ -322,13 +462,24 @@ def decide_task_approval(
             identity,
             approval_channel=ApprovalChannel.DESKTOP,
         )
-    except (InvalidSessionError, ArchiveSessionError) as exc:
+    except (
+        InvalidSessionError,
+        ArchiveSessionError,
+        DevelopmentPackageSessionError,
+    ) as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
-    except (TaskNotFoundError, ArchiveTaskNotFoundError) as exc:
+    except (
+        TaskNotFoundError,
+        ArchiveTaskNotFoundError,
+        DevelopmentPackageTaskNotFoundError,
+    ) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found") from exc
-    except (ApprovalValidationError, ArchiveApprovalValidationError) as exc:
+    except (
+        ApprovalValidationError,
+        ArchiveApprovalValidationError,
+        DevelopmentPackageApprovalError,
+    ) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-
 
 @app.post("/v1/tasks/{task_id}/rollback", response_model=TaskView)
 def rollback_task(
@@ -340,54 +491,98 @@ def rollback_task(
 ) -> TaskView:
     del rollback_request
     _require_local_control(request)
+    identity = _session(session_id, session_authenticated)
     try:
-        return service.rollback_task(task_id, _session(session_id, session_authenticated))
-    except InvalidSessionError as exc:
+        if development_packages.contains_task(task_id):
+            return development_packages.rollback_task(task_id, identity)
+        return service.rollback_task(task_id, identity)
+    except (InvalidSessionError, DevelopmentPackageSessionError) as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
-    except TaskNotFoundError as exc:
+    except (TaskNotFoundError, DevelopmentPackageTaskNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found") from exc
-    except RollbackValidationError as exc:
+    except (RollbackValidationError, DevelopmentPackageError) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-
 
 @app.get("/v1/tasks/{task_id}", response_model=TaskView)
 def get_task(task_id: UUID, request: Request) -> TaskView:
     _require_local_control(request)
     try:
+        if development_packages.contains_task(task_id):
+            return development_packages.get_task(task_id)
         if archive_imports.contains_task(task_id):
             return archive_imports.get_task(task_id)
         return service.get_task(task_id)
-    except (TaskNotFoundError, ArchiveTaskNotFoundError) as exc:
+    except (
+        TaskNotFoundError,
+        ArchiveTaskNotFoundError,
+        DevelopmentPackageTaskNotFoundError,
+    ) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found") from exc
 
+@app.get(
+    "/v1/tasks/{task_id}/status",
+    response_model=TaskProgressSnapshot,
+)
+def get_task_status(
+    task_id: UUID,
+    request: Request,
+) -> TaskProgressSnapshot:
+    _require_local_control(request)
+    try:
+        if development_packages.contains_task(task_id):
+            task = development_packages.get_task(task_id)
+        elif archive_imports.contains_task(task_id):
+            task = archive_imports.get_task(task_id)
+        else:
+            task = service.get_task(task_id)
+        return task_progress(task)
+    except (
+        TaskNotFoundError,
+        ArchiveTaskNotFoundError,
+        DevelopmentPackageTaskNotFoundError,
+    ) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found",
+        ) from exc
 
 @app.get("/v1/tasks/{task_id}/receipt", response_model=ActionReceipt)
 def get_task_receipt(task_id: UUID, request: Request) -> ActionReceipt:
     _require_local_control(request)
     try:
+        if development_packages.contains_task(task_id):
+            return development_packages.get_receipt(task_id)
         if archive_imports.contains_task(task_id):
             return archive_imports.get_receipt(task_id)
         return service.get_receipt(task_id)
-    except (TaskNotFoundError, ArchiveTaskNotFoundError) as exc:
+    except (
+        TaskNotFoundError,
+        ArchiveTaskNotFoundError,
+        DevelopmentPackageTaskNotFoundError,
+    ) as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Receipt not found",
         ) from exc
 
-
 @app.get("/v1/tasks/{task_id}/receipts", response_model=list[ActionReceipt])
 def get_task_receipt_history(task_id: UUID, request: Request) -> list[ActionReceipt]:
     _require_local_control(request)
     try:
+        if development_packages.contains_task(task_id):
+            return list(development_packages.get_receipt_history(task_id))
         if archive_imports.contains_task(task_id):
             return list(archive_imports.get_receipt_history(task_id))
         return list(service.get_receipt_history(task_id))
-    except (TaskNotFoundError, ArchiveTaskNotFoundError) as exc:
+    except (
+        TaskNotFoundError,
+        ArchiveTaskNotFoundError,
+        DevelopmentPackageTaskNotFoundError,
+    ) as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Receipt history not found",
         ) from exc
-
 
 @app.post("/v1/mobile/pairing", response_model=MobilePairingChallenge)
 def create_mobile_pairing(
@@ -477,6 +672,43 @@ def rebind_mobile_devices(
         paired_devices=paired,
         rebound_devices=rebound,
     )
+
+
+# P6.12 SINGLE MOBILE SNAPSHOT
+@app.get("/v1/mobile/snapshot")
+def get_mobile_snapshot(request: Request) -> dict[str, object]:
+    raw_device_id = request.headers.get("X-Nexuss-Mobile-Device-ID", "").strip()
+    device_token = request.headers.get("X-Nexuss-Mobile-Token", "").strip()
+    if not raw_device_id or not device_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="MOBILE_AUTH_REQUIRED",
+        )
+    try:
+        device_id = UUID(raw_device_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="MOBILE_DEVICE_ID_INVALID",
+        ) from exc
+
+    identity = _mobile_identity(device_id, device_token)
+    pending = [
+        *service.list_pending_phone_approvals(identity.session_id),
+        *archive_imports.list_pending_phone_approvals(identity.session_id),
+    ]
+    pending = sorted(pending, key=lambda item: item.expires_at)
+
+    handoffs = service.list_phone_handoffs(identity.session_id)
+    try:
+        claimed = list(mobile_gateway.claim_handoffs(device_id, handoffs))
+    except MobilePairingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        ) from exc
+
+    return {"approvals": pending, "handoffs": claimed}
 
 
 @app.get("/v1/mobile/pending", response_model=list[MobileApprovalSummary])

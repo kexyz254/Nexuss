@@ -78,7 +78,7 @@ fb4a165f1587364240f3c322a32d78a397cdbab235af60edb231ea7e5c95f2cc  ./services/pol
 474df0063fe0adb983791bbb9ee4a984f09e34cba90386391ba60355c4aa625a  ./src/nexuss/constitution/loader.py
 99b70ed9c3815bbc2901d6f0cf1005d321f63fd863b7c762e1f49ae9602af14f  ./src/nexuss/core/__init__.py
 58bf5764a160fc7fcadc73e44a517d53502c22bca7e2936f4b3d004b847b7068  ./src/nexuss/core/executor.py
-f31a7f675f48e63438ceeaf084704996a615811943c9095409d1eab87c3a65c3  ./src/nexuss/core/intents.py
+b476322fc74d4709dc3f62d819fe65b9e55f6f764cf00b44d8147bdca9758df2  ./src/nexuss/core/intents.py
 c40d8a00b11af5175c30f77e986c500189097063a9900ad5362234dd70f37487  ./src/nexuss/core/ledger.py
 bc0971005d4694c5f1b43dc782a114d29dbbebb3ecb139a532f40d3fc1e20226  ./src/nexuss/core/local_workspace.py
 d7456b0b291b336b04af92418a58ba002df5d8597ebd960717c10850a4b96d3c  ./src/nexuss/core/managed_notes.py
@@ -158,6 +158,7 @@ cae473998757e3ee5874a3003b43a6b23d9bb9c0f03e083912cf4881b8b5964c  ./tests/unit/t
 338f0da17ea3d87f1cd82ccae894107d839f377a341a7d6ab5fb03b02a40fd69  ./tests/unit/test_p5_intents.py
 a8d202dd640475d5b732879433ffd13b3d6c7a62e4180ce8da7e7d3b9d5565d3  ./tests/unit/test_p5_providers.py
 c9e2abaf96760b4a1297e90b1d214f229163d7206247ca0ac19614d2c013537e  ./tests/unit/test_p5_web_actions.py
+23661ff443a940f5557fb0cee0326dd218bcd97df4126b4543c3cd8230295a44  ./tests/unit/test_p61_conversation.py
 caddeb4961d46b873d7420941cea368714550ac4157ddfa8b18394fdf0f0a9f1  ./tests/unit/test_planner_policy.py
 b1630adec003e337b5f930d4159b15140b26b333d100388991030bbb04786964  ./tests/unit/test_registry_and_state_machine.py
 0aed98930bca4aa83f097047db032a7841a0a709909208870df749ce2d967574  ./tests/unit/test_simulator.py

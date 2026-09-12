@@ -13,6 +13,7 @@
   <script src="/assets/app.js" defer></script>
   <script src="/assets/p5.js" defer></script>
   <script src="/assets/workspace.js" defer></script>
+  <link rel="stylesheet" href="/assets/nexuss_ui_platform.css?v=1.0.0">
 </head>
 <body>
   <div class="aurora aurora-a" aria-hidden="true"></div>
@@ -128,7 +129,12 @@
       </div>
     </aside>
 
-    <section class="conversation panel" aria-label="Nexuss conversation">
+    <section class="conversation panel focus-app" id="conversation-app" data-focus-app="conversation" aria-label="Nexuss conversation">
+        <div class="nexuss-ambient-avatar" aria-hidden="true">
+          <span class="nexuss-orbit orbit-one"></span>
+          <span class="nexuss-orbit orbit-two"></span>
+          <span class="nexuss-orbit orbit-three"></span>
+        </div>
       <header class="conversation-header">
         <div>
           <span class="eyebrow">NEXUSS INTERFACE</span>
@@ -236,7 +242,7 @@
       </div>
     </section>
 
-    <aside class="inspector panel" aria-label="Action inspector">
+    <aside class="inspector panel focus-app" id="action-control-app" data-focus-app="inspector" aria-label="Action inspector">
       <header class="inspector-header">
         <div>
           <span class="section-label">ACTION CONTROL</span>
@@ -418,5 +424,58 @@
     <span>CONFIDENTIAL · NEXUSS AI · kexyz254peter</span>
     <span>Intent → Policy → Approval → Execution → Verification → Receipt</span>
   </footer>
+
+  <!-- P6.8A.5 NEXUSS FOCUS DECK -->
+  <nav
+    class="focus-deck"
+    id="focus-deck"
+    aria-label="Nexuss application focus deck"
+  >
+    <button
+      type="button"
+      data-focus-command="conversation"
+      title="Focus conversation (Alt+1)"
+      aria-pressed="true"
+    >
+      <span aria-hidden="true">N</span>
+      <small>Conversation</small>
+    </button>
+    <button
+      type="button"
+      data-focus-command="inspector"
+      title="Focus Action Control (Alt+2)"
+      aria-pressed="true"
+    >
+      <span aria-hidden="true">???</span>
+      <small>Action</small>
+    </button>
+    <button
+      type="button"
+      data-focus-command="workspace"
+      title="Show or hide workspace (Alt+3)"
+      aria-pressed="false"
+    >
+      <span aria-hidden="true">???</span>
+      <small>Workspace</small>
+    </button>
+    <button
+      type="button"
+      data-focus-command="split"
+      title="Restore split view"
+    >
+      <span aria-hidden="true">???</span>
+      <small>Split</small>
+    </button>
+    <button
+      type="button"
+      data-focus-command="restore"
+      title="Restore default workspace"
+    >
+      <span aria-hidden="true">???</span>
+      <small>Restore</small>
+    </button>
+  </nav>
+
+  <script src="/assets/nexuss_ui_platform.js?v=1.0.0" defer></script>
 </body>
 </html>

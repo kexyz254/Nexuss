@@ -56,6 +56,9 @@ class IntentKind(StrEnum):
     GITHUB_CONNECTION_STATUS = "github_connection_status"
     GITHUB_REPOSITORIES = "github_repositories"
     GITHUB_CREATE_REPOSITORY = "github_create_repository"
+    ENGINEERING_BUILD_ARTIFACT = "engineering_build_artifact"
+    ENGINEERING_VERIFY_ACCEPTANCE = "engineering_verify_acceptance"
+    ENGINEERING_REPAIR_FAILED_BUILD = "engineering_repair_failed_build"
     UNKNOWN = "unknown"
 
 

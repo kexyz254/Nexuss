@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import socket
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 from urllib.parse import urlparse
@@ -23,6 +24,53 @@ from nexuss.device.models import (
 from nexuss.device.signing import sign_payload
 
 _DEVICE_COMMAND_LIFETIME = timedelta(seconds=30)
+
+
+# P6.12 DEVICE NODE READINESS
+def inspect_device_node_runtime() -> dict[str, object]:
+    # Return non-secret, loopback-only device-node readiness.
+    base_url = os.getenv("NEXUSS_DEVICE_NODE_URL", "").strip()
+    shared_secret = os.getenv("NEXUSS_DEVICE_NODE_SECRET", "").strip()
+    if not base_url or not shared_secret:
+        return {
+            "configured": False,
+            "reachable": False,
+            "reason_code": "TRUSTED_DEVICE_NODE_NOT_CONFIGURED",
+            "node_url": base_url or None,
+        }
+
+    parsed = urlparse(base_url)
+    if (
+        parsed.scheme != "http"
+        or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        return {
+            "configured": True,
+            "reachable": False,
+            "reason_code": "TRUSTED_DEVICE_NODE_URL_INVALID",
+            "node_url": None,
+        }
+
+    port = parsed.port or 80
+    host = parsed.hostname or "127.0.0.1"
+    try:
+        with socket.create_connection((host, port), timeout=0.35):
+            reachable = True
+    except OSError:
+        reachable = False
+
+    return {
+        "configured": True,
+        "reachable": reachable,
+        "reason_code": (
+            "READY"
+            if reachable
+            else "TRUSTED_DEVICE_NODE_UNREACHABLE"
+        ),
+        "node_url": base_url,
+    }
 
 
 class DeviceCommandError(RuntimeError):

@@ -1,0 +1,2831 @@
+
+========================================================================================
+src\nexuss\domain\models.py
+========================================================================================
+
+--- lines 9-17 ---
+    9: 
+   10: from pydantic import BaseModel, ConfigDict, Field
+   11: 
+   12: CapabilityId = Annotated[str, Field(pattern=r"^[a-z0-9_.-]+$")]
+   13: 
+   14: 
+   15: class Channel(StrEnum):
+   16:     VOICE = "voice"
+   17:     TEXT = "text"
+
+--- lines 22-58 ---
+   22:     STRONG = "strong"
+   23: 
+   24: 
+   25: class IntentKind(StrEnum):
+   26:     ASSISTANT_IDENTITY = "assistant_identity"
+   27:     ASSISTANT_CAPABILITIES = "assistant_capabilities"
+   28:     ASSISTANT_HELP = "assistant_help"
+   29:     DAILY_BRIEFING = "daily_briefing"
+   30:     SYSTEM_HEALTH = "system_health"
+   31:     LOCAL_WORKSPACE_STATUS = "local_workspace_status"
+   32:     CREATE_NOTE = "create_note"
+   33:     LAUNCH_NOTEPAD = "launch_notepad"
+   34:     WEB_RESEARCH = "web_research"
+   35:     YOUTUBE_SEARCH = "youtube_search"
+   36:     PHONE_OPEN_YOUTUBE = "phone_open_youtube"
+   37:     PAIR_PHONE = "pair_phone"
+   38:     LIST_PAIRED_DEVICES = "list_paired_devices"
+   39:     UNPAIR_PHONE = "unpair_phone"
+   40:     MEMORY_REMEMBER = "memory_remember"
+   41:     MEMORY_RECALL = "memory_recall"
+   42:     MEMORY_FORGET = "memory_forget"
+   43:     IDENTITY_RECALL = "identity_recall"
+   44:     USER_IDENTITY_CLAIM = "user_identity_claim"
+   45:     CONSTITUTION_OVERRIDE = "constitution_override"
+   46:     OPEN_WEB_SEARCH = "open_web_search"
+   47:     PREPARE_WORKSPACE = "prepare_workspace"
+   48:     PLAY_MEDIA = "play_media"
+   49:     ATS_READ = "ats_read"
+   50:     ATS_WRITE = "ats_write"
+   51:     FINANCIAL_TRANSFER = "financial_transfer"
+   52:     SOCIAL_PUBLISH = "social_publish"
+   53:     SMALL_TALK = "small_talk"
+   54:     DATETIME_QUERY = "datetime_query"
+   55:     OPEN_QUESTION = "open_question"
+   56:     UNKNOWN = "unknown"
+   57: 
+   58: 
+
+--- lines 64-72 ---
+   64:     CRITICAL = "critical"
+   65: 
+   66: 
+   67: class PolicyOutcome(StrEnum):
+   68:     ALLOW = "allow"
+   69:     REQUIRE_APPROVAL = "require_approval"
+   70:     DENY = "deny"
+   71: 
+   72: 
+
+--- lines 110-124 ---
+  110:     PHONE = "phone"
+  111: 
+  112: 
+  113: class CapabilityStatus(StrEnum):
+  114:     ACTIVE = "active"
+  115:     SIMULATED = "simulated"
+  116:     PROHIBITED = "prohibited"
+  117: 
+  118: 
+  119: class ApprovalPolicy(StrEnum):
+  120:     NONE = "none"
+  121:     EXPLICIT = "explicit"
+  122:     PROHIBITED = "prohibited"
+  123: 
+  124: 
+
+--- lines 145-153 ---
+  145: class Intent(BaseModel):
+  146:     model_config = ConfigDict(extra="forbid")
+  147: 
+  148:     kind: IntentKind
+  149:     normalized_text: str
+  150:     confidence: float = Field(ge=0.0, le=1.0)
+  151:     entities: dict[str, str] = Field(default_factory=dict)
+  152: 
+  153: 
+
+--- lines 156-166 ---
+  156: 
+  157:     step_id: UUID
+  158:     order: int = Field(ge=1)
+  159:     capability_id: CapabilityId
+  160:     risk_tier: RiskTier
+  161:     expected_evidence: list[str] = Field(min_length=1)
+  162:     parameters: dict[str, object] = Field(default_factory=dict)
+  163:     reversible: bool = False
+  164: 
+  165: 
+  166: class TaskPlan(BaseModel):
+
+--- lines 172-204 ---
+  172:     steps: list[PlanStep] = Field(min_length=1)
+  173: 
+  174: 
+  175: class PolicyDecision(BaseModel):
+  176:     model_config = ConfigDict(extra="forbid")
+  177: 
+  178:     step_id: UUID
+  179:     capability_id: CapabilityId
+  180:     outcome: PolicyOutcome
+  181:     reason_code: str
+  182:     explanation: str
+  183: 
+  184: 
+  185: class EvidenceRecord(BaseModel):
+  186:     model_config = ConfigDict(extra="forbid")
+  187: 
+  188:     source: str
+  189:     observed_at: datetime
+  190:     attributes: dict[str, object]
+  191: 
+  192: 
+  193: class CapabilityResult(BaseModel):
+  194:     model_config = ConfigDict(extra="forbid")
+  195: 
+  196:     step_id: UUID
+  197:     capability_id: CapabilityId
+  198:     status: StepStatus
+  199:     evidence: list[EvidenceRecord]
+  200:     error_code: str | None = None
+  201: 
+  202: 
+  203: class ActionEvent(BaseModel):
+  204:     model_config = ConfigDict(extra="forbid")
+
+--- lines 216-224 ---
+  216: 
+  217:     approval_id: UUID
+  218:     task_id: UUID
+  219:     capability_id: CapabilityId
+  220:     status: ApprovalStatus
+  221:     action_title: str
+  222:     action_summary: str
+  223:     exact_preview: str
+  224:     destination_label: str
+
+--- lines 246-282 ---
+  246:     confirmation: str = Field(pattern=r"^undo$")
+  247: 
+  248: 
+  249: class CapabilityManifest(BaseModel):
+  250:     model_config = ConfigDict(extra="forbid")
+  251: 
+  252:     capability_id: CapabilityId
+  253:     version: str
+  254:     title: str
+  255:     description: str
+  256:     risk_tier: RiskTier
+  257:     approval_policy: ApprovalPolicy
+  258:     reversible: bool
+  259:     execution_mode: str
+  260:     status: CapabilityStatus
+  261:     approval_channel: ApprovalChannel = ApprovalChannel.DESKTOP
+  262: 
+  263: 
+  264: class ActionReceipt(BaseModel):
+  265:     model_config = ConfigDict(extra="forbid")
+  266: 
+  267:     receipt_id: UUID
+  268:     receipt_version: int = Field(ge=1)
+  269:     task_id: UUID
+  270:     request_id: UUID
+  271:     state: TaskState
+  272:     intent: Intent
+  273:     plan_id: UUID
+  274:     policy_decisions: list[PolicyDecision]
+  275:     results: list[CapabilityResult]
+  276:     events: list[ActionEvent]
+  277:     created_at: datetime
+  278:     updated_at: datetime
+  279:     verified: bool
+  280:     reversible: bool
+  281: 
+  282: 
+
+--- lines 289-297 ---
+  289:     state: TaskState
+  290:     intent: Intent
+  291:     plan: TaskPlan
+  292:     policy_decisions: list[PolicyDecision]
+  293:     results: list[CapabilityResult]
+  294:     events: list[ActionEvent]
+  295:     approval: ApprovalRequest | None = None
+  296:     created_at: datetime
+  297:     updated_at: datetime
+
+========================================================================================
+src\nexuss\core\intents.py
+========================================================================================
+
+--- lines 7-15 ---
+    7: 
+    8: import re
+    9: 
+   10: from nexuss.domain.models import Intent, IntentKind
+   11: 
+   12: _NOTE_PATTERN = re.compile(
+   13:     r"^(?:please\s+)?(?:create|make|write|save)\s+(?:a\s+)?note"
+   14:     r"(?:\s+(?:called|titled|named)\s+)(?P<title>.+?)"
+   15:     r"(?:\s+(?:with(?:\s+the)?\s+(?:tasks?|content)\s*:?|containing|that\s+says)\s+"
+
+--- lines 361-379 ---
+  361: )
+  362: 
+  363: 
+  364: def _match_memory(display_text: str) -> tuple[IntentKind, dict[str, str]] | None:
+  365:     forget = _FORGET_MEMORY_PATTERN.match(display_text)
+  366:     if forget:
+  367:         return IntentKind.MEMORY_FORGET, {"topic": forget.group("topic").strip(" \"'")}
+  368:     for pattern in _RECALL_PATTERNS:
+  369:         recall = pattern.match(display_text)
+  370:         if recall:
+  371:             return IntentKind.MEMORY_RECALL, {"query": recall.group("query").strip(" \"'")}
+  372:     remember = _REMEMBER_PATTERN.match(display_text)
+  373:     if remember:
+  374:         return IntentKind.MEMORY_REMEMBER, {
+  375:             "statement": remember.group("statement").strip(" \"'")
+  376:         }
+  377:     return None
+  378: 
+  379: 
+
+--- lines 435-443 ---
+  435: 
+  436: 
+  437: # A person stating who they are. Nexuss may remember the claim; the claim
+  438: # grants nothing. Policy reads capability manifests, never memory, so a stored
+  439: # assertion of authority cannot widen what Nexuss will do.
+  440: _USER_CLAIM_PATTERN = re.compile(
+  441:     r"^(?:i\s+am|i'm|am|my\s+name\s+is|call\s+me)\s+(?P<claim>.+?)\s*$",
+  442:     re.IGNORECASE,
+  443: )
+
+--- lines 542-732 ---
+  542:     return bool(_EXPLAIN_PATTERN.match(text))
+  543: 
+  544: 
+  545: def classify_intent(utterance: str) -> Intent:
+  546:     display_text = _strip_leading_noise(utterance)
+  547:     normalized = display_text.casefold()
+  548:     note_match = _NOTE_PATTERN.match(display_text)
+  549:     entities: dict[str, str] = {}
+  550: 
+  551:     if note_match:
+  552:         raw_title = note_match.group("title").strip(" \"'")
+  553:         raw_body = note_match.group("body")
+  554:         entities = {
+  555:             "title": raw_title,
+  556:             "content": _format_note_content(raw_title, raw_body),
+  557:         }
+  558:         kind = IntentKind.CREATE_NOTE
+  559:         confidence = 0.99
+  560:     elif (identity_subject := _IDENTITY_SUBJECT_PATTERN.match(display_text)) is not None:
+  561:         # Must precede the assistant-identity check: "who are your developers"
+  562:         # contains the substring "who are you", the same collision class as
+  563:         # "unpair my phone" containing "pair my phone".
+  564:         kind = IntentKind.IDENTITY_RECALL
+  565:         confidence = 0.97
+  566:         subject = identity_subject.group("subject")
+  567:         entities = {
+  568:             "query": _identity_query(subject),
+  569:             "response_key": _identity_response_key(subject),
+  570:         }
+  571:     elif (identity_verb := _IDENTITY_VERB_PATTERN.match(display_text)) is not None:
+  572:         kind = IntentKind.IDENTITY_RECALL
+  573:         confidence = 0.96
+  574:         verb = identity_verb.group("verb")
+  575:         entities = {
+  576:             "query": _identity_query(verb),
+  577:             "response_key": _identity_response_key(verb),
+  578:         }
+  579:     elif _contains_any(
+  580:         normalized,
+  581:         ("who are you", "what are you", "introduce yourself"),
+  582:     ):
+  583:         kind = IntentKind.ASSISTANT_IDENTITY
+  584:         confidence = 0.99
+  585:     elif _contains_any(
+  586:         normalized,
+  587:         ("what can you do", "your capabilities", "show capabilities"),
+  588:     ):
+  589:         kind = IntentKind.ASSISTANT_CAPABILITIES
+  590:         confidence = 0.98
+  591:     elif (
+  592:         normalized in {"help", "help me", "how do i use nexuss"}
+  593:         or "how can you help" in normalized
+  594:     ):
+  595:         kind = IntentKind.ASSISTANT_HELP
+  596:         confidence = 0.97
+  597:     elif _contains_any(
+  598:         normalized,
+  599:         (
+  600:             "ignore your constitution",
+  601:             "ignore the constitution",
+  602:             "override your constitution",
+  603:             "disable your constitution",
+  604:             "forget your constitution",
+  605:         ),
+  606:     ):
+  607:         kind = IntentKind.CONSTITUTION_OVERRIDE
+  608:         confidence = 0.99
+  609:     elif (user_claim := _USER_CLAIM_PATTERN.match(display_text)) is not None and (
+  610:         len(user_claim.group("claim").split()) <= 6
+  611:     ):
+  612:         kind = IntentKind.USER_IDENTITY_CLAIM
+  613:         confidence = 0.95
+  614:         entities = {"claim": user_claim.group("claim").strip(" \"'.")}
+  615:     elif (memory_match := _match_memory(display_text)) is not None:
+  616:         kind, entities = memory_match
+  617:         confidence = 0.98
+  618:     elif _is_unpair_request(normalized):
+  619:         kind = IntentKind.UNPAIR_PHONE
+  620:         confidence = 0.97
+  621:         entities = {"device_label": _unpair_label(display_text)}
+  622:     elif _contains_any(normalized, _LIST_DEVICE_TERMS):
+  623:         kind = IntentKind.LIST_PAIRED_DEVICES
+  624:         confidence = 0.97
+  625:     elif _contains_any(normalized, _PAIR_PHONE_TERMS):
+  626:         kind = IntentKind.PAIR_PHONE
+  627:         confidence = 0.98
+  628:     elif (phone_query := _match_query(display_text, _PHONE_YOUTUBE_PATTERNS)) is not None:
+  629:         kind = IntentKind.PHONE_OPEN_YOUTUBE
+  630:         confidence = 0.99
+  631:         entities = _media_entities(phone_query or "YouTube")
+  632:     elif _contains_any(
+  633:         normalized,
+  634:         (
+  635:             "research ",
+  636:             "learn about ",
+  637:             "knowledge about ",
+  638:             "google knowledge about ",
+  639:         ),
+  640:     ):
+  641:         query = _research_query(normalized)
+  642:         kind = IntentKind.WEB_RESEARCH
+  643:         confidence = 0.97
+  644:         entities = {"query": query}
+  645:     elif normalized in {
+  646:         "play a music video",
+  647:         "play media",
+  648:         "play music",
+  649:         "play a video",
+  650:     }:
+  651:         kind = IntentKind.PLAY_MEDIA
+  652:         confidence = 0.94
+  653:     elif (media_query := _match_query(display_text, _DESKTOP_YOUTUBE_PATTERNS)) is not None:
+  654:         kind = IntentKind.YOUTUBE_SEARCH
+  655:         confidence = 0.98
+  656:         entities = _media_entities(media_query)
+  657:     elif (
+  658:         "chrome" in normalized or "browser" in normalized
+  659:     ) and _contains_any(normalized, ("search", "google", "open")):
+  660:         query = _extract_query(normalized, _WEB_SEARCH_PREFIXES)
+  661:         kind = IntentKind.OPEN_WEB_SEARCH
+  662:         confidence = 0.96
+  663:         entities = {"query": query or "Nexuss", "provider": "google"}
+  664:     elif _contains_any(
+  665:         normalized,
+  666:         ("open notepad", "launch notepad", "start notepad", "open text editor"),
+  667:     ):
+  668:         kind = IntentKind.LAUNCH_NOTEPAD
+  669:         confidence = 0.99
+  670:         entities = {"target_node_id": "windows-primary"}
+  671:     elif _contains_any(normalized, ("send money", "transfer money", "m-pesa")):
+  672:         kind = IntentKind.FINANCIAL_TRANSFER
+  673:         confidence = 0.99
+  674:     elif _contains_any(normalized, ("publish", "post on facebook", "social post")):
+  675:         kind = IntentKind.SOCIAL_PUBLISH
+  676:         confidence = 0.98
+  677:     elif "ats" in normalized and _contains_any(
+  678:         normalized,
+  679:         ("buy", "sell", "trade", "place order", "write"),
+  680:     ):
+  681:         kind = IntentKind.ATS_WRITE
+  682:         confidence = 0.99
+  683:     elif _contains_any(
+  684:         normalized,
+  685:         ("workspace", "repository", "repo", "computer"),
+  686:     ) and _contains_any(normalized, ("status", "check", "inspect", "system")):
+  687:         kind = IntentKind.LOCAL_WORKSPACE_STATUS
+  688:         confidence = 0.98
+  689:     elif "daily briefing" in normalized or normalized == "briefing":
+  690:         kind = IntentKind.DAILY_BRIEFING
+  691:         confidence = 0.99
+  692:     elif "prepare" in normalized and "workspace" in normalized:
+  693:         kind = IntentKind.PREPARE_WORKSPACE
+  694:         confidence = 0.97
+  695:     elif "ats" in normalized:
+  696:         kind = IntentKind.ATS_READ
+  697:         confidence = 0.96
+  698:     elif "health" in normalized:
+  699:         kind = IntentKind.SYSTEM_HEALTH
+  700:         confidence = 0.95
+  701:     elif "play" in normalized and _contains_any(
+  702:         normalized,
+  703:         ("media", "music", "song", "video"),
+  704:     ):
+  705:         kind = IntentKind.PLAY_MEDIA
+  706:         confidence = 0.94
+  707:     elif (small_talk := _small_talk_kind(normalized)) is not None:
+  708:         kind = IntentKind.SMALL_TALK
+  709:         confidence = 0.96
+  710:         entities = {"small_talk_kind": small_talk}
+  711:     elif _contains_any(normalized, _TIME_TERMS):
+  712:         kind = IntentKind.DATETIME_QUERY
+  713:         confidence = 0.96
+  714:         entities = {"datetime_field": "time"}
+  715:     elif _contains_any(normalized, _DATE_TERMS):
+  716:         kind = IntentKind.DATETIME_QUERY
+  717:         confidence = 0.96
+  718:         entities = {"datetime_field": "date"}
+  719:     elif _is_open_question(display_text):
+  720:         kind = IntentKind.OPEN_QUESTION
+  721:         confidence = 0.72
+  722:         entities = {"question": display_text.strip()}
+  723:     else:
+  724:         kind = IntentKind.UNKNOWN
+  725:         confidence = 0.0
+  726: 
+  727:     return Intent(
+  728:         kind=kind,
+  729:         normalized_text=normalized,
+  730:         confidence=confidence,
+  731:         entities=entities,
+  732:     )
+
+========================================================================================
+src\nexuss\core\planner.py
+========================================================================================
+
+--- lines 10-18 ---
+   10: 
+   11: from nexuss.core.managed_notes import prepare_note
+   12: from nexuss.core.web_actions import google_search_url, youtube_search_url
+   13: from nexuss.domain.models import Intent, IntentKind, PlanStep, RiskTier, TaskPlan
+   14: 
+   15: StepSpec = tuple[
+   16:     str,
+   17:     RiskTier,
+   18:     list[str],
+
+--- lines 27-40 ---
+   27: 
+   28: def _assistant_response(intent: Intent) -> str:
+   29:     responses = {
+   30:         IntentKind.ASSISTANT_CAPABILITIES: (
+   31:             "I can inspect this workspace, research bounded public sources, "
+   32:             "discover and rank YouTube media, create verified notes, and use "
+   33:             "governed device actions with approval only where policy requires it."
+   34:         ),
+   35:         IntentKind.ASSISTANT_HELP: (
+   36:             "Try: ‘Research the fundamentals of forex’, ‘Play Silence by "
+   37:             "Popcaan’, ‘Open YouTube on my phone and search Silence by Popcaan’, "
+   38:             "or ‘Open Chrome and search forex risk management’."
+   39:         ),
+   40:     }
+
+--- lines 42-86 ---
+   42: 
+   43: 
+   44: def _direct_specs(intent: Intent) -> list[StepSpec] | None:
+   45:     if intent.kind is IntentKind.ASSISTANT_IDENTITY:
+   46:         return [
+   47:             (
+   48:                 "assistant.respond",
+   49:                 RiskTier.INFORMATIONAL,
+   50:                 ["assistant_response"],
+   51:                 {"response_key": "who_are_you"},
+   52:                 False,
+   53:             )
+   54:         ]
+   55: 
+   56:     if intent.kind in {
+   57:         IntentKind.ASSISTANT_CAPABILITIES,
+   58:         IntentKind.ASSISTANT_HELP,
+   59:     }:
+   60:         return [
+   61:             (
+   62:                 "assistant.respond",
+   63:                 RiskTier.INFORMATIONAL,
+   64:                 ["assistant_response"],
+   65:                 {"response": _assistant_response(intent)},
+   66:                 False,
+   67:             )
+   68:         ]
+   69: 
+   70:     if intent.kind is IntentKind.CONSTITUTION_OVERRIDE:
+   71:         return [
+   72:             (
+   73:                 "assistant.respond",
+   74:                 RiskTier.INFORMATIONAL,
+   75:                 ["assistant_response"],
+   76:                 {"response_key": "ignore_constitution"},
+   77:                 False,
+   78:             )
+   79:         ]
+   80: 
+   81:     if intent.kind is IntentKind.CREATE_NOTE:
+   82:         prepared = prepare_note(
+   83:             intent.entities["title"],
+   84:             intent.entities["content"],
+   85:         )
+   86:         return [
+
+--- lines 101-120 ---
+  101: 
+  102:     query = intent.entities.get("query", intent.normalized_text)
+  103: 
+  104:     if intent.kind is IntentKind.WEB_RESEARCH:
+  105:         return [
+  106:             (
+  107:                 "knowledge.web_research",
+  108:                 RiskTier.LOW,
+  109:                 ["sources", "brief"],
+  110:                 {"query": query},
+  111:                 False,
+  112:             )
+  113:         ]
+  114: 
+  115:     if intent.kind is IntentKind.YOUTUBE_SEARCH:
+  116:         return [
+  117:             (
+  118:                 "media.youtube.discover",
+  119:                 RiskTier.LOW,
+  120:                 ["youtube_discovery_state"],
+
+--- lines 123-136 ---
+  123:             )
+  124:         ]
+  125: 
+  126:     if intent.kind is IntentKind.IDENTITY_RECALL:
+  127:         response_key = intent.entities.get("response_key", "")
+  128:         if response_key:
+  129:             return [
+  130:                 (
+  131:                     "assistant.respond",
+  132:                     RiskTier.INFORMATIONAL,
+  133:                     ["assistant_response"],
+  134:                     {"response_key": response_key},
+  135:                     False,
+  136:                 )
+
+--- lines 146-154 ---
+  146:             )
+  147:         ]
+  148: 
+  149:     if intent.kind is IntentKind.USER_IDENTITY_CLAIM:
+  150:         claim = intent.entities.get("claim", "")
+  151:         normalized_claim = " ".join(claim.casefold().split())
+  152: 
+  153:         if normalized_claim == "peter":
+  154:             response_parameters: dict[str, object] = {
+
+--- lines 176-214 ---
+  176:                 True,
+  177:             ),
+  178:             (
+  179:                 "assistant.respond",
+  180:                 RiskTier.INFORMATIONAL,
+  181:                 ["assistant_response"],
+  182:                 response_parameters,
+  183:                 False,
+  184:             ),
+  185:         ]
+  186: 
+  187:     if intent.kind is IntentKind.SMALL_TALK:
+  188:         return [
+  189:             (
+  190:                 "assistant.converse",
+  191:                 RiskTier.INFORMATIONAL,
+  192:                 ["conversational_reply"],
+  193:                 {"small_talk_kind": intent.entities.get("small_talk_kind", "greeting")},
+  194:                 False,
+  195:             )
+  196:         ]
+  197: 
+  198:     if intent.kind is IntentKind.DATETIME_QUERY:
+  199:         return [
+  200:             (
+  201:                 "assistant.converse",
+  202:                 RiskTier.INFORMATIONAL,
+  203:                 ["conversational_reply"],
+  204:                 {"datetime_field": intent.entities.get("datetime_field", "time")},
+  205:                 False,
+  206:             )
+  207:         ]
+  208: 
+  209:     if intent.kind is IntentKind.OPEN_QUESTION:
+  210:         return [
+  211:             (
+  212:                 "knowledge.answer",
+  213:                 RiskTier.LOW,
+  214:                 ["answer_with_provenance"],
+
+--- lines 217-225 ---
+  217:             )
+  218:         ]
+  219: 
+  220:     if intent.kind is IntentKind.MEMORY_REMEMBER:
+  221:         statement = intent.entities.get("statement", "")
+  222:         topic = derive_topic(statement)
+  223:         return [
+  224:             (
+  225:                 "memory.remember",
+
+--- lines 230-238 ---
+  230:             )
+  231:         ]
+  232: 
+  233:     if intent.kind is IntentKind.MEMORY_RECALL:
+  234:         return [
+  235:             (
+  236:                 "memory.recall",
+  237:                 RiskTier.INFORMATIONAL,
+  238:                 ["memory_recall_results"],
+
+--- lines 241-249 ---
+  241:             )
+  242:         ]
+  243: 
+  244:     if intent.kind is IntentKind.MEMORY_FORGET:
+  245:         return [
+  246:             (
+  247:                 "memory.forget",
+  248:                 RiskTier.HIGH,
+  249:                 ["memory_topic_forgotten"],
+
+--- lines 252-260 ---
+  252:             )
+  253:         ]
+  254: 
+  255:     if intent.kind is IntentKind.PAIR_PHONE:
+  256:         return [
+  257:             (
+  258:                 "device.pair_phone",
+  259:                 RiskTier.LOW,
+  260:                 ["mobile_pairing_challenge"],
+
+--- lines 263-271 ---
+  263:             )
+  264:         ]
+  265: 
+  266:     if intent.kind is IntentKind.LIST_PAIRED_DEVICES:
+  267:         return [
+  268:             (
+  269:                 "device.list_phones",
+  270:                 RiskTier.LOW,
+  271:                 ["paired_device_inventory"],
+
+--- lines 274-282 ---
+  274:             )
+  275:         ]
+  276: 
+  277:     if intent.kind is IntentKind.UNPAIR_PHONE:
+  278:         return [
+  279:             (
+  280:                 "device.unpair_phone",
+  281:                 RiskTier.HIGH,
+  282:                 ["paired_device_revocation"],
+
+--- lines 285-293 ---
+  285:             )
+  286:         ]
+  287: 
+  288:     if intent.kind is IntentKind.PHONE_OPEN_YOUTUBE:
+  289:         return [
+  290:             (
+  291:                 "phone.open_youtube",
+  292:                 RiskTier.LOW,
+  293:                 ["paired_phone_youtube_handoff"],
+
+--- lines 299-307 ---
+  299:             )
+  300:         ]
+  301: 
+  302:     if intent.kind is IntentKind.OPEN_WEB_SEARCH:
+  303:         return [
+  304:             (
+  305:                 "device.open_web_search",
+  306:                 RiskTier.HIGH,
+  307:                 ["trusted_node_identity", "browser_launch_handoff"],
+
+--- lines 314-322 ---
+  314:             )
+  315:         ]
+  316: 
+  317:     if intent.kind is IntentKind.LAUNCH_NOTEPAD:
+  318:         return [
+  319:             (
+  320:                 "device.launch_notepad",
+  321:                 RiskTier.HIGH,
+  322:                 ["trusted_node_identity", "process_start_verification"],
+
+--- lines 335-344 ---
+  335: 
+  336: 
+  337: def _fallback_specs(intent: Intent) -> list[StepSpec]:
+  338:     capability_specs: dict[IntentKind, list[StepSpec]] = {
+  339:         IntentKind.DAILY_BRIEFING: [
+  340:             (
+  341:                 "calendar.read_summary",
+  342:                 RiskTier.LOW,
+  343:                 ["calendar_snapshot"],
+  344:                 {},
+
+--- lines 366-446 ---
+  366:                 False,
+  367:             ),
+  368:         ],
+  369:         IntentKind.SYSTEM_HEALTH: [
+  370:             (
+  371:                 "nexuss.read_health",
+  372:                 RiskTier.LOW,
+  373:                 ["health_snapshot"],
+  374:                 {},
+  375:                 False,
+  376:             )
+  377:         ],
+  378:         IntentKind.LOCAL_WORKSPACE_STATUS: [
+  379:             (
+  380:                 "workspace.read_status",
+  381:                 RiskTier.LOW,
+  382:                 ["workspace_status_snapshot"],
+  383:                 {},
+  384:                 False,
+  385:             )
+  386:         ],
+  387:         IntentKind.PREPARE_WORKSPACE: [
+  388:             (
+  389:                 "device.workspace.prepare",
+  390:                 RiskTier.MEDIUM,
+  391:                 ["workspace_state"],
+  392:                 {},
+  393:                 True,
+  394:             )
+  395:         ],
+  396:         IntentKind.PLAY_MEDIA: [
+  397:             (
+  398:                 "media.prepare_playback",
+  399:                 RiskTier.LOW,
+  400:                 ["playback_state"],
+  401:                 {},
+  402:                 False,
+  403:             )
+  404:         ],
+  405:         IntentKind.ATS_READ: [
+  406:             (
+  407:                 "ats.read_intelligence",
+  408:                 RiskTier.LOW,
+  409:                 ["ats_intelligence_snapshot"],
+  410:                 {},
+  411:                 False,
+  412:             )
+  413:         ],
+  414:         IntentKind.ATS_WRITE: [
+  415:             (
+  416:                 "ats.write_order",
+  417:                 RiskTier.CRITICAL,
+  418:                 ["trade_confirmation"],
+  419:                 {},
+  420:                 False,
+  421:             )
+  422:         ],
+  423:         IntentKind.FINANCIAL_TRANSFER: [
+  424:             (
+  425:                 "finance.transfer",
+  426:                 RiskTier.CRITICAL,
+  427:                 ["transaction_receipt"],
+  428:                 {},
+  429:                 False,
+  430:             )
+  431:         ],
+  432:         IntentKind.SOCIAL_PUBLISH: [
+  433:             (
+  434:                 "social.publish",
+  435:                 RiskTier.HIGH,
+  436:                 ["published_post"],
+  437:                 {},
+  438:                 False,
+  439:             )
+  440:         ],
+  441:         IntentKind.UNKNOWN: [
+  442:             (
+  443:                 "nexuss.unsupported",
+  444:                 RiskTier.HIGH,
+  445:                 ["unsupported_reason"],
+  446:                 {},
+
+--- lines 498-513 ---
+  498:             order=order,
+  499:             capability_id=capability_id,
+  500:             risk_tier=risk,
+  501:             expected_evidence=evidence,
+  502:             parameters=parameters,
+  503:             reversible=reversible,
+  504:         )
+  505:         for order, (
+  506:             capability_id,
+  507:             risk,
+  508:             evidence,
+  509:             parameters,
+  510:             reversible,
+  511:         ) in enumerate(specs, start=1)
+  512:     ]
+  513:     plan_id = uuid5(NAMESPACE_URL, f"nexuss:{task_id}:plan:{intent.kind}")
+
+========================================================================================
+src\nexuss\core\registry.py
+========================================================================================
+
+--- lines 5-117 ---
+    5: 
+    6: from nexuss.domain.models import (
+    7:     ApprovalChannel,
+    8:     ApprovalPolicy,
+    9:     CapabilityManifest,
+   10:     CapabilityStatus,
+   11:     RiskTier,
+   12: )
+   13: 
+   14: _MANIFESTS = (
+   15:     CapabilityManifest(
+   16:         capability_id="memory.remember",
+   17:         version="1.0.0",
+   18:         title="Remember",
+   19:         description=(
+   20:             "Store a user-asserted statement in durable memory with full "
+   21:             "provenance. Credential-shaped content is refused, not masked."
+   22:         ),
+   23:         risk_tier=RiskTier.LOW,
+   24:         approval_policy=ApprovalPolicy.NONE,
+   25:         reversible=True,
+   26:         execution_mode="live_local_controlled_write",
+   27:         status=CapabilityStatus.ACTIVE,
+   28:     ),
+   29:     CapabilityManifest(
+   30:         capability_id="memory.recall",
+   31:         version="1.0.0",
+   32:         title="Recall",
+   33:         description=(
+   34:             "Search durable memory. Results always carry source, trust tier "
+   35:             "and decayed confidence; provenance is never stripped."
+   36:         ),
+   37:         risk_tier=RiskTier.INFORMATIONAL,
+   38:         approval_policy=ApprovalPolicy.NONE,
+   39:         reversible=False,
+   40:         execution_mode="live_local_readonly",
+   41:         status=CapabilityStatus.ACTIVE,
+   42:     ),
+   43:     CapabilityManifest(
+   44:         capability_id="memory.forget",
+   45:         version="1.0.0",
+   46:         title="Forget a topic",
+   47:         description=(
+   48:             "Delete every claim on a topic permanently. Desktop approval is "
+   49:             "required because deletion is irreversible."
+   50:         ),
+   51:         risk_tier=RiskTier.HIGH,
+   52:         approval_policy=ApprovalPolicy.EXPLICIT,
+   53:         reversible=False,
+   54:         execution_mode="live_local_controlled_write",
+   55:         status=CapabilityStatus.ACTIVE,
+   56:         approval_channel=ApprovalChannel.DESKTOP,
+   57:     ),
+   58:     CapabilityManifest(
+   59:         capability_id="device.pair_phone",
+   60:         version="1.0.0",
+   61:         title="Pair a phone",
+   62:         description=(
+   63:             "Issue a single-use pairing challenge for a trusted phone. "
+   64:             "Trust transfers only when the code is entered on the handset."
+   65:         ),
+   66:         risk_tier=RiskTier.LOW,
+   67:         approval_policy=ApprovalPolicy.NONE,
+   68:         reversible=True,
+   69:         execution_mode="live_local_readonly",
+   70:         status=CapabilityStatus.ACTIVE,
+   71:     ),
+   72:     CapabilityManifest(
+   73:         capability_id="device.list_phones",
+   74:         version="1.0.0",
+   75:         title="List paired phones",
+   76:         description="Read the paired-device inventory without exposing token digests.",
+   77:         risk_tier=RiskTier.LOW,
+   78:         approval_policy=ApprovalPolicy.NONE,
+   79:         reversible=False,
+   80:         execution_mode="live_local_readonly",
+   81:         status=CapabilityStatus.ACTIVE,
+   82:     ),
+   83:     CapabilityManifest(
+   84:         capability_id="device.unpair_phone",
+   85:         version="1.0.0",
+   86:         title="Unpair a phone",
+   87:         description=(
+   88:             "Revoke a paired phone permanently. Approved on the desktop, never "
+   89:             "on the phone: a handset you have lost cannot authorise its own removal."
+   90:         ),
+   91:         risk_tier=RiskTier.HIGH,
+   92:         approval_policy=ApprovalPolicy.EXPLICIT,
+   93:         reversible=False,
+   94:         execution_mode="live_local_controlled_write",
+   95:         status=CapabilityStatus.ACTIVE,
+   96:         approval_channel=ApprovalChannel.DESKTOP,
+   97:     ),
+   98:     CapabilityManifest(
+   99:         capability_id="assistant.converse",
+  100:         version="1.0.0",
+  101:         title="Converse",
+  102:         description=(
+  103:             "Answer greetings, courtesies and clock questions deterministically. "
+  104:             "No external source is consulted and nothing is written."
+  105:         ),
+  106:         risk_tier=RiskTier.INFORMATIONAL,
+  107:         approval_policy=ApprovalPolicy.NONE,
+  108:         reversible=False,
+  109:         execution_mode="live_local_readonly",
+  110:         status=CapabilityStatus.ACTIVE,
+  111:     ),
+  112:     CapabilityManifest(
+  113:         capability_id="knowledge.answer",
+  114:         version="1.0.0",
+  115:         title="Answer a question",
+  116:         description=(
+  117:             "Answer an open question from memory when memory is confident, "
+
+--- lines 119-316 ---
+  119:             "states which of the two it used."
+  120:         ),
+  121:         risk_tier=RiskTier.LOW,
+  122:         approval_policy=ApprovalPolicy.NONE,
+  123:         reversible=False,
+  124:         execution_mode="live_public_web_readonly",
+  125:         status=CapabilityStatus.ACTIVE,
+  126:     ),
+  127:     CapabilityManifest(
+  128:         capability_id="assistant.respond",
+  129:         version="1.1.0",
+  130:         title="Nexuss constitutional conversation",
+  131:         description=(
+  132:             "Answer identity, governance, help, and capability questions "
+  133:             "through verified local constitutional or deterministic evidence."
+  134:         ),
+  135:         risk_tier=RiskTier.INFORMATIONAL,
+  136:         approval_policy=ApprovalPolicy.NONE,
+  137:         reversible=False,
+  138:         execution_mode="deterministic_local",
+  139:         status=CapabilityStatus.ACTIVE,
+  140:     ),
+  141:     CapabilityManifest(
+  142:         capability_id="workspace.read_status",
+  143:         version="1.0.0",
+  144:         title="Workspace status",
+  145:         description="Read bounded local repository and runtime metadata.",
+  146:         risk_tier=RiskTier.LOW,
+  147:         approval_policy=ApprovalPolicy.NONE,
+  148:         reversible=False,
+  149:         execution_mode="live_local_readonly",
+  150:         status=CapabilityStatus.ACTIVE,
+  151:     ),
+  152:     CapabilityManifest(
+  153:         capability_id="workspace.create_note",
+  154:         version="1.0.0",
+  155:         title="Create managed note",
+  156:         description="Create a verified Markdown note in the Nexuss managed workspace.",
+  157:         risk_tier=RiskTier.MEDIUM,
+  158:         approval_policy=ApprovalPolicy.EXPLICIT,
+  159:         reversible=True,
+  160:         execution_mode="live_local_controlled_write",
+  161:         status=CapabilityStatus.ACTIVE,
+  162:     ),
+  163:     CapabilityManifest(
+  164:         capability_id="workspace.rollback_create_note",
+  165:         version="1.0.0",
+  166:         title="Undo note creation",
+  167:         description="Remove only the unchanged note created by the associated receipt.",
+  168:         risk_tier=RiskTier.MEDIUM,
+  169:         approval_policy=ApprovalPolicy.EXPLICIT,
+  170:         reversible=False,
+  171:         execution_mode="live_local_receipt_bound_rollback",
+  172:         status=CapabilityStatus.ACTIVE,
+  173:     ),
+  174:     CapabilityManifest(
+  175:         capability_id="device.launch_notepad",
+  176:         version="1.0.0",
+  177:         title="Launch Notepad on trusted Windows node",
+  178:         description=(
+  179:             "Launch only the fixed Windows Notepad executable through a signed, "
+  180:             "loopback-only device-node command envelope."
+  181:         ),
+  182:         risk_tier=RiskTier.HIGH,
+  183:         approval_policy=ApprovalPolicy.EXPLICIT,
+  184:         reversible=True,
+  185:         execution_mode="trusted_device_node",
+  186:         status=CapabilityStatus.ACTIVE,
+  187:         approval_channel=ApprovalChannel.PHONE,
+  188:     ),
+  189:     CapabilityManifest(
+  190:         capability_id="device.rollback_launch_notepad",
+  191:         version="1.0.0",
+  192:         title="Close receipt-bound Notepad process",
+  193:         description=(
+  194:             "Terminate only the process created by the associated signed device command."
+  195:         ),
+  196:         risk_tier=RiskTier.HIGH,
+  197:         approval_policy=ApprovalPolicy.EXPLICIT,
+  198:         reversible=False,
+  199:         execution_mode="trusted_device_node_rollback",
+  200:         status=CapabilityStatus.ACTIVE,
+  201:         approval_channel=ApprovalChannel.PHONE,
+  202:     ),
+  203:     CapabilityManifest(
+  204:         capability_id="knowledge.web_research",
+  205:         version="1.0.0",
+  206:         title="Public web research",
+  207:         description="Retrieve bounded public reference sources and prepare a cited brief.",
+  208:         risk_tier=RiskTier.LOW,
+  209:         approval_policy=ApprovalPolicy.NONE,
+  210:         reversible=False,
+  211:         execution_mode="live_public_web_readonly",
+  212:         status=CapabilityStatus.ACTIVE,
+  213:     ),
+  214:     CapabilityManifest(
+  215:         capability_id="media.youtube.discover",
+  216:         version="1.0.0",
+  217:         title="YouTube discovery",
+  218:         description="Search through the official YouTube Data API or return a safe handoff state.",
+  219:         risk_tier=RiskTier.LOW,
+  220:         approval_policy=ApprovalPolicy.NONE,
+  221:         reversible=False,
+  222:         execution_mode="official_media_connector",
+  223:         status=CapabilityStatus.ACTIVE,
+  224:     ),
+  225:     CapabilityManifest(
+  226:         capability_id="phone.open_youtube",
+  227:         version="1.1.0",
+  228:         title="Open YouTube on paired phone",
+  229:         description=(
+  230:             "Dispatch only an allowlisted HTTPS YouTube search to the paired phone "
+  231:             "from an authenticated user request."
+  232:         ),
+  233:         risk_tier=RiskTier.LOW,
+  234:         approval_policy=ApprovalPolicy.NONE,
+  235:         reversible=False,
+  236:         execution_mode="paired_phone_direct_youtube_handoff",
+  237:         status=CapabilityStatus.ACTIVE,
+  238:     ),
+  239:     CapabilityManifest(
+  240:         capability_id="device.open_web_search",
+  241:         version="1.0.0",
+  242:         title="Open approved web search",
+  243:         description="Open an allowlisted HTTPS search URL in Chrome on the trusted Windows node.",
+  244:         risk_tier=RiskTier.HIGH,
+  245:         approval_policy=ApprovalPolicy.EXPLICIT,
+  246:         reversible=False,
+  247:         execution_mode="trusted_device_browser_handoff",
+  248:         status=CapabilityStatus.ACTIVE,
+  249:         approval_channel=ApprovalChannel.PHONE,
+  250:     ),
+  251:     CapabilityManifest(
+  252:         capability_id="calendar.read_summary",
+  253:         version="0.1.0",
+  254:         title="Calendar summary",
+  255:         description="P1 deterministic simulation only.",
+  256:         risk_tier=RiskTier.LOW,
+  257:         approval_policy=ApprovalPolicy.NONE,
+  258:         reversible=False,
+  259:         execution_mode="simulated",
+  260:         status=CapabilityStatus.SIMULATED,
+  261:     ),
+  262:     CapabilityManifest(
+  263:         capability_id="email.read_summary",
+  264:         version="0.1.0",
+  265:         title="Email summary",
+  266:         description="P1 deterministic simulation only.",
+  267:         risk_tier=RiskTier.LOW,
+  268:         approval_policy=ApprovalPolicy.NONE,
+  269:         reversible=False,
+  270:         execution_mode="simulated",
+  271:         status=CapabilityStatus.SIMULATED,
+  272:     ),
+  273:     CapabilityManifest(
+  274:         capability_id="github.read_summary",
+  275:         version="0.1.0",
+  276:         title="GitHub summary",
+  277:         description="P1 deterministic simulation only.",
+  278:         risk_tier=RiskTier.LOW,
+  279:         approval_policy=ApprovalPolicy.NONE,
+  280:         reversible=False,
+  281:         execution_mode="simulated",
+  282:         status=CapabilityStatus.SIMULATED,
+  283:     ),
+  284:     CapabilityManifest(
+  285:         capability_id="ats.read_health",
+  286:         version="0.1.0",
+  287:         title="ATS health",
+  288:         description="Protected read-only simulation; no live ATS connection.",
+  289:         risk_tier=RiskTier.LOW,
+  290:         approval_policy=ApprovalPolicy.NONE,
+  291:         reversible=False,
+  292:         execution_mode="simulated",
+  293:         status=CapabilityStatus.SIMULATED,
+  294:     ),
+  295:     CapabilityManifest(
+  296:         capability_id="ats.read_intelligence",
+  297:         version="0.1.0",
+  298:         title="ATS intelligence",
+  299:         description="Protected read-only simulation; no live market data.",
+  300:         risk_tier=RiskTier.LOW,
+  301:         approval_policy=ApprovalPolicy.NONE,
+  302:         reversible=False,
+  303:         execution_mode="simulated",
+  304:         status=CapabilityStatus.SIMULATED,
+  305:     ),
+  306: )
+  307: 
+  308: _BY_ID = {manifest.capability_id: manifest for manifest in _MANIFESTS}
+  309: 
+  310: 
+  311: def list_capabilities() -> tuple[CapabilityManifest, ...]:
+  312:     return _MANIFESTS
+  313: 
+  314: 
+  315: def get_capability(capability_id: str) -> CapabilityManifest | None:
+  316:     return _BY_ID.get(capability_id)
+
+========================================================================================
+src\nexuss\core\policy.py
+========================================================================================
+
+--- lines 6-18 ---
+    6: from nexuss.core.registry import get_capability
+    7: from nexuss.domain.models import (
+    8:     ApprovalChannel,
+    9:     ApprovalPolicy,
+   10:     CapabilityStatus,
+   11:     PlanStep,
+   12:     PolicyDecision,
+   13:     PolicyOutcome,
+   14: )
+   15: 
+   16: _PROHIBITED_CAPABILITIES = {
+   17:     "ats.write_order",
+   18:     "finance.transfer",
+
+--- lines 22-64 ---
+   22: }
+   23: 
+   24: 
+   25: def evaluate_step(step: PlanStep) -> PolicyDecision:
+   26:     if step.capability_id in _PROHIBITED_CAPABILITIES:
+   27:         return PolicyDecision(
+   28:             step_id=step.step_id,
+   29:             capability_id=step.capability_id,
+   30:             outcome=PolicyOutcome.DENY,
+   31:             reason_code="CAPABILITY_PROHIBITED_BY_POLICY",
+   32:             explanation="This capability is outside the approved P5 execution boundary.",
+   33:         )
+   34: 
+   35:     manifest = get_capability(step.capability_id)
+   36:     if manifest is None:
+   37:         return PolicyDecision(
+   38:             step_id=step.step_id,
+   39:             capability_id=step.capability_id,
+   40:             outcome=PolicyOutcome.DENY,
+   41:             reason_code="CAPABILITY_NOT_REGISTERED",
+   42:             explanation="Unregistered capabilities cannot execute in Nexuss.",
+   43:         )
+   44: 
+   45:     if manifest.status is CapabilityStatus.PROHIBITED:
+   46:         return PolicyDecision(
+   47:             step_id=step.step_id,
+   48:             capability_id=step.capability_id,
+   49:             outcome=PolicyOutcome.DENY,
+   50:             reason_code="CAPABILITY_REGISTRY_PROHIBITED",
+   51:             explanation="The capability registry marks this capability as prohibited.",
+   52:         )
+   53: 
+   54:     if manifest.approval_policy is ApprovalPolicy.EXPLICIT:
+   55:         phone_required = manifest.approval_channel is ApprovalChannel.PHONE
+   56:         return PolicyDecision(
+   57:             step_id=step.step_id,
+   58:             capability_id=step.capability_id,
+   59:             outcome=PolicyOutcome.REQUIRE_APPROVAL,
+   60:             reason_code=(
+   61:                 "TRUSTED_PHONE_APPROVAL_REQUIRED"
+   62:                 if phone_required
+   63:                 else "EXPLICIT_USER_APPROVAL_REQUIRED"
+   64:             ),
+
+--- lines 74-112 ---
+   74:         )
+   75: 
+   76:     if (
+   77:         step.capability_id == "assistant.respond"
+   78:         and step.parameters.get("response_key")
+   79:     ):
+   80:         return PolicyDecision(
+   81:             step_id=step.step_id,
+   82:             capability_id=step.capability_id,
+   83:             outcome=PolicyOutcome.ALLOW,
+   84:             reason_code="CONSTITUTIONAL_INFORMATIONAL_RESPONSE",
+   85:             explanation=(
+   86:                 "The active hash-verified Nexuss Constitution "
+   87:                 "authorizes this informational response. It creates "
+   88:                 "no external side effect and grants no authority."
+   89:             ),
+   90:         )
+   91: 
+   92:     if manifest.approval_policy is ApprovalPolicy.NONE:
+   93:         reason_code = (
+   94:             "INFORMATIONAL_NO_SIDE_EFFECT"
+   95:             if manifest.execution_mode == "deterministic_local"
+   96:             else "REGISTERED_READ_ONLY_OR_SIMULATED"
+   97:         )
+   98:         return PolicyDecision(
+   99:             step_id=step.step_id,
+  100:             capability_id=step.capability_id,
+  101:             outcome=PolicyOutcome.ALLOW,
+  102:             reason_code=reason_code,
+  103:             explanation="The registered capability has no approved external side effect.",
+  104:         )
+  105: 
+  106:     return PolicyDecision(
+  107:         step_id=step.step_id,
+  108:         capability_id=step.capability_id,
+  109:         outcome=PolicyOutcome.DENY,
+  110:         reason_code="FAIL_CLOSED_POLICY_CONFIGURATION",
+  111:         explanation="No explicit policy outcome authorizes this capability.",
+  112:     )
+
+========================================================================================
+src\nexuss\core\executor.py
+========================================================================================
+
+--- lines 1-8 ---
+    1: """Copyright © kexyz254peter. Nexuss AI - Confidential and Proprietary.
+    2: 
+    3: Capability execution router for verified local, public-web, media, and device actions.
+    4: """
+    5: 
+    6: from __future__ import annotations
+    7: 
+    8: from datetime import UTC, datetime
+
+--- lines 15-30 ---
+   15:     collect_local_workspace_status,
+   16: )
+   17: from nexuss.core.managed_notes import ManagedNoteStore, PreparedNote
+   18: from nexuss.core.simulator import execute_step as execute_simulated_step
+   19: from nexuss.core.web_actions import (
+   20:     WebActionValidationError,
+   21:     validate_youtube_handoff_url,
+   22: )
+   23: from nexuss.device.client import DeviceCommandError, DeviceNodeClient
+   24: from nexuss.domain.models import (
+   25:     CapabilityResult,
+   26:     EvidenceRecord,
+   27:     PlanStep,
+   28:     StepStatus,
+   29: )
+   30: from nexuss.knowledge.provider import KnowledgeProvider, KnowledgeProviderError
+
+--- lines 53-607 ---
+   53:     def revoke(self, device_id: UUID) -> None: ...
+   54: 
+   55: 
+   56: def _failed(step: PlanStep, error_code: str) -> CapabilityResult:
+   57:     return CapabilityResult(
+   58:         step_id=step.step_id,
+   59:         capability_id=step.capability_id,
+   60:         status=StepStatus.FAILED,
+   61:         evidence=[],
+   62:         error_code=error_code,
+   63:     )
+   64: 
+   65: 
+   66: def _execute_assistant_response(
+   67:     step: PlanStep,
+   68:     timestamp: datetime,
+   69: ) -> CapabilityResult:
+   70:     response_key = str(
+   71:         step.parameters.get("response_key", "")
+   72:     ).strip()
+   73: 
+   74:     if response_key:
+   75:         try:
+   76:             constitution = get_constitution()
+   77:             response = constitution.standard_response(response_key)
+   78:         except ConstitutionError:
+   79:             return _failed(step, "CONSTITUTION_UNAVAILABLE")
+   80: 
+   81:         rule_by_response = {
+   82:             "who_are_you": (
+   83:                 "Nexuss identity is defined by the active Constitution."
+   84:             ),
+   85:             "who_is_your_founder": (
+   86:                 "Founder identity is a constitutional system fact."
+   87:             ),
+   88:             "who_developed_you": (
+   89:                 "Original developer identity is constitutionally defined."
+   90:             ),
+   91:             "who_is_your_boss": (
+   92:                 "Operational authority requires authenticated roles."
+   93:             ),
+   94:             "user_claims_to_be_peter": (
+   95:                 "Conversational identity claims do not grant authority."
+   96:             ),
+   97:             "ignore_constitution": (
+   98:                 "Ordinary conversation cannot amend or disable "
+   99:                 "the Constitution."
+  100:             ),
+  101:         }
+  102: 
+  103:         return CapabilityResult(
+  104:             step_id=step.step_id,
+  105:             capability_id=step.capability_id,
+  106:             status=StepStatus.VERIFIED,
+  107:             evidence=[
+  108:                 EvidenceRecord(
+  109:                     source="nexuss:constitution",
+  110:                     observed_at=timestamp,
+  111:                     attributes={
+  112:                         "response": response,
+  113:                         "response_key": response_key,
+  114:                         "source_mode": (
+  115:                             "constitutional_local_verified"
+  116:                         ),
+  117:                         "authority_source": (
+  118:                             "nexuss_constitution"
+  119:                         ),
+  120:                         "constitution_status": "active",
+  121:                         "constitution_version": (
+  122:                             constitution.version
+  123:                         ),
+  124:                         "constitution_sha256": (
+  125:                             constitution.sha256
+  126:                         ),
+  127:                         "integrity_verified": True,
+  128:                         "grants_authority": False,
+  129:                         "rule_applied": rule_by_response.get(
+  130:                             response_key,
+  131:                             "The active Constitution governs "
+  132:                             "this response.",
+  133:                         ),
+  134:                     },
+  135:                 )
+  136:             ],
+  137:         )
+  138: 
+  139:     response = str(step.parameters.get("response", "")).strip()
+  140:     if not response:
+  141:         return _failed(step, "ASSISTANT_RESPONSE_MISSING")
+  142: 
+  143:     return CapabilityResult(
+  144:         step_id=step.step_id,
+  145:         capability_id=step.capability_id,
+  146:         status=StepStatus.VERIFIED,
+  147:         evidence=[
+  148:             EvidenceRecord(
+  149:                 source="nexuss:deterministic_response",
+  150:                 observed_at=timestamp,
+  151:                 attributes={
+  152:                     "response": response,
+  153:                     "source_mode": "deterministic_local",
+  154:                     "authority_source": (
+  155:                         "registered_assistant_capability"
+  156:                     ),
+  157:                 },
+  158:             )
+  159:         ],
+  160:     )
+  161: 
+  162: 
+  163: def _execute_create_note(
+  164:     step: PlanStep,
+  165:     timestamp: datetime,
+  166:     note_store: ManagedNoteStore,
+  167: ) -> CapabilityResult:
+  168:     content = str(step.parameters["content"])
+  169:     prepared = PreparedNote(
+  170:         title=str(step.parameters["title"]),
+  171:         filename=str(step.parameters["filename"]),
+  172:         content=content,
+  173:         content_bytes=content.encode("utf-8"),
+  174:         content_sha256=str(step.parameters["content_sha256"]),
+  175:     )
+  176:     created = note_store.create(prepared)
+  177:     return CapabilityResult(
+  178:         step_id=step.step_id,
+  179:         capability_id=step.capability_id,
+  180:         status=StepStatus.VERIFIED,
+  181:         evidence=[
+  182:             EvidenceRecord(
+  183:                 source="local:managed_workspace",
+  184:                 observed_at=timestamp,
+  185:                 attributes={
+  186:                     "source_mode": "live_local_controlled_write",
+  187:                     "filename": created.filename,
+  188:                     "managed_path": str(created.path),
+  189:                     "byte_count": created.byte_count,
+  190:                     "sha256": created.sha256,
+  191:                     "verified": True,
+  192:                     "reversible": True,
+  193:                 },
+  194:             )
+  195:         ],
+  196:     )
+  197: 
+  198: 
+  199: def _execute_launch_notepad(
+  200:     step: PlanStep,
+  201:     timestamp: datetime,
+  202:     task_id: UUID,
+  203:     device_client: DeviceNodeClient,
+  204: ) -> CapabilityResult:
+  205:     target_node_id = str(
+  206:         step.parameters.get("target_node_id", "windows-primary")
+  207:     )
+  208:     try:
+  209:         evidence = device_client.launch_notepad(task_id, target_node_id)
+  210:     except DeviceCommandError:
+  211:         return _failed(step, "TRUSTED_DEVICE_COMMAND_FAILED")
+  212:     return CapabilityResult(
+  213:         step_id=step.step_id,
+  214:         capability_id=step.capability_id,
+  215:         status=(
+  216:             StepStatus.VERIFIED
+  217:             if evidence.verified_running
+  218:             else StepStatus.FAILED
+  219:         ),
+  220:         evidence=[
+  221:             EvidenceRecord(
+  222:                 source="device:windows-node",
+  223:                 observed_at=timestamp,
+  224:                 attributes={
+  225:                     "source_mode": evidence.source_mode,
+  226:                     "command_id": str(evidence.command_id),
+  227:                     "node_id": evidence.node_id,
+  228:                     "node_hostname": evidence.node_hostname,
+  229:                     "executable": evidence.executable,
+  230:                     "process_id": evidence.process_id,
+  231:                     "started_at": evidence.started_at.isoformat(),
+  232:                     "verified_running": evidence.verified_running,
+  233:                     "reversible": True,
+  234:                 },
+  235:             )
+  236:         ],
+  237:         error_code=(
+  238:             None
+  239:             if evidence.verified_running
+  240:             else "DEVICE_PROCESS_NOT_RUNNING"
+  241:         ),
+  242:     )
+  243: 
+  244: 
+  245: def _execute_web_research(
+  246:     step: PlanStep,
+  247:     timestamp: datetime,
+  248:     provider: KnowledgeProvider,
+  249: ) -> CapabilityResult:
+  250:     try:
+  251:         attributes = provider.research(
+  252:             str(step.parameters.get("query", ""))
+  253:         )
+  254:     except KnowledgeProviderError as exc:
+  255:         return _failed(step, str(exc))
+  256:     return CapabilityResult(
+  257:         step_id=step.step_id,
+  258:         capability_id=step.capability_id,
+  259:         status=StepStatus.VERIFIED,
+  260:         evidence=[
+  261:             EvidenceRecord(
+  262:                 source="web:wikipedia",
+  263:                 observed_at=timestamp,
+  264:                 attributes=attributes,
+  265:             )
+  266:         ],
+  267:     )
+  268: 
+  269: 
+  270: def _execute_youtube_discovery(
+  271:     step: PlanStep,
+  272:     timestamp: datetime,
+  273:     provider: YouTubeProvider,
+  274: ) -> CapabilityResult:
+  275:     try:
+  276:         attributes = provider.discover(
+  277:             str(step.parameters.get("query", ""))
+  278:         )
+  279:     except MediaProviderError as exc:
+  280:         return _failed(step, str(exc))
+  281:     return CapabilityResult(
+  282:         step_id=step.step_id,
+  283:         capability_id=step.capability_id,
+  284:         status=StepStatus.VERIFIED,
+  285:         evidence=[
+  286:             EvidenceRecord(
+  287:                 source="media:youtube",
+  288:                 observed_at=timestamp,
+  289:                 attributes=attributes,
+  290:             )
+  291:         ],
+  292:     )
+  293: 
+  294: 
+  295: def _execute_phone_handoff(
+  296:     step: PlanStep,
+  297:     timestamp: datetime,
+  298: ) -> CapabilityResult:
+  299:     try:
+  300:         launch_url = validate_youtube_handoff_url(
+  301:             str(step.parameters.get("launch_url", ""))
+  302:         )
+  303:     except WebActionValidationError:
+  304:         return _failed(step, "PHONE_YOUTUBE_URL_NOT_ALLOWLISTED")
+  305: 
+  306:     return CapabilityResult(
+  307:         step_id=step.step_id,
+  308:         capability_id=step.capability_id,
+  309:         status=StepStatus.VERIFIED,
+  310:         evidence=[
+  311:             EvidenceRecord(
+  312:                 source="mobile:paired_phone",
+  313:                 observed_at=timestamp,
+  314:                 attributes={
+  315:                     "source_mode": "paired_phone_direct_youtube_handoff",
+  316:                     "launch_url": launch_url,
+  317:                     "query": str(step.parameters.get("query", "")),
+  318:                     "handoff_authorized": True,
+  319:                     "delivery_state": "queued_for_paired_phone",
+  320:                     "app_open_verified": False,
+  321:                 },
+  322:             )
+  323:         ],
+  324:     )
+  325: 
+  326: 
+  327: def _execute_web_search(
+  328:     step: PlanStep,
+  329:     timestamp: datetime,
+  330:     task_id: UUID,
+  331:     device_client: DeviceNodeClient,
+  332: ) -> CapabilityResult:
+  333:     try:
+  334:         evidence = device_client.open_web_search(
+  335:             task_id,
+  336:             str(
+  337:                 step.parameters.get(
+  338:                     "target_node_id",
+  339:                     "windows-primary",
+  340:                 )
+  341:             ),
+  342:             str(step.parameters.get("launch_url", "")),
+  343:         )
+  344:     except DeviceCommandError:
+  345:         return _failed(step, "TRUSTED_BROWSER_HANDOFF_FAILED")
+  346:     return CapabilityResult(
+  347:         step_id=step.step_id,
+  348:         capability_id=step.capability_id,
+  349:         status=StepStatus.VERIFIED,
+  350:         evidence=[
+  351:             EvidenceRecord(
+  352:                 source="device:windows-node",
+  353:                 observed_at=timestamp,
+  354:                 attributes={
+  355:                     "source_mode": (
+  356:                         "live_trusted_device_browser_handoff"
+  357:                     ),
+  358:                     "node_id": evidence.node_id,
+  359:                     "executable": evidence.executable,
+  360:                     "process_id": evidence.process_id,
+  361:                     "launch_url": str(
+  362:                         step.parameters.get("launch_url", "")
+  363:                     ),
+  364:                     "verified_handoff": evidence.verified_running,
+  365:                     "reversible": False,
+  366:                 },
+  367:             )
+  368:         ],
+  369:     )
+  370: 
+  371: 
+  372: def _execute_pair_phone(
+  373:     step: PlanStep,
+  374:     timestamp: datetime,
+  375:     session_id: UUID,
+  376:     gateway: PhonePairingGateway,
+  377: ) -> CapabilityResult:
+  378:     """Issue a pairing challenge.
+  379: 
+  380:     Issuing a code grants nothing on its own. Trust transfers only when the
+  381:     code is entered on the handset, inside the ten-minute window, against a
+  382:     rate-limited endpoint that is reachable on loopback only.
+  383:     """
+  384:     challenge = gateway.create_pairing(session_id, now=timestamp)
+  385:     separator = "&" if "?" in challenge.mobile_url else "?"
+  386:     pair_url = f"{challenge.mobile_url}{separator}pair={challenge.pairing_code}"
+  387: 
+  388:     return CapabilityResult(
+  389:         step_id=step.step_id,
+  390:         capability_id=step.capability_id,
+  391:         status=StepStatus.VERIFIED,
+  392:         evidence=[
+  393:             EvidenceRecord(
+  394:                 source="local:mobile_pairing_gateway",
+  395:                 observed_at=timestamp,
+  396:                 attributes={
+  397:                     "source_mode": "live_local_readonly",
+  398:                     "pairing_code": challenge.pairing_code,
+  399:                     "mobile_url": challenge.mobile_url,
+  400:                     "pair_url": pair_url,
+  401:                     "expires_at": challenge.expires_at.isoformat(),
+  402:                 },
+  403:             )
+  404:         ],
+  405:     )
+  406: 
+  407: 
+  408: def _execute_list_phones(
+  409:     step: PlanStep,
+  410:     timestamp: datetime,
+  411:     gateway: PhonePairingGateway,
+  412: ) -> CapabilityResult:
+  413:     devices = gateway.list_devices()
+  414:     return CapabilityResult(
+  415:         step_id=step.step_id,
+  416:         capability_id=step.capability_id,
+  417:         status=StepStatus.VERIFIED,
+  418:         evidence=[
+  419:             EvidenceRecord(
+  420:                 source="local:mobile_pairing_gateway",
+  421:                 observed_at=timestamp,
+  422:                 attributes={
+  423:                     "source_mode": "live_local_readonly",
+  424:                     "device_count": len(devices),
+  425:                     "devices": [
+  426:                         {
+  427:                             "device_id": str(device.device_id),
+  428:                             "device_label": device.device_label,
+  429:                             "paired_at": device.paired_at.isoformat(),
+  430:                             "last_seen_at": device.last_seen_at.isoformat(),
+  431:                             "expires_at": device.expires_at.isoformat(),
+  432:                         }
+  433:                         for device in devices
+  434:                     ],
+  435:                 },
+  436:             )
+  437:         ],
+  438:     )
+  439: 
+  440: 
+  441: def _execute_unpair_phone(
+  442:     step: PlanStep,
+  443:     timestamp: datetime,
+  444:     gateway: PhonePairingGateway,
+  445: ) -> CapabilityResult:
+  446:     """Revoke one paired phone.
+  447: 
+  448:     Refuses rather than guessing when the target is ambiguous. Revocation is
+  449:     irreversible, so picking a device on the operator's behalf is not an
+  450:     acceptable failure mode.
+  451:     """
+  452:     requested = str(step.parameters.get("device_label", "")).strip()
+  453:     devices = gateway.list_devices()
+  454: 
+  455:     if not devices:
+  456:         return _failed(step, "NO_PAIRED_DEVICE")
+  457: 
+  458:     if requested:
+  459:         matches = [
+  460:             device
+  461:             for device in devices
+  462:             if device.device_label.casefold() == requested.casefold()
+  463:         ]
+  464:         if not matches:
+  465:             return _failed(step, "PAIRED_DEVICE_NOT_FOUND")
+  466:         if len(matches) > 1:
+  467:             return _failed(step, "PAIRED_DEVICE_LABEL_AMBIGUOUS")
+  468:         target = matches[0]
+  469:     elif len(devices) > 1:
+  470:         return _failed(step, "PAIRED_DEVICE_AMBIGUOUS")
+  471:     else:
+  472:         target = devices[0]
+  473: 
+  474:     gateway.revoke(target.device_id)
+  475: 
+  476:     return CapabilityResult(
+  477:         step_id=step.step_id,
+  478:         capability_id=step.capability_id,
+  479:         status=StepStatus.VERIFIED,
+  480:         evidence=[
+  481:             EvidenceRecord(
+  482:                 source="local:mobile_pairing_gateway",
+  483:                 observed_at=timestamp,
+  484:                 attributes={
+  485:                     "source_mode": "live_local_controlled_write",
+  486:                     "device_id": str(target.device_id),
+  487:                     "device_label": target.device_label,
+  488:                     "revoked_at": timestamp.isoformat(),
+  489:                 },
+  490:             )
+  491:         ],
+  492:     )
+  493: 
+  494: 
+  495: def _execute_memory_remember(
+  496:     step: PlanStep,
+  497:     timestamp: datetime,
+  498:     memory_store: MemoryStore,
+  499: ) -> CapabilityResult:
+  500:     """Store a user-asserted claim.
+  501: 
+  502:     Everything entering through this capability is USER_ASSERTED by
+  503:     definition: the person typed it. Web-derived claims arrive through the
+  504:     study pipeline at PUBLIC_WEB trust, never through here.
+  505:     """
+  506:     statement = str(step.parameters.get("statement", "")).strip()
+  507:     topic = str(step.parameters.get("topic", "")).strip() or "general"
+  508:     if not statement:
+  509:         return _failed(step, "MEMORY_STATEMENT_MISSING")
+  510:     try:
+  511:         claim = memory_store.remember(
+  512:             topic=topic,
+  513:             statement=statement,
+  514:             source_ref="user",
+  515:             source_trust=SourceTrust.USER_ASSERTED,
+  516:             confidence=0.95,
+  517:             volatility=Volatility.STABLE,
+  518:             now=timestamp,
+  519:         )
+  520:     except MemoryWriteRefused as exc:
+  521:         return _failed(step, str(exc).split(":", maxsplit=1)[0])
+  522:     return CapabilityResult(
+  523:         step_id=step.step_id,
+  524:         capability_id=step.capability_id,
+  525:         status=StepStatus.VERIFIED,
+  526:         evidence=[
+  527:             EvidenceRecord(
+  528:                 source="local:memory_store",
+  529:                 observed_at=timestamp,
+  530:                 attributes={
+  531:                     "source_mode": "live_local_controlled_write",
+  532:                     "claim_id": str(claim.claim_id),
+  533:                     "topic": claim.topic,
+  534:                     "source_trust": claim.source_trust.value,
+  535:                     "confidence": claim.confidence,
+  536:                 },
+  537:             )
+  538:         ],
+  539:     )
+  540: 
+  541: 
+  542: def _execute_memory_recall(
+  543:     step: PlanStep,
+  544:     timestamp: datetime,
+  545:     memory_store: MemoryStore,
+  546: ) -> CapabilityResult:
+  547:     query = str(step.parameters.get("query", "")).strip()
+  548:     if not query:
+  549:         return _failed(step, "MEMORY_QUERY_MISSING")
+  550:     matches = memory_store.recall(query, limit=5, now=timestamp)
+  551:     return CapabilityResult(
+  552:         step_id=step.step_id,
+  553:         capability_id=step.capability_id,
+  554:         status=StepStatus.VERIFIED,
+  555:         evidence=[
+  556:             EvidenceRecord(
+  557:                 source="local:memory_store",
+  558:                 observed_at=timestamp,
+  559:                 attributes={
+  560:                     "source_mode": "live_local_readonly",
+  561:                     "query": query,
+  562:                     "match_count": len(matches),
+  563:                     "matches": [
+  564:                         {
+  565:                             "statement": match.claim.statement,
+  566:                             "topic": match.claim.topic,
+  567:                             "source_ref": match.claim.source_ref,
+  568:                             "source_trust": match.claim.source_trust.value,
+  569:                             "confidence": round(match.decayed_confidence, 3),
+  570:                             "score": round(match.score, 3),
+  571:                             "observed_at": match.claim.observed_at.isoformat(),
+  572:                         }
+  573:                         for match in matches
+  574:                     ],
+  575:                 },
+  576:             )
+  577:         ],
+  578:     )
+  579: 
+  580: 
+  581: def _execute_memory_forget(
+  582:     step: PlanStep,
+  583:     timestamp: datetime,
+  584:     memory_store: MemoryStore,
+  585: ) -> CapabilityResult:
+  586:     topic = str(step.parameters.get("topic", "")).strip()
+  587:     if not topic:
+  588:         return _failed(step, "MEMORY_TOPIC_MISSING")
+  589:     removed = memory_store.forget_topic(topic)
+  590:     return CapabilityResult(
+  591:         step_id=step.step_id,
+  592:         capability_id=step.capability_id,
+  593:         status=StepStatus.VERIFIED,
+  594:         evidence=[
+  595:             EvidenceRecord(
+  596:                 source="local:memory_store",
+  597:                 observed_at=timestamp,
+  598:                 attributes={
+  599:                     "source_mode": "live_local_controlled_write",
+  600:                     "topic": topic,
+  601:                     "claims_removed": removed,
+  602:                 },
+  603:             )
+  604:         ],
+  605:     )
+  606: 
+  607: 
+
+--- lines 624-672 ---
+  624: }
+  625: 
+  626: 
+  627: def _execute_assistant_converse(
+  628:     step: PlanStep,
+  629:     timestamp: datetime,
+  630: ) -> CapabilityResult:
+  631:     """Answer a courtesy or a clock question.
+  632: 
+  633:     The clock is read from this machine, not inferred, so the answer is a fact
+  634:     rather than a guess. Nothing external is consulted and nothing is written.
+  635:     """
+  636:     field = str(step.parameters.get("datetime_field", "")).strip()
+  637:     if field:
+  638:         local = timestamp.astimezone()
+  639:         if field == "date":
+  640:             reply = f"Today is {local.strftime('%A, %d %B %Y')}."
+  641:         else:
+  642:             reply = f"It is {local.strftime('%H:%M')} on {local.strftime('%A, %d %B %Y')}."
+  643:         attributes: dict[str, object] = {
+  644:             "source_mode": "live_local_readonly",
+  645:             "reply": reply,
+  646:             "answer_path": "system_clock",
+  647:             "observed_at_local": local.isoformat(),
+  648:         }
+  649:     else:
+  650:         kind = str(step.parameters.get("small_talk_kind", "greeting"))
+  651:         reply = _SMALL_TALK_REPLIES.get(kind, _GREETING_REPLY)
+  652:         attributes = {
+  653:             "source_mode": "live_local_readonly",
+  654:             "reply": reply,
+  655:             "answer_path": "conversational",
+  656:             "small_talk_kind": kind,
+  657:         }
+  658: 
+  659:     return CapabilityResult(
+  660:         step_id=step.step_id,
+  661:         capability_id=step.capability_id,
+  662:         status=StepStatus.VERIFIED,
+  663:         evidence=[
+  664:             EvidenceRecord(
+  665:                 source="local:assistant",
+  666:                 observed_at=timestamp,
+  667:                 attributes=attributes,
+  668:             )
+  669:         ],
+  670:     )
+  671: 
+  672: 
+
+--- lines 675-875 ---
+  675: _MEMORY_ANSWER_THRESHOLD = 0.35
+  676: 
+  677: 
+  678: def _execute_knowledge_answer(
+  679:     step: PlanStep,
+  680:     timestamp: datetime,
+  681:     memory_store: MemoryStore | None,
+  682:     knowledge_provider: KnowledgeProvider,
+  683: ) -> CapabilityResult:
+  684:     """Answer from memory when memory is confident, from public sources when not.
+  685: 
+  686:     The two paths are never blended. An answer states which one produced it, so
+  687:     "you told me this" is never confused with "a public source says this", and
+  688:     web-derived claims keep public_web trust wherever they travel.
+  689:     """
+  690:     question = str(step.parameters.get("question", "")).strip()
+  691:     if not question:
+  692:         return _failed(step, "QUESTION_MISSING")
+  693: 
+  694:     remembered = memory_store.recall(question, limit=3, now=timestamp) if memory_store else ()
+  695:     confident = [match for match in remembered if match.score >= _MEMORY_ANSWER_THRESHOLD]
+  696: 
+  697:     if confident:
+  698:         return CapabilityResult(
+  699:             step_id=step.step_id,
+  700:             capability_id=step.capability_id,
+  701:             status=StepStatus.VERIFIED,
+  702:             evidence=[
+  703:                 EvidenceRecord(
+  704:                     source="local:memory_store",
+  705:                     observed_at=timestamp,
+  706:                     attributes={
+  707:                         "source_mode": "live_local_readonly",
+  708:                         "answer_path": "memory",
+  709:                         "question": question,
+  710:                         "match_count": len(confident),
+  711:                         "matches": [
+  712:                             {
+  713:                                 "statement": match.claim.statement,
+  714:                                 "source_ref": match.claim.source_ref,
+  715:                                 "source_trust": match.claim.source_trust.value,
+  716:                                 "confidence": round(match.decayed_confidence, 3),
+  717:                             }
+  718:                             for match in confident
+  719:                         ],
+  720:                     },
+  721:                 )
+  722:             ],
+  723:         )
+  724: 
+  725:     try:
+  726:         research = knowledge_provider.research(question)
+  727:     except KnowledgeProviderError as exc:
+  728:         return _failed(step, str(exc))
+  729: 
+  730:     attributes = dict(research)
+  731:     attributes["answer_path"] = "public_web"
+  732:     attributes["question"] = question
+  733:     attributes["memory_checked"] = True
+  734:     # Anything from a public source stays untrusted data wherever it travels.
+  735:     attributes["content_trust"] = "untrusted_external_source"
+  736:     attributes["memory_saved"] = False
+  737: 
+  738:     return CapabilityResult(
+  739:         step_id=step.step_id,
+  740:         capability_id=step.capability_id,
+  741:         status=StepStatus.VERIFIED,
+  742:         evidence=[
+  743:             EvidenceRecord(
+  744:                 source="public_web:knowledge_provider",
+  745:                 observed_at=timestamp,
+  746:                 attributes=attributes,
+  747:             )
+  748:         ],
+  749:     )
+  750: 
+  751: 
+  752: def execute_step(
+  753:     step: PlanStep,
+  754:     observed_at: datetime | None = None,
+  755:     *,
+  756:     note_store: ManagedNoteStore | None = None,
+  757:     device_client: DeviceNodeClient | None = None,
+  758:     task_id: UUID | None = None,
+  759:     knowledge_provider: KnowledgeProvider | None = None,
+  760:     youtube_provider: YouTubeProvider | None = None,
+  761:     session_id: UUID | None = None,
+  762:     pairing_gateway: PhonePairingGateway | None = None,
+  763:     memory_store: MemoryStore | None = None,
+  764: ) -> CapabilityResult:
+  765:     timestamp = observed_at or datetime.now(UTC)
+  766: 
+  767:     if step.capability_id == "assistant.converse":
+  768:         return _execute_assistant_converse(step, timestamp)
+  769: 
+  770:     if step.capability_id == "knowledge.answer":
+  771:         if knowledge_provider is None:
+  772:             return _failed(step, "KNOWLEDGE_PROVIDER_NOT_CONFIGURED")
+  773:         return _execute_knowledge_answer(
+  774:             step, timestamp, memory_store, knowledge_provider
+  775:         )
+  776: 
+  777:     if step.capability_id in {"memory.remember", "memory.recall", "memory.forget"}:
+  778:         if memory_store is None:
+  779:             return _failed(step, "MEMORY_STORE_NOT_CONFIGURED")
+  780:         if step.capability_id == "memory.remember":
+  781:             return _execute_memory_remember(step, timestamp, memory_store)
+  782:         if step.capability_id == "memory.recall":
+  783:             return _execute_memory_recall(step, timestamp, memory_store)
+  784:         return _execute_memory_forget(step, timestamp, memory_store)
+  785: 
+  786:     if step.capability_id == "device.pair_phone":
+  787:         if pairing_gateway is None or session_id is None:
+  788:             return _failed(step, "MOBILE_PAIRING_GATEWAY_NOT_CONFIGURED")
+  789:         return _execute_pair_phone(step, timestamp, session_id, pairing_gateway)
+  790: 
+  791:     if step.capability_id == "device.list_phones":
+  792:         if pairing_gateway is None:
+  793:             return _failed(step, "MOBILE_PAIRING_GATEWAY_NOT_CONFIGURED")
+  794:         return _execute_list_phones(step, timestamp, pairing_gateway)
+  795: 
+  796:     if step.capability_id == "device.unpair_phone":
+  797:         if pairing_gateway is None:
+  798:             return _failed(step, "MOBILE_PAIRING_GATEWAY_NOT_CONFIGURED")
+  799:         return _execute_unpair_phone(step, timestamp, pairing_gateway)
+  800: 
+  801:     if step.capability_id == "assistant.respond":
+  802:         return _execute_assistant_response(step, timestamp)
+  803: 
+  804:     if step.capability_id == "workspace.create_note":
+  805:         if note_store is None:
+  806:             raise RuntimeError(
+  807:                 "ManagedNoteStore is required for controlled writes"
+  808:             )
+  809:         return _execute_create_note(step, timestamp, note_store)
+  810: 
+  811:     if step.capability_id == "device.launch_notepad":
+  812:         if task_id is None or device_client is None:
+  813:             return _failed(step, "TRUSTED_DEVICE_NODE_NOT_CONFIGURED")
+  814:         return _execute_launch_notepad(
+  815:             step,
+  816:             timestamp,
+  817:             task_id,
+  818:             device_client,
+  819:         )
+  820: 
+  821:     if step.capability_id == "knowledge.web_research":
+  822:         if knowledge_provider is None:
+  823:             return _failed(step, "KNOWLEDGE_PROVIDER_NOT_CONFIGURED")
+  824:         return _execute_web_research(
+  825:             step,
+  826:             timestamp,
+  827:             knowledge_provider,
+  828:         )
+  829: 
+  830:     if step.capability_id == "media.youtube.discover":
+  831:         if youtube_provider is None:
+  832:             return _failed(step, "YOUTUBE_PROVIDER_NOT_CONFIGURED")
+  833:         return _execute_youtube_discovery(
+  834:             step,
+  835:             timestamp,
+  836:             youtube_provider,
+  837:         )
+  838: 
+  839:     if step.capability_id == "phone.open_youtube":
+  840:         return _execute_phone_handoff(step, timestamp)
+  841: 
+  842:     if step.capability_id == "device.open_web_search":
+  843:         if task_id is None or device_client is None:
+  844:             return _failed(step, "TRUSTED_DEVICE_NODE_NOT_CONFIGURED")
+  845:         return _execute_web_search(
+  846:             step,
+  847:             timestamp,
+  848:             task_id,
+  849:             device_client,
+  850:         )
+  851: 
+  852:     if step.capability_id == "workspace.read_status":
+  853:         try:
+  854:             attributes = collect_local_workspace_status(
+  855:                 observed_at=timestamp
+  856:             )
+  857:         except LocalWorkspaceEvidenceError:
+  858:             return _failed(
+  859:                 step,
+  860:                 "LOCAL_WORKSPACE_EVIDENCE_UNAVAILABLE",
+  861:             )
+  862:         return CapabilityResult(
+  863:             step_id=step.step_id,
+  864:             capability_id=step.capability_id,
+  865:             status=StepStatus.VERIFIED,
+  866:             evidence=[
+  867:                 EvidenceRecord(
+  868:                     source="local:workspace",
+  869:                     observed_at=timestamp,
+  870:                     attributes=attributes,
+  871:                 )
+  872:             ],
+  873:         )
+  874: 
+  875:     return execute_simulated_step(step, observed_at=timestamp)
+
+========================================================================================
+src\nexuss\core\service.py
+========================================================================================
+
+--- lines 12-21 ---
+   12: from threading import RLock
+   13: from uuid import NAMESPACE_URL, UUID, uuid5
+   14: 
+   15: from nexuss.core.executor import PhonePairingGateway, execute_step
+   16: from nexuss.core.intents import classify_intent
+   17: from nexuss.core.ledger import InMemoryActionLedger
+   18: from nexuss.core.managed_notes import InvalidNoteError, ManagedNoteError, ManagedNoteStore
+   19: from nexuss.core.planner import build_plan
+   20: from nexuss.core.policy import evaluate_step
+   21: from nexuss.core.state_machine import validate_transition
+
+--- lines 32-46 ---
+   32:     ApprovalDecisionKind,
+   33:     ApprovalRequest,
+   34:     ApprovalStatus,
+   35:     CapabilityResult,
+   36:     EvidenceRecord,
+   37:     IdentitySession,
+   38:     Intent,
+   39:     PlanStep,
+   40:     PolicyDecision,
+   41:     PolicyOutcome,
+   42:     RiskTier,
+   43:     StepStatus,
+   44:     TaskPlan,
+   45:     TaskRequest,
+   46:     TaskState,
+
+--- lines 71-79 ---
+   71: 
+   72: 
+   73: class RollbackValidationError(ValueError):
+   74:     """Raised when receipt-bound rollback cannot be authorized or verified."""
+   75: 
+   76: 
+   77: def _payload_sha256(step: PlanStep) -> str:
+   78:     payload = {
+   79:         "capability_id": step.capability_id,
+
+--- lines 145-178 ---
+  145:             )
+  146:         )
+  147: 
+  148:     def _record_receipt(self, task: TaskView) -> None:
+  149:         previous = self._ledger.get(task.task_id)
+  150:         receipt_version = 1 if previous is None else previous.receipt_version + 1
+  151:         verified = task.state in {TaskState.COMPLETED, TaskState.ROLLED_BACK} and bool(task.results)
+  152:         reversible = task.state is TaskState.COMPLETED and any(
+  153:             result.capability_id in {"workspace.create_note", "device.launch_notepad"}
+  154:             and result.status is StepStatus.VERIFIED
+  155:             for result in task.results
+  156:         )
+  157:         receipt = ActionReceipt(
+  158:             receipt_id=uuid5(NAMESPACE_URL, f"nexuss:receipt:{task.task_id}"),
+  159:             receipt_version=receipt_version,
+  160:             task_id=task.task_id,
+  161:             request_id=task.request_id,
+  162:             state=task.state,
+  163:             intent=task.intent,
+  164:             plan_id=task.plan.plan_id,
+  165:             policy_decisions=task.policy_decisions,
+  166:             results=task.results,
+  167:             events=task.events,
+  168:             created_at=task.created_at,
+  169:             updated_at=task.updated_at,
+  170:             verified=verified,
+  171:             reversible=reversible,
+  172:         )
+  173:         self._ledger.append(receipt)
+  174: 
+  175:     @staticmethod
+  176:     def _invalid_note_plan(task_id: UUID, intent: Intent, error_code: str) -> TaskPlan:
+  177:         capability_id = "workspace.create_note"
+  178:         step = PlanStep(
+
+--- lines 180-188 ---
+  180:             order=1,
+  181:             capability_id=capability_id,
+  182:             risk_tier=RiskTier.MEDIUM,
+  183:             expected_evidence=["validation_error"],
+  184:             parameters={"validation_error": error_code},
+  185:             reversible=False,
+  186:         )
+  187:         return TaskPlan(
+  188:             plan_id=uuid5(NAMESPACE_URL, f"nexuss:{task_id}:plan:{intent.kind}:invalid"),
+
+--- lines 207-215 ---
+  207:                 f"device node {target_node_id}."
+  208:             )
+  209:             exact_preview = (
+  210:                 f"Capability: {step.capability_id}\n"
+  211:                 f"Target node: {target_node_id}\n"
+  212:                 "Executable: C:\\Windows\\System32\\notepad.exe\n"
+  213:                 "Shell: disabled\nArguments: none"
+  214:             )
+  215:             destination_label = f"Trusted Windows node · {target_node_id}"
+
+--- lines 222-230 ---
+  222:                 "trusted Windows node."
+  223:             )
+  224:             exact_preview = (
+  225:                 f"Capability: {step.capability_id}\n"
+  226:                 f"Target node: {step.parameters.get('target_node_id', 'windows-primary')}\n"
+  227:                 f"URL: {launch_url}\nShell: disabled\nArguments: fixed --new-tab + approved URL"
+  228:             )
+  229:             destination_label = "Trusted Windows node · Chrome"
+  230:             approval_channel = ApprovalChannel.PHONE
+
+--- lines 236-244 ---
+  236:                 "phone after local approval."
+  237:             )
+  238:             exact_preview = (
+  239:                 f"Capability: {step.capability_id}\n"
+  240:                 f"URL: {launch_url}\n"
+  241:                 "Target: paired approval phone"
+  242:             )
+  243:             destination_label = "Paired approval phone · YouTube"
+  244:             approval_channel = ApprovalChannel.PHONE
+
+--- lines 270-347 ---
+  270:             approval_channel=approval_channel,
+  271:         )
+  272: 
+  273:     def _execute_authorized_steps(
+  274:         self,
+  275:         task_id: UUID,
+  276:         plan: TaskPlan,
+  277:         events: list[ActionEvent],
+  278:         now: datetime,
+  279:         session_id: UUID,
+  280:     ) -> tuple[TaskState, list[CapabilityResult]]:
+  281:         validate_transition(events[-1].state, TaskState.EXECUTING)
+  282:         self._append_event(
+  283:             task_id,
+  284:             events,
+  285:             state=TaskState.EXECUTING,
+  286:             event_type="execution_started",
+  287:             detail="Authorized capabilities entered bounded execution.",
+  288:             occurred_at=now,
+  289:         )
+  290:         results: list[CapabilityResult] = []
+  291:         try:
+  292:             for step in plan.steps:
+  293:                 results.append(
+  294:                     execute_step(
+  295:                         step,
+  296:                         observed_at=now,
+  297:                         note_store=self._note_store,
+  298:                         device_client=self._device_client,
+  299:                         task_id=task_id,
+  300:                         knowledge_provider=self._knowledge_provider,
+  301:                         youtube_provider=self._youtube_provider,
+  302:                         session_id=session_id,
+  303:                         pairing_gateway=self._pairing_gateway,
+  304:                         memory_store=self._memory_store,
+  305:                     )
+  306:                 )
+  307:         except ManagedNoteError as exc:
+  308:             validate_transition(TaskState.EXECUTING, TaskState.FAILED)
+  309:             self._append_event(
+  310:                 task_id,
+  311:                 events,
+  312:                 state=TaskState.FAILED,
+  313:                 event_type="execution_failed",
+  314:                 detail=str(exc),
+  315:                 occurred_at=datetime.now(UTC),
+  316:             )
+  317:             return TaskState.FAILED, results
+  318: 
+  319:         validate_transition(TaskState.EXECUTING, TaskState.VERIFYING)
+  320:         self._append_event(
+  321:             task_id,
+  322:             events,
+  323:             state=TaskState.VERIFYING,
+  324:             event_type="verification_started",
+  325:             detail="Nexuss is verifying returned evidence against the action contract.",
+  326:             occurred_at=datetime.now(UTC),
+  327:         )
+  328:         verified = bool(results) and all(
+  329:             result.status is StepStatus.VERIFIED and bool(result.evidence) for result in results
+  330:         )
+  331:         final_state = TaskState.COMPLETED if verified else TaskState.FAILED
+  332:         validate_transition(TaskState.VERIFYING, final_state)
+  333:         self._append_event(
+  334:             task_id,
+  335:             events,
+  336:             state=final_state,
+  337:             event_type="verification_completed" if verified else "verification_failed",
+  338:             detail=(
+  339:                 "All expected evidence was verified."
+  340:                 if verified
+  341:                 else "The execution result did not satisfy the evidence contract."
+  342:             ),
+  343:             occurred_at=datetime.now(UTC),
+  344:         )
+  345:         return final_state, results
+  346: 
+  347:     def create_task(self, request: TaskRequest, session: IdentitySession) -> TaskView:
+
+--- lines 353-361 ---
+  353:             self._validate_session(session, request.user_session_id)
+  354:             task_id = uuid5(NAMESPACE_URL, f"nexuss:task:{request.request_id}")
+  355:             now = datetime.now(UTC)
+  356:             intent = classify_intent(request.utterance)
+  357:             events: list[ActionEvent] = []
+  358:             self._append_event(
+  359:                 task_id,
+  360:                 events,
+  361:                 state=TaskState.RECEIVED,
+
+--- lines 383-417 ---
+  383: 
+  384:             if invalid_note_error is not None:
+  385:                 decisions = [
+  386:                     PolicyDecision(
+  387:                         step_id=plan.steps[0].step_id,
+  388:                         capability_id=plan.steps[0].capability_id,
+  389:                         outcome=PolicyOutcome.DENY,
+  390:                         reason_code="INVALID_MANAGED_NOTE_REQUEST",
+  391:                         explanation=str(invalid_note_error),
+  392:                     )
+  393:                 ]
+  394:             else:
+  395:                 decisions = [evaluate_step(step) for step in plan.steps]
+  396: 
+  397:             approval: ApprovalRequest | None = None
+  398:             results: list[CapabilityResult] = []
+  399: 
+  400:             if any(decision.outcome is PolicyOutcome.DENY for decision in decisions):
+  401:                 validate_transition(TaskState.PLANNED, TaskState.DENIED)
+  402:                 state = TaskState.DENIED
+  403:                 self._append_event(
+  404:                     task_id,
+  405:                     events,
+  406:                     state=state,
+  407:                     event_type="policy_denied",
+  408:                     detail="Policy denied at least one required capability.",
+  409:                     occurred_at=now,
+  410:                 )
+  411:             elif any(
+  412:                 decision.outcome is PolicyOutcome.REQUIRE_APPROVAL for decision in decisions
+  413:             ):
+  414:                 validate_transition(TaskState.PLANNED, TaskState.AWAITING_APPROVAL)
+  415:                 state = TaskState.AWAITING_APPROVAL
+  416:                 approval = self._approval_for(task_id, session.session_id, plan.steps[0], now)
+  417:                 self._append_event(
+
+--- lines 423-431 ---
+  423:                     occurred_at=now,
+  424:                 )
+  425:             else:
+  426:                 state, results = self._execute_authorized_steps(
+  427:                     task_id, plan, events, now, request.user_session_id
+  428:                 )
+  429: 
+  430:             task = TaskView(
+  431:                 task_id=task_id,
+
+--- lines 443-451 ---
+  443:             )
+  444:             self._tasks[task_id] = task
+  445:             self._request_index[request.request_id] = task_id
+  446:             self._record_receipt(task)
+  447:             return task.model_copy(deep=True)
+  448: 
+  449:     def approve_task(
+  450:         self,
+  451:         task_id: UUID,
+
+--- lines 497-505 ---
+  497:                     }
+  498:                 )
+  499:                 self._tasks[task_id] = task
+  500:                 self._record_receipt(task)
+  501:                 raise ApprovalValidationError("APPROVAL_EXPIRED")
+  502: 
+  503:             if decision.approval_id != approval.approval_id:
+  504:                 raise ApprovalValidationError("APPROVAL_ID_MISMATCH")
+  505:             if not secrets.compare_digest(decision.approval_token, approval.approval_token or ""):
+
+--- lines 533-541 ---
+  533:                     }
+  534:                 )
+  535:                 self._tasks[task_id] = task
+  536:                 self._record_receipt(task)
+  537:                 return task.model_copy(deep=True)
+  538: 
+  539:             validate_transition(task.state, TaskState.APPROVED)
+  540:             self._append_event(
+  541:                 task_id,
+
+--- lines 549-557 ---
+  549:                 ),
+  550:                 occurred_at=now,
+  551:             )
+  552:             state, results = self._execute_authorized_steps(
+  553:                 task_id, task.plan, task.events, now, task.user_session_id
+  554:             )
+  555:             consumed = approval.model_copy(
+  556:                 update={
+  557:                     "status": ApprovalStatus.CONSUMED,
+
+--- lines 567-575 ---
+  567:                 }
+  568:             )
+  569:             self._tasks[task_id] = task
+  570:             self._record_receipt(task)
+  571:             return task.model_copy(deep=True)
+  572: 
+  573:     def list_pending_phone_approvals(
+  574:         self,
+  575:         session_id: UUID,
+
+--- lines 631-645 ---
+  631:                         for item in task.results
+  632:                         if item.capability_id == "phone.open_youtube"
+  633:                         and item.status is StepStatus.VERIFIED
+  634:                         and item.evidence
+  635:                     ),
+  636:                     None,
+  637:                 )
+  638:                 if result is None:
+  639:                     continue
+  640:                 attributes = result.evidence[0].attributes
+  641:                 launch_url = str(attributes.get("launch_url", ""))
+  642:                 query = str(attributes.get("query", ""))
+  643:                 if not launch_url:
+  644:                     continue
+  645:                 handoffs.append(
+
+--- lines 670-678 ---
+  670:                         "device.launch_notepad",
+  671:                     }
+  672:                     and result.status is StepStatus.VERIFIED
+  673:                     and result.evidence
+  674:                 ),
+  675:                 None,
+  676:             )
+  677:             if source_result is None:
+  678:                 raise RollbackValidationError("NO_RECEIPT_BOUND_REVERSIBLE_RESULT")
+
+--- lines 692-705 ---
+  692:                 if source_result.capability_id == "workspace.create_note":
+  693:                     rollback_result = self._rollback_note(source_result, now)
+  694:                     detail = (
+  695:                         "The receipt-owned note was removed and absence was verified."
+  696:                     )
+  697:                 else:
+  698:                     rollback_result = self._rollback_device_command(task_id, source_result, now)
+  699:                     detail = (
+  700:                         "The receipt-bound device process was terminated and absence was verified."
+  701:                     )
+  702:             except (ManagedNoteError, DeviceCommandError, ValueError) as exc:
+  703:                 validate_transition(TaskState.ROLLING_BACK, TaskState.FAILED)
+  704:                 self._append_event(
+  705:                     task_id,
+
+--- lines 713-721 ---
+  713:                     update={"state": TaskState.FAILED, "updated_at": datetime.now(UTC)}
+  714:                 )
+  715:                 self._tasks[task_id] = failed
+  716:                 self._record_receipt(failed)
+  717:                 raise RollbackValidationError(str(exc)) from exc
+  718: 
+  719:             validate_transition(TaskState.ROLLING_BACK, TaskState.ROLLED_BACK)
+  720:             self._append_event(
+  721:                 task_id,
+
+--- lines 733-765 ---
+  733:                 }
+  734:             )
+  735:             self._tasks[task_id] = rolled_back
+  736:             self._record_receipt(rolled_back)
+  737:             return rolled_back.model_copy(deep=True)
+  738: 
+  739:     def _rollback_note(
+  740:         self,
+  741:         note_result: CapabilityResult,
+  742:         observed_at: datetime,
+  743:     ) -> CapabilityResult:
+  744:         attributes = note_result.evidence[0].attributes
+  745:         filename = str(attributes.get("filename", ""))
+  746:         expected_sha256 = str(attributes.get("sha256", ""))
+  747:         removed_path = self._note_store.rollback(
+  748:             filename=filename,
+  749:             expected_sha256=expected_sha256,
+  750:         )
+  751:         return CapabilityResult(
+  752:             step_id=note_result.step_id,
+  753:             capability_id="workspace.rollback_create_note",
+  754:             status=StepStatus.ROLLED_BACK,
+  755:             evidence=[
+  756:                 EvidenceRecord(
+  757:                     source="local:managed_workspace",
+  758:                     observed_at=observed_at,
+  759:                     attributes={
+  760:                         "source_mode": "live_local_receipt_bound_rollback",
+  761:                         "filename": filename,
+  762:                         "removed_path": str(removed_path),
+  763:                         "expected_sha256": expected_sha256,
+  764:                         "verified_absent": True,
+  765:                     },
+
+--- lines 770-802 ---
+  770:     def _rollback_device_command(
+  771:         self,
+  772:         task_id: UUID,
+  773:         device_result: CapabilityResult,
+  774:         observed_at: datetime,
+  775:     ) -> CapabilityResult:
+  776:         attributes = device_result.evidence[0].attributes
+  777:         command_id = UUID(str(attributes.get("command_id", "")))
+  778:         node_id = str(attributes.get("node_id", ""))
+  779:         evidence = self._device_client.rollback_command(task_id, command_id, node_id)
+  780:         if not evidence.verified_absent:
+  781:             raise DeviceCommandError("DEVICE_ROLLBACK_NOT_VERIFIED")
+  782:         return CapabilityResult(
+  783:             step_id=device_result.step_id,
+  784:             capability_id="device.rollback_launch_notepad",
+  785:             status=StepStatus.ROLLED_BACK,
+  786:             evidence=[
+  787:                 EvidenceRecord(
+  788:                     source="device:windows-node",
+  789:                     observed_at=observed_at,
+  790:                     attributes={
+  791:                         "source_mode": evidence.source_mode,
+  792:                         "rollback_id": str(evidence.rollback_id),
+  793:                         "command_id": str(evidence.command_id),
+  794:                         "node_id": evidence.node_id,
+  795:                         "process_id": evidence.process_id,
+  796:                         "terminated": evidence.terminated,
+  797:                         "verified_absent": evidence.verified_absent,
+  798:                     },
+  799:                 )
+  800:             ],
+  801:         )
+  802: 
+
+--- lines 807-822 ---
+  807:                 raise TaskNotFoundError(str(task_id))
+  808:             return task.model_copy(deep=True)
+  809: 
+  810:     def get_receipt(self, task_id: UUID) -> ActionReceipt:
+  811:         with self._lock:
+  812:             receipt = self._ledger.get(task_id)
+  813:             if receipt is None:
+  814:                 raise TaskNotFoundError(str(task_id))
+  815:             return receipt
+  816: 
+  817:     def get_receipt_history(self, task_id: UUID) -> tuple[ActionReceipt, ...]:
+  818:         with self._lock:
+  819:             history = self._ledger.history(task_id)
+  820:             if not history:
+  821:                 raise TaskNotFoundError(str(task_id))
+  822:             return history
+
+========================================================================================
+src\nexuss\webapp\server.py
+========================================================================================
+MISSING
+
+========================================================================================
+src\nexuss\ui\app.js
+========================================================================================
+
+--- lines 16-28 ---
+   16:   timeline: document.querySelector("#timeline"),
+   17:   commandSearch: document.querySelector("#command-search"),
+   18:   systemState: document.querySelector("#system-state"),
+   19:   systemStateLabel: document.querySelector("#system-state-label"),
+   20:   receiptState: document.querySelector("#receipt-state"),
+   21:   verificationBadge: document.querySelector("#verification-badge"),
+   22:   metricIntent: document.querySelector("#metric-intent"),
+   23:   metricConfidence: document.querySelector("#metric-confidence"),
+   24:   metricRisk: document.querySelector("#metric-risk"),
+   25:   metricState: document.querySelector("#metric-state"),
+   26:   policySummary: document.querySelector("#policy-summary"),
+   27:   planList: document.querySelector("#plan-list"),
+   28:   eventSummary: document.querySelector("#event-summary"),
+
+--- lines 29-41 ---
+   29:   eventList: document.querySelector("#event-list"),
+   30:   evidenceSummary: document.querySelector("#evidence-summary"),
+   31:   evidenceList: document.querySelector("#evidence-list"),
+   32:   receiptId: document.querySelector("#receipt-id"),
+   33:   receiptVersion: document.querySelector("#receipt-version"),
+   34:   receiptVerified: document.querySelector("#receipt-verified"),
+   35:   receiptReversible: document.querySelector("#receipt-reversible"),
+   36:   receiptTitle: document.querySelector("#receipt-title"),
+   37:   sessionLabel: document.querySelector("#session-label"),
+   38:   reviewApproval: document.querySelector("#review-approval-button"),
+   39:   copyPath: document.querySelector("#copy-path-button"),
+   40:   rollback: document.querySelector("#rollback-button"),
+   41:   approvalOverlay: document.querySelector("#approval-overlay"),
+
+--- lines 166-178 ---
+  166:   bubble.className = "bubble";
+  167: 
+  168:   /*
+  169:    * An answer is either a plain string or a structured object. Content
+  170:    * capabilities return structure so their results render as readable answers
+  171:    * in the conversation rather than collapsing into one sentence, or being
+  172:    * visible only as raw evidence in the inspector.
+  173:    */
+  174:   const answer = typeof text === "string" ? { text, blocks: [] } : text;
+  175: 
+  176:   const paragraph = document.createElement("p");
+  177:   paragraph.textContent = answer.text;
+  178:   bubble.append(paragraph);
+
+--- lines 194-206 ---
+  194: 
+  195: /*
+  196:  * Answer blocks. Adding a new content capability means adding a builder in
+  197:  * contentAnswer() and, if it needs a new shape, one case here. Nothing else
+  198:  * in the conversation pipeline changes.
+  199:  */
+  200: function renderAnswerBlock(block) {
+  201:   if (block.type === "constitution") {
+  202:     return renderConstitutionBlock(block);
+  203:   }
+  204:   if (block.type === "claims") return renderClaimBlock(block);
+  205:   if (block.type === "note") {
+  206:     const note = document.createElement("p");
+
+--- lines 210-222 ---
+  210:   }
+  211:   return null;
+  212: }
+  213: 
+  214: function renderConstitutionBlock(block) {
+  215:   const card = document.createElement("section");
+  216:   card.className = "constitution-card";
+  217: 
+  218:   const heading = document.createElement("div");
+  219:   heading.className = "constitution-card-heading";
+  220: 
+  221:   const title = document.createElement("strong");
+  222:   title.textContent = "NEXUSS CONSTITUTION";
+
+--- lines 270-282 ---
+  270:   const segments = value.split(/[\\/]/).filter(Boolean);
+  271:   return segments[segments.length - 1] || value;
+  272: }
+  273: 
+  274: function renderClaimBlock(block) {
+  275:   const list = document.createElement("ul");
+  276:   list.className = "answer-claims";
+  277: 
+  278:   for (const item of block.items) {
+  279:     const entry = document.createElement("li");
+  280:     entry.className = "answer-claim";
+  281: 
+  282:     const statement = document.createElement("p");
+
+--- lines 336-348 ---
+  336:   return FAILURE_EXPLANATIONS[code]
+  337:     || `The capability reported ${code}, and I did not act on a result I could not verify.`;
+  338: }
+  339: 
+  340: function evidenceFor(task, capabilityId) {
+  341:   const result = task.results.find((item) => item.capability_id === capabilityId);
+  342:   return result?.evidence?.[0]?.attributes || null;
+  343: }
+  344: 
+  345: /*
+  346:  * Content capabilities answer in the conversation. Each returns a structured
+  347:  * answer; anything that needs provenance carries it in the blocks so a claim
+  348:  * and its source are never separated.
+
+--- lines 352-364 ---
+  352:   if (converse) {
+  353:     return { text: String(converse.reply), blocks: [] };
+  354:   }
+  355: 
+  356:   const answered = evidenceFor(task, "knowledge.answer");
+  357:   if (answered) {
+  358:     if (answered.answer_path === "memory") {
+  359:       const matches = Array.isArray(answered.matches) ? answered.matches : [];
+  360:       return {
+  361:         text: "From what you have told me:",
+  362:         blocks: [{ type: "claims", items: matches }],
+  363:       };
+  364:     }
+
+--- lines 382-394 ---
+  382:       ],
+  383:     };
+  384:   }
+  385: 
+  386:   const recall = evidenceFor(task, "memory.recall");
+  387:   if (recall) {
+  388:     const matches = Array.isArray(recall.matches) ? recall.matches : [];
+  389:     if (!matches.length) {
+  390:       return {
+  391:         text: `I don't have anything stored about "${recall.query}".`,
+  392:         blocks: [{
+  393:           type: "note",
+  394:           text: "Tell me something starting with \u201cremember that\u2026\u201d and I'll keep it with its source.",
+
+--- lines 401-413 ---
+  401:       blocks: [{ type: "claims", items: matches }],
+  402:     };
+  403:   }
+  404: 
+  405:   const stored = evidenceFor(task, "memory.remember");
+  406:   if (stored) {
+  407:     return {
+  408:       text: "Stored. I'll remember that.",
+  409:       blocks: [{
+  410:         type: "note",
+  411:         text: `Filed under \u201c${stored.topic}\u201d as ${String(stored.source_trust).replace(/_/g, " ")}.`,
+  412:       }],
+  413:     };
+
+--- lines 423-435 ---
+  423:       blocks: [],
+  424:     };
+  425:   }
+  426: 
+  427:   const devices = evidenceFor(task, "device.list_phones");
+  428:   if (devices) {
+  429:     const listed = Array.isArray(devices.devices) ? devices.devices : [];
+  430:     if (!listed.length) {
+  431:       return { text: "No phones are paired right now.", blocks: [] };
+  432:     }
+  433:     return {
+  434:       text: `${listed.length} paired phone${listed.length === 1 ? "" : "s"}:`,
+  435:       blocks: [{
+
+--- lines 443-455 ---
+  443:       }],
+  444:     };
+  445:   }
+  446: 
+  447:   const pairing = evidenceFor(task, "device.pair_phone");
+  448:   if (pairing) {
+  449:     return {
+  450:       text: `Pairing code ${pairing.pairing_code}. Enter it at ${pairing.mobile_url} within ten minutes.`,
+  451:       blocks: [{
+  452:         type: "note",
+  453:         text: "Asking again issues a new code and retires this one.",
+  454:       }],
+  455:     };
+
+--- lines 496-508 ---
+  496:   card.append(definition);
+  497:   return card;
+  498: }
+  499: 
+  500: function renderEvents(events) {
+  501:   elements.eventList.className = "event-list";
+  502:   elements.eventList.replaceChildren();
+  503:   for (const event of events) {
+  504:     const item = document.createElement("div");
+  505:     item.className = "event-item";
+  506:     const title = document.createElement("strong");
+  507:     title.textContent = titleCase(event.event_type);
+  508:     const detail = document.createElement("p");
+
+========================================================================================
+tests\unit\test_p61_conversation.py
+========================================================================================
+
+--- lines 9-18 ---
+    9: 
+   10: import pytest
+   11: 
+   12: from nexuss.core.intents import classify_intent
+   13: from nexuss.domain.models import IntentKind
+   14: 
+   15: 
+   16: @pytest.mark.parametrize(
+   17:     "utterance",
+   18:     [
+
+--- lines 31-47 ---
+   31: def test_courtesies_are_answered_not_denied(utterance: str) -> None:
+   32:     """A greeting reaching nexuss.unsupported is denied at HIGH risk, which
+   33:     treats "hello" as an attempted escalation."""
+   34:     assert classify_intent(utterance).kind is IntentKind.SMALL_TALK
+   35: 
+   36: 
+   37: @pytest.mark.parametrize(
+   38:     "utterance",
+   39:     ["hide the panel", "history of forex", "highlight that result", "later stages of the plan"],
+   40: )
+   41: def test_courtesy_matching_does_not_fire_inside_longer_words(utterance: str) -> None:
+   42:     assert classify_intent(utterance).kind is not IntentKind.SMALL_TALK
+   43: 
+   44: 
+   45: @pytest.mark.parametrize(
+   46:     ("utterance", "field"),
+   47:     [
+
+--- lines 52-62 ---
+   52:     ],
+   53: )
+   54: def test_clock_questions_are_answered_from_the_system_clock(utterance: str, field: str) -> None:
+   55:     intent = classify_intent(utterance)
+   56: 
+   57:     assert intent.kind is IntentKind.DATETIME_QUERY
+   58:     assert intent.entities["datetime_field"] == field
+   59: 
+   60: 
+   61: @pytest.mark.parametrize(
+   62:     "utterance",
+
+--- lines 75-83 ---
+   75:     ],
+   76: )
+   77: def test_questions_become_open_questions(utterance: str) -> None:
+   78:     assert classify_intent(utterance).kind is IntentKind.OPEN_QUESTION
+   79: 
+   80: 
+   81: @pytest.mark.parametrize(
+   82:     "utterance",
+   83:     [
+
+--- lines 92-107 ---
+   92: def test_imperatives_never_reach_a_public_source(utterance: str) -> None:
+   93:     """An auxiliary verb opens a question only when a subject follows.
+   94:     "do you know" is a question; "do something" is a command."""
+   95:     assert classify_intent(utterance).kind is not IntentKind.OPEN_QUESTION
+   96: 
+   97: 
+   98: def test_a_research_request_stays_with_the_research_capability() -> None:
+   99:     """Precedence check: "can you research forex" is question-shaped, but a
+  100:     registered capability already handles it and must keep it."""
+  101:     assert classify_intent("can you research forex").kind is not IntentKind.OPEN_QUESTION
+  102: 
+  103: 
+  104: def test_an_open_question_carries_the_original_wording() -> None:
+  105:     intent = classify_intent("what is a limit order")
+  106: 
+  107:     assert intent.entities["question"] == "what is a limit order"

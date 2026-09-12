@@ -58,6 +58,45 @@ def evaluate_step(step: PlanStep) -> PolicyDecision:
                 ),
             )
 
+    if step.capability_id in {
+        "engineering.build_artifact",
+        "engineering.repair_failed_build",
+    }:
+        manifest = get_capability(step.capability_id)
+        if manifest is None:
+            return PolicyDecision(
+                step_id=step.step_id,
+                capability_id=step.capability_id,
+                outcome=PolicyOutcome.DENY,
+                reason_code="CAPABILITY_NOT_REGISTERED",
+                explanation="Unregistered engineering capabilities cannot execute in Nexuss.",
+            )
+        if manifest.status is CapabilityStatus.PROHIBITED:
+            return PolicyDecision(
+                step_id=step.step_id,
+                capability_id=step.capability_id,
+                outcome=PolicyOutcome.DENY,
+                reason_code="CAPABILITY_REGISTRY_PROHIBITED",
+                explanation=(
+                    "The capability registry marks this engineering capability as prohibited."
+                ),
+            )
+        return PolicyDecision(
+            step_id=step.step_id,
+            capability_id=step.capability_id,
+            outcome=PolicyOutcome.REQUIRE_APPROVAL,
+            reason_code="DEVELOPER_ENGINEERING_MISSION_APPROVAL_REQUIRED",
+            explanation=(
+                "This high-risk Developer Engineering mission requires one explicit "
+                "desktop approval bound to the exact task payload. After approval, "
+                "ordinary isolated inspection, implementation, targeted repair, and "
+                "deterministic verification inside that mission do not require repeated "
+                "approval. Budget increases, trust-boundary expansion, Constitution or "
+                "vault/credential access, permission expansion, destructive migration, "
+                "and publication remain separately approval-bound."
+            ),
+        )
+
     manifest = get_capability(step.capability_id)
     if manifest is None:
         return PolicyDecision(

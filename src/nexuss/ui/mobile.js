@@ -33,8 +33,12 @@ const elements = {
   toast: document.querySelector("#toast"),
 };
 
-const POLL_INTERVAL_MS = 1500;
-const POLL_BACKOFF_MAX_MS = 15000;
+/* P6.12 ADAPTIVE MOBILE COMPANION POLLING */
+const POLL_PENDING_APPROVAL_MS = 1500;
+const POLL_ACTIVE_HANDOFF_MS = 2500;
+const POLL_IDLE_FOREGROUND_MS = 8000;
+const POLL_HIDDEN_MS = 20000;
+const POLL_BACKOFF_MAX_MS = 30000;
 /* A handoff older than this is history, not an instruction. Without this
    window a phone paired at 9pm will auto-open a link the desktop sent at 3pm. */
 const AUTO_OPEN_MAX_AGE_MS = 45000;
@@ -45,7 +49,7 @@ let deviceToken = localStorage.getItem("nexuss-mobile-device-token");
 let pendingApproval = null;
 let activeHandoff = null;
 let pollTimer = null;
-let pollDelay = POLL_INTERVAL_MS;
+let pollDelay = POLL_IDLE_FOREGROUND_MS;
 let countdownTimer = null;
 let autoOpenTimer = null;
 let toastTimer = null;
@@ -102,6 +106,18 @@ function releaseWakeLock() {
   }
 }
 
+function syncWakeLock() {
+  const shouldStayAwake = (
+    document.visibilityState === "visible"
+    && Boolean(pendingApproval || activeHandoff)
+  );
+  if (shouldStayAwake) {
+    void requestWakeLock();
+  } else {
+    releaseWakeLock();
+  }
+}
+
 function stopPolling() {
   if (pollTimer) {
     clearTimeout(pollTimer);
@@ -114,8 +130,15 @@ function schedulePoll(delay = pollDelay) {
   pollTimer = setTimeout(() => { void poll(); }, delay);
 }
 
+function nextPollDelay() {
+  if (document.visibilityState !== "visible") return POLL_HIDDEN_MS;
+  if (pendingApproval) return POLL_PENDING_APPROVAL_MS;
+  if (activeHandoff) return POLL_ACTIVE_HANDOFF_MS;
+  return POLL_IDLE_FOREGROUND_MS;
+}
+
 function startPolling() {
-  pollDelay = POLL_INTERVAL_MS;
+  pollDelay = nextPollDelay();
   void poll();
 }
 
@@ -134,6 +157,7 @@ function renderApproval(approval) {
   pendingApproval = approval || null;
   elements.card.hidden = !approval;
   updateStandby();
+  syncWakeLock();
   if (!approval) return;
   elements.risk.textContent = String(approval.risk_tier || "high").toUpperCase();
   elements.expiry.textContent = `Expires ${new Date(approval.expires_at).toLocaleTimeString()}`;
@@ -158,6 +182,7 @@ function clearHandoff() {
   elements.handoffCard.hidden = true;
   elements.handoffCountdown.hidden = true;
   updateStandby();
+  syncWakeLock();
 }
 
 /* Only https YouTube destinations are ever rendered as a tappable link.
@@ -192,6 +217,7 @@ function renderHandoff(handoff) {
   elements.handoffOpen.href = handoff.launch_url;
   elements.handoffCard.hidden = false;
   updateStandby();
+  syncWakeLock();
 
   const ageMs = Date.now() - new Date(handoff.created_at).getTime();
   if (ageMs > AUTO_OPEN_MAX_AGE_MS || document.visibilityState !== "visible") {
@@ -225,40 +251,49 @@ async function poll() {
   if (!deviceId || !deviceToken || inFlight) return;
   inFlight = true;
   try {
-    const [approvalResponse, handoffResponse] = await Promise.all([
-      fetch("/v1/mobile/pending", { headers: mobileHeaders(), cache: "no-store" }),
-      fetch("/v1/mobile/handoffs", { headers: mobileHeaders(), cache: "no-store" }),
-    ]);
+    const response = await fetch("/v1/mobile/snapshot", {
+      headers: mobileHeaders(),
+      cache: "no-store",
+    });
 
-    if (approvalResponse.status === 401 || handoffResponse.status === 401) {
+    if (response.status === 401) {
       clearPairing();
       setLinkState(null);
       showToast("Phone session expired. Pair again.");
       return;
     }
-    if (!approvalResponse.ok) {
-      throw new Error(`Approvals unavailable (${approvalResponse.status})`);
-    }
-    if (!handoffResponse.ok) {
-      throw new Error(`Handoffs unavailable (${handoffResponse.status})`);
+    if (!response.ok) {
+      throw new Error(`Mobile snapshot unavailable (${response.status})`);
     }
 
-    const approvals = await approvalResponse.json();
-    const handoffs = await handoffResponse.json();
+    const snapshot = await response.json();
+    const approvals = Array.isArray(snapshot.approvals)
+      ? snapshot.approvals
+      : [];
+    const handoffs = Array.isArray(snapshot.handoffs)
+      ? snapshot.handoffs
+      : [];
 
     setLinkState(null);
-    pollDelay = POLL_INTERVAL_MS;
     renderApproval(approvals[0] || null);
 
-    /* Newest wins. The server sorts ascending, so take the tail. */
     if (handoffs.length > 0) {
       renderHandoff(handoffs[handoffs.length - 1]);
     }
+
+    pollDelay = nextPollDelay();
+    syncWakeLock();
   } catch (error) {
-    /* Back off instead of firing a toast every 1.5s on a dropped LAN link. */
-    pollDelay = Math.min(pollDelay * 2, POLL_BACKOFF_MAX_MS);
-    const detail = error instanceof Error ? error.message : "Nexuss unreachable";
-    setLinkState(`${detail} · retrying in ${Math.round(pollDelay / 1000)}s`);
+    pollDelay = Math.min(
+      Math.max(pollDelay, POLL_PENDING_APPROVAL_MS) * 2,
+      POLL_BACKOFF_MAX_MS,
+    );
+    const detail = error instanceof Error
+      ? error.message
+      : "Nexuss unreachable";
+    setLinkState(
+      `${detail} · retrying in ${Math.round(pollDelay / 1000)}s`,
+    );
   } finally {
     inFlight = false;
     if (deviceId && deviceToken) schedulePoll();
@@ -313,7 +348,7 @@ elements.pairForm.addEventListener("submit", async (event) => {
     localStorage.setItem("nexuss-mobile-device-token", deviceToken);
     setPaired(true);
     showToast("Phone paired with this Nexuss session.");
-    void requestWakeLock();
+    syncWakeLock();
     startPolling();
   } catch (error) {
     showToast(error instanceof Error ? error.message : "Pairing failed");
@@ -334,10 +369,14 @@ elements.handoffOpen.addEventListener("click", () => {
 /* Returning to the foreground must reconcile immediately. Background tabs are
    throttled to roughly one timer per minute, so the queued poll is stale. */
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState !== "visible") return;
+  syncWakeLock();
   if (!deviceId || !deviceToken) return;
-  void requestWakeLock();
-  startPolling();
+  if (document.visibilityState === "visible") {
+    startPolling();
+  } else {
+    pollDelay = POLL_HIDDEN_MS;
+    schedulePoll();
+  }
 });
 
 window.addEventListener("pageshow", () => {
@@ -350,7 +389,7 @@ window.addEventListener("online", () => {
 
 if (deviceId && deviceToken) {
   setPaired(true);
-  void requestWakeLock();
+  syncWakeLock();
   startPolling();
 } else {
   setPaired(false);

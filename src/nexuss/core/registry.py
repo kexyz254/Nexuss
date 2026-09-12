@@ -150,6 +150,36 @@ _MANIFESTS = (
         status=CapabilityStatus.ACTIVE,
     ),
     CapabilityManifest(
+        capability_id="engineering.repair_failed_build",
+        version="1.0.0",
+        title="Repair latest failed engineering build",
+        description=(
+            "Resume the newest retained failed Prompt-to-Build candidate from its "
+            "local diagnostic evidence, permit at most one targeted provider repair "
+            "proposal, re-run deterministic verification, and apply only if clean."
+        ),
+        risk_tier=RiskTier.HIGH,
+        approval_policy=ApprovalPolicy.EXPLICIT,
+        reversible=False,
+        execution_mode="isolated_engineering_repair",
+        status=CapabilityStatus.ACTIVE,
+        approval_channel=ApprovalChannel.DESKTOP,
+    ),
+    CapabilityManifest(
+        capability_id="engineering.verify_acceptance",
+        version="1.0.0",
+        title="Verify engineering acceptance",
+        description=(
+            "Collect deterministic local acceptance evidence for an installed "
+            "engineering phase without invoking a paid model or modifying source."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="deterministic_local_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
         capability_id="workspace.create_note",
         version="1.0.0",
         title="Create managed note",
@@ -428,6 +458,22 @@ _MANIFESTS = (
         status=CapabilityStatus.SIMULATED,
     ),
     CapabilityManifest(
+        capability_id="engineering.build_artifact",
+        version="1.0.0",
+        title="Developer Prompt-to-Build",
+        description=(
+            "Use the connected DeepSeek engineering provider to modify an isolated "
+            "copy of Nexuss, run baseline-aware regression validation, package the "
+            "result, and optionally apply only a regression-clean build to live source."
+        ),
+        risk_tier=RiskTier.HIGH,
+        approval_policy=ApprovalPolicy.EXPLICIT,
+        reversible=False,
+        execution_mode="isolated_engineering_self_build",
+        status=CapabilityStatus.ACTIVE,
+        approval_channel=ApprovalChannel.DESKTOP,
+    ),
+    CapabilityManifest(
         capability_id="github.connection.status",
         version="1.0.0",
         title="GitHub connection status",
@@ -490,6 +536,43 @@ _MANIFESTS = (
         reversible=False,
         execution_mode="simulated",
         status=CapabilityStatus.SIMULATED,
+    ),
+)
+
+
+# P6.13 APPROVED DEVELOPMENT PACKAGE CAPABILITIES
+_MANIFESTS = (
+    *_MANIFESTS,
+    CapabilityManifest(
+        capability_id="engineering.package.inspect",
+        version="1.0.0",
+        title="Inspect Nexuss development package",
+        description=(
+            "Quarantine a reviewed Nexuss development ZIP and verify its manifest, "
+            "payload hashes, target preconditions, and secret-free intake without "
+            "using an LLM or modifying the live repository."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="local_secure_development_package_inspection",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="engineering.package.apply",
+        version="1.0.0",
+        title="Apply approved Nexuss development package",
+        description=(
+            "After exact desktop approval, validate a reviewed development ZIP in an "
+            "isolated repository copy, require baseline-equivalent regression results, "
+            "create a rollback backup, and atomically apply the verified payload."
+        ),
+        risk_tier=RiskTier.HIGH,
+        approval_policy=ApprovalPolicy.EXPLICIT,
+        reversible=True,
+        execution_mode="local_baseline_aware_development_package_apply",
+        status=CapabilityStatus.ACTIVE,
+        approval_channel=ApprovalChannel.DESKTOP,
     ),
 )
 

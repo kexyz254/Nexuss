@@ -132,7 +132,7 @@ function clearArchiveAttachment() {
   elements.archiveAttachment.hidden = true;
   elements.archiveAttach.classList.remove("active");
   elements.archiveAttachmentName.textContent = "No archive selected";
-  elements.archiveAttachmentMeta.textContent = "Secure local intake";
+  elements.archiveAttachmentMeta.textContent = "Secure local intake · GitHub or Nexuss development package";
   elements.note.textContent = "Voice transcripts are reviewable before execution.";
 }
 
@@ -157,8 +157,27 @@ function selectArchiveAttachment(file) {
   elements.archiveAttachment.hidden = false;
   elements.archiveAttach.classList.add("active");
   elements.archiveAttachmentName.textContent = file.name;
-  elements.archiveAttachmentMeta.textContent = `${formatArchiveBytes(file.size)} · quarantined before GitHub`;
-  elements.note.textContent = "ZIP attached · two paired-phone approvals required.";
+  elements.archiveAttachmentMeta.textContent = `${formatArchiveBytes(file.size)} · secure local quarantine`;
+  elements.note.textContent = "ZIP attached · choose GitHub import or approved Nexuss development-package intake in your instruction.";
+}
+
+
+function isDevelopmentPackageInstruction(utterance) {
+  const value = String(utterance || "").trim();
+  return (
+    /\bapproved\s+(?:nexuss\s+)?development\s+package\b/i.test(value) ||
+    /\b(?:apply|install|inspect|validate)\b[\s\S]{0,80}\b(?:development\s+package|nexuss\s+package|phase\s+zip)\b/i.test(value)
+  );
+}
+
+function developmentPackageApiHeaders(requestId, archiveName) {
+  return {
+    "Content-Type": "application/zip",
+    "X-Nexuss-Session-ID": sessionId,
+    "X-Nexuss-Session-Authenticated": "true",
+    "X-Nexuss-Request-ID": requestId,
+    "X-Nexuss-Archive-Name": encodeURIComponent(archiveName),
+  };
 }
 
 function repositoryNameFromInstruction(utterance) {
@@ -227,6 +246,253 @@ function timeLabel(value = new Date()) {
  * into a status feed, and speaking failures aloud is rarely what a person in
  * a shared space wants.
  */
+
+/* P6.8A.5 NEXUSS FOCUS DECK */
+
+function appendSafeInlineMarkup(container, source) {
+  const text = String(source || "");
+  const tokenPattern = /(`[^`]+`|\*\*[^*]+\*\*)/g;
+  let cursor = 0;
+
+  for (const match of text.matchAll(tokenPattern)) {
+    if (match.index > cursor) {
+      container.append(
+        document.createTextNode(text.slice(cursor, match.index)),
+      );
+    }
+
+    const token = match[0];
+
+    if (token.startsWith("`")) {
+      const code = document.createElement("code");
+      code.textContent = token.slice(1, -1);
+      container.append(code);
+    } else {
+      const strong = document.createElement("strong");
+      strong.textContent = token.slice(2, -2);
+      container.append(strong);
+    }
+
+    cursor = match.index + token.length;
+  }
+
+  if (cursor < text.length) {
+    container.append(document.createTextNode(text.slice(cursor)));
+  }
+}
+
+function renderSafeCognitiveMarkdown(source) {
+  const documentRoot = document.createElement("div");
+  documentRoot.className = "cognitive-document";
+
+  const lines = String(source || "").replace(/\r\n/g, "\n").split("\n");
+  let list = null;
+  let listType = null;
+  let codeBlock = null;
+  let codeLanguage = "";
+
+  const closeList = () => {
+    list = null;
+    listType = null;
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith("```")) {
+      closeList();
+
+      if (codeBlock) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "cognitive-code";
+
+        const toolbar = document.createElement("div");
+        toolbar.className = "cognitive-code-toolbar";
+
+        const language = document.createElement("span");
+        language.textContent = codeLanguage || "Code";
+
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.textContent = "Copy";
+        copy.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(codeBlock.textContent || "");
+            copy.textContent = "Copied";
+            window.setTimeout(() => {
+              copy.textContent = "Copy";
+            }, 1400);
+          } catch (_error) {
+            copy.textContent = "Select to copy";
+          }
+        });
+
+        toolbar.append(language, copy);
+
+        const pre = document.createElement("pre");
+        pre.append(codeBlock);
+
+        wrapper.append(toolbar, pre);
+        documentRoot.append(wrapper);
+
+        codeBlock = null;
+        codeLanguage = "";
+      } else {
+        codeLanguage = trimmed.slice(3).trim();
+        codeBlock = document.createElement("code");
+      }
+
+      continue;
+    }
+
+    if (codeBlock) {
+      codeBlock.append(
+        document.createTextNode(
+          `${codeBlock.textContent ? "\n" : ""}${line}`,
+        ),
+      );
+      continue;
+    }
+
+    if (!trimmed) {
+      closeList();
+      continue;
+    }
+
+    if (/^---+$/.test(trimmed)) {
+      closeList();
+      documentRoot.append(document.createElement("hr"));
+      continue;
+    }
+
+    const heading = trimmed.match(/^(#{1,4})\s+(.+)$/);
+
+    if (heading) {
+      closeList();
+      const level = Math.min(heading[1].length + 1, 4);
+      const element = document.createElement(`h${level}`);
+      appendSafeInlineMarkup(element, heading[2]);
+      documentRoot.append(element);
+      continue;
+    }
+
+    const ordered = trimmed.match(/^(\d+)[.)]\s+(.+)$/);
+    const unordered = trimmed.match(/^[-*]\s+(.+)$/);
+
+    if (ordered || unordered) {
+      const desiredType = ordered ? "ol" : "ul";
+
+      if (!list || listType !== desiredType) {
+        list = document.createElement(desiredType);
+        list.className = "cognitive-list";
+        listType = desiredType;
+        documentRoot.append(list);
+      }
+
+      const item = document.createElement("li");
+      appendSafeInlineMarkup(
+        item,
+        ordered ? ordered[2] : unordered[1],
+      );
+      list.append(item);
+      continue;
+    }
+
+    closeList();
+
+    const paragraph = document.createElement("p");
+    appendSafeInlineMarkup(paragraph, trimmed);
+    documentRoot.append(paragraph);
+  }
+
+  if (codeBlock) {
+    const pre = document.createElement("pre");
+    pre.append(codeBlock);
+    documentRoot.append(pre);
+  }
+
+  return documentRoot;
+}
+
+function renderCognitiveAnswer(answer) {
+  const root = document.createElement("section");
+  root.className = "cognitive-response";
+
+  if (answer.cognitive) {
+    const header = document.createElement("header");
+    header.className = "cognitive-response-header";
+
+    const identity = document.createElement("div");
+    identity.className = "cognitive-provider-identity";
+
+    const mark = document.createElement("span");
+    mark.className = "cognitive-provider-mark";
+    mark.textContent = "AI";
+
+    const titleGroup = document.createElement("div");
+
+    const title = document.createElement("strong");
+    title.textContent = answer.cognitive.provider || "DeepSeek";
+
+    const subtitle = document.createElement("span");
+    subtitle.textContent = [
+      answer.cognitive.model,
+      answer.cognitive.mode,
+    ].filter(Boolean).join(" ?? ");
+
+    titleGroup.append(title, subtitle);
+    identity.append(mark, titleGroup);
+
+    const verified = document.createElement("span");
+    verified.className = "cognitive-verified";
+    verified.textContent = "Verified proposal";
+
+    header.append(identity, verified);
+    root.append(header);
+  }
+
+  root.append(renderSafeCognitiveMarkdown(answer.text));
+
+  if (answer.cognitive?.trust?.length) {
+    const trust = document.createElement("footer");
+    trust.className = "cognitive-trust-strip";
+
+    const labels = [
+      ["NO TOOLS", "tool"],
+      ["NO WRITES", "write"],
+      ["NO APPROVAL", "approval"],
+      ["NEXUSS AUTHORITY", "authority"],
+    ];
+
+    for (const [label, kind] of labels) {
+      const badge = document.createElement("span");
+      badge.dataset.kind = kind;
+      badge.textContent = label;
+      trust.append(badge);
+    }
+
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = "Trust and processing details";
+
+    const list = document.createElement("ul");
+
+    for (const line of answer.cognitive.trust) {
+      const item = document.createElement("li");
+      item.textContent = line;
+      list.append(item);
+    }
+
+    details.append(summary, list);
+    trust.append(details);
+    root.append(trust);
+  }
+
+  return root;
+}
+
+
 function addMessage(role, text, isError = false, options = {}) {
   const article = document.createElement("article");
   article.className = `message ${role === "user" ? "user-message" : "assistant-message"}`;
@@ -257,9 +523,18 @@ function addMessage(role, text, isError = false, options = {}) {
    */
   const answer = typeof text === "string" ? { text, blocks: [] } : text;
 
-  const paragraph = document.createElement("p");
-  paragraph.textContent = answer.text;
-  bubble.append(paragraph);
+  if (
+    role === "assistant"
+    && !isError
+    && (options.rich || answer.cognitive)
+  ) {
+    bubble.classList.add("rich-bubble");
+    bubble.append(renderCognitiveAnswer(answer));
+  } else {
+    const paragraph = document.createElement("p");
+    paragraph.textContent = answer.text;
+    bubble.append(paragraph);
+  }
 
   for (const block of answer.blocks || []) {
     const rendered = renderAnswerBlock(block);
@@ -877,12 +1152,42 @@ async function createPhonePairing() {
   elements.phoneApprovalStatus.textContent = `Pairing code expires ${new Date(pairingChallenge.expires_at).toLocaleTimeString()}. Waiting for phone approval…`;
 }
 
+/* P6.12 ADAPTIVE DESKTOP POLLING */
+const TASK_POLL_ACTIVE_MS = 1500;
+const TASK_POLL_AWAITING_APPROVAL_MS = 3000;
+const TASK_POLL_BACKOFF_MAX_MS = 8000;
+let taskPollGeneration = 0;
+
+function stopTaskPolling() {
+  taskPollGeneration += 1;
+  if (taskPollTimer) {
+    clearTimeout(taskPollTimer);
+    taskPollTimer = null;
+  }
+}
+
 async function pollTaskUntilResolved(taskId) {
-  if (taskPollTimer) clearInterval(taskPollTimer);
-  taskPollTimer = setInterval(async () => {
+  stopTaskPolling();
+  const generation = taskPollGeneration;
+  let failures = 0;
+
+  const schedule = (delay) => {
+    if (generation !== taskPollGeneration) return;
+    taskPollTimer = setTimeout(() => { void tick(); }, delay);
+  };
+
+  const tick = async () => {
+    if (generation !== taskPollGeneration) return;
+
     try {
-      const response = await fetch(`/v1/tasks/${taskId}`, { cache: "no-store" });
-      if (!response.ok) return;
+      const response = await fetch(`/v1/tasks/${taskId}`, {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error(`Task status unavailable (${response.status})`);
+      }
+
+      failures = 0;
       const task = await response.json();
       const previousApprovalId = currentTask?.approval?.approval_id || null;
 
@@ -892,15 +1197,33 @@ async function pollTaskUntilResolved(taskId) {
           const receipt = await fetchReceipt(task.task_id);
           hideApproval();
           renderTask(task, receipt);
-          addMessage("assistant", summarizeTask(task), false, { speak: true });
+          addMessage("assistant", summarizeTask(task), false, {
+            speak: true,
+          });
           await showApproval(task.approval);
-          showToast("Phase one verified. Review phase two on your paired phone.");
+          showToast(
+            "Phase one verified. Review phase two on your paired phone.",
+          );
         }
+        schedule(TASK_POLL_AWAITING_APPROVAL_MS);
         return;
       }
 
-      clearInterval(taskPollTimer);
-      taskPollTimer = null;
+      if (
+        ![
+          "completed",
+          "partially_completed",
+          "denied",
+          "failed",
+          "rolled_back",
+        ].includes(task.state)
+      ) {
+        renderTask(task, currentReceipt);
+        schedule(TASK_POLL_ACTIVE_MS);
+        return;
+      }
+
+      stopTaskPolling();
       const receipt = await fetchReceipt(task.task_id);
       hideApproval();
       renderTask(task, receipt);
@@ -911,9 +1234,16 @@ async function pollTaskUntilResolved(taskId) {
           : `Phone decision: ${titleCase(task.state)}.`,
       );
     } catch (_error) {
-      // Health polling and the phone client remain the source of truth during transient errors.
+      failures += 1;
+      const delay = Math.min(
+        TASK_POLL_ACTIVE_MS * (2 ** failures),
+        TASK_POLL_BACKOFF_MAX_MS,
+      );
+      schedule(delay);
     }
-  }, 1200);
+  };
+
+  await tick();
 }
 
 async function showApproval(approval) {
@@ -959,6 +1289,55 @@ function hideApproval() {
   elements.input.focus();
 }
 
+
+
+async function executeDevelopmentPackageInstruction(utterance) {
+  if (!selectedArchive) throw new Error("Attach a ZIP development package first.");
+
+  const archive = selectedArchive;
+  const requestId = crypto.randomUUID();
+  setBusy(true);
+  addMessage("user", utterance);
+  stopSpeaking();
+  addMessage(
+    "assistant",
+    `Quarantining ${archive.name}, verifying its Nexuss development manifest and target hashes. No LLM/API call is required.`,
+  );
+
+  try {
+    const response = await fetch("/v1/development-packages", {
+      method: "POST",
+      headers: developmentPackageApiHeaders(requestId, archive.name),
+      body: archive,
+    });
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`Development-package intake failed (${response.status}): ${detail}`);
+    }
+    const task = await response.json();
+    clearArchiveAttachment();
+    const receipt = await fetchReceipt(task.task_id);
+    renderTask(task, receipt);
+    addMessage(
+      "assistant",
+      "Nexuss verified the ZIP manifest and base hashes. Review the exact package in Action Control before isolated validation and live application.",
+      false,
+      { speak: true },
+    );
+    if (task.state === "awaiting_approval" && task.approval) {
+      await showApproval(task.approval);
+    }
+  } catch (error) {
+    addMessage(
+      "assistant",
+      error instanceof Error ? error.message : "Unexpected development-package intake error",
+      true,
+    );
+  } finally {
+    setBusy(false);
+    elements.input.focus();
+  }
+}
 
 async function executeArchiveInstruction(utterance) {
   if (!selectedArchive) throw new Error("Attach a ZIP archive first.");
@@ -1175,6 +1554,19 @@ async function handleUnderstandingResponse(
 }
 
 async function understandAndExecute(utterance, channel = "text") {
+  // P6.8A.2: explicit cognitive requests bypass deterministic goal classification.
+  if (wantsDeepSeekCognition(utterance)) {
+    setBusy(true);
+    stopSpeaking();
+
+    await executeCognitiveInstruction(
+      utterance,
+      typeof channel === "string" ? channel : "text",
+    );
+
+    return;
+  }
+
   setBusy(true);
   addMessage("user", utterance);
   stopSpeaking();
@@ -1275,11 +1667,349 @@ async function answerUnderstandingClarification(
 }
 
 // P66B_LEGACY_DELEGATION_OPTIONS
-async function executeInstruction(
+function wantsDeepSeekCognition(utterance) {
+  const normalized = String(utterance || "").trim().toLowerCase();
+
+  return (
+    normalized.startsWith("/deepseek") ||
+    normalized.startsWith("deepseek:") ||
+    normalized.includes("use deepseek") ||
+    normalized.includes("reasoning provider: deepseek")
+  );
+}
+
+function inferCognitiveMode(utterance) {
+  const normalized = String(utterance || "").toLowerCase();
+
+  if (/\b(debug|diagnose|fix bug|troubleshoot)\b/.test(normalized)) {
+    return "debug";
+  }
+  if (/\b(code|implement|program|function|class|script)\b/.test(normalized)) {
+    return "code";
+  }
+  if (/\b(rewrite|rephrase|edit|polish)\b/.test(normalized)) {
+    return "rewrite";
+  }
+  if (/\b(write|draft|compose)\b/.test(normalized)) {
+    return "write";
+  }
+  if (/\b(review|audit|critique)\b/.test(normalized)) {
+    return "review";
+  }
+  if (/\b(design|architecture|system design)\b/.test(normalized)) {
+    return "design";
+  }
+  if (/\b(build|create|develop)\b/.test(normalized)) {
+    return "build_proposal";
+  }
+  if (/\b(plan|roadmap|steps|strategy)\b/.test(normalized)) {
+    return "plan";
+  }
+  if (/\b(synthesize|research summary)\b/.test(normalized)) {
+    return "research_synthesis";
+  }
+
+  return "analyze";
+}
+
+
+/* P6.9B BOUNDED AUTONOMY */
+async function executeAutonomousInstruction(utterance, channel) {
+  const instruction = utterance.replace(/^\/(?:deepseek|auto)\s*/i, "").trim();
+  if (!instruction) {
+    addMessage("assistant", "Add an exact goal after /deepseek or /auto.", true);
+    setBusy(false);
+    return;
+  }
+  addMessage("assistant", "Nexuss is running certified actions until it reaches a real approval or policy blocker...");
+  try {
+    const response = await fetch("/v1/orchestrations/autonomous", {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify({
+        request_id: crypto.randomUUID(),
+        user_session_id: sessionId,
+        instruction,
+        provider_id: "auto",
+        provider_mode: inferCognitiveMode(instruction),
+        autonomy_mode: "supervised",
+        external_processing_approved: true,
+        maximum_actions: 6,
+        maximum_runtime_seconds: 120,
+      }),
+    });
+    if (!response.ok) {
+      const problem = await response.json().catch(() => null);
+      throw new Error(problem?.detail?.message || `Autonomy failed (${response.status}).`);
+    }
+    const run = await response.json();
+    const lines = [
+      run.response,
+      "",
+      `Workflow: ${titleCase(run.state)}.`,
+      `Completed: ${run.completed_count}.`,
+      `Awaiting approval: ${run.awaiting_approval_count}.`,
+      `Blocked: ${run.blocked_count}.`,
+      "Protected actions were not auto-approved.",
+    ];
+    addMessage("assistant", {
+      text: lines.join("\n"),
+      blocks: [],
+      cognitive: {
+        provider: run.provider_display_name,
+        model: run.model,
+        mode: "bounded autonomy",
+        trust: [
+          "Certified reads may execute automatically.",
+          "Protected actions pause for exact approval.",
+          "Capability mismatches fail closed.",
+          "Nexuss owns verification and receipts.",
+        ],
+      },
+    }, false, { speak: channel === "voice", rich: true });
+    elements.receiptState.textContent = titleCase(run.state);
+    elements.metricIntent.textContent = "Bounded Autonomy";
+    elements.metricState.textContent = titleCase(run.state);
+    elements.planList.className = "detail-list";
+    elements.planList.replaceChildren();
+    for (const [index, step] of run.steps.entries()) {
+      elements.planList.append(createDetailCard(
+        `${index + 1}. ${step.capability_id}`,
+        step.state,
+        {
+          reason: step.reason_code,
+          task_id: step.core_task_id || "not created",
+          receipt_id: step.core_receipt_id || "pending",
+          evidence: String(step.evidence_count),
+        },
+      ));
+    }
+    elements.policySummary.textContent = `${run.completed_count} completed · ${run.awaiting_approval_count} approval · ${run.blocked_count} blocked`;
+    renderEvents(run.receipt.events || []);
+  } catch (error) {
+    addMessage("assistant", error instanceof Error ? error.message : "Bounded autonomy failed closed.", true);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function executeCognitiveInstruction(utterance, channel) {
+  addMessage(
+    "assistant",
+    "DeepSeek is generating a grounded proposal inside the Nexuss cognitive trust boundary...",
+  );
+
+  try {
+    const response = await fetch("/v1/cognitive/proposals", {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify({
+        request_id: crypto.randomUUID(),
+        user_session_id: sessionId,
+        instruction: utterance,
+        mode: inferCognitiveMode(utterance),
+      }),
+    });
+
+    if (!response.ok) {
+      let problem = null;
+
+      try {
+        problem = await response.json();
+      } catch {
+        problem = null;
+      }
+
+      const detail = problem?.detail || {};
+      const message =
+        detail.fallback ||
+        detail.message ||
+        `Cognitive request failed (${response.status}).`;
+
+      throw new Error(message);
+    }
+
+    const body = await response.json();
+    const proposal = body.proposal;
+    const receipt = body.receipt;
+
+    const attribution = [
+      `Reasoning provider: DeepSeek (${proposal.model})`,
+      "DeepSeek generated a proposal only.",
+      "External processing used: yes.",
+      "Tool capabilities executed: none.",
+      "Files modified: none.",
+      "External writes: none.",
+      "Approval requested: none.",
+      "Hidden reasoning stored: none.",
+      "Nexuss retains policy, approval, execution, verification, receipt, audit, and final authority.",
+    ].join("\n");
+
+    addMessage(
+      "assistant",
+      {
+        text: proposal.response,
+        blocks: [],
+        cognitive: {
+          provider: "DeepSeek",
+          model: proposal.model,
+          mode: proposal.mode,
+          trust: attribution.split("\n"),
+        },
+      },
+      false,
+      {
+        speak: channel === "voice",
+        rich: true,
+      },
+    );
+
+    const intent = {
+      kind: "cognitive_proposal",
+      normalized_text: `DeepSeek ${proposal.mode} proposal`,
+      confidence: 1,
+      entities: {
+        provider_id: proposal.provider_id,
+        model: proposal.model,
+        receipt_type: receipt.receipt_type,
+      },
+    };
+
+    const stepId = receipt.receipt_id;
+
+    const plan = {
+      plan_id: receipt.receipt_id,
+      task_id: receipt.receipt_id,
+      intent,
+      steps: [{
+        step_id: stepId,
+        order: 1,
+        capability_id: "cognitive.deepseek.propose",
+        risk_tier: "informational",
+        expected_evidence: ["cognitive_proposal_receipt"],
+        parameters: {
+          mode: proposal.mode,
+          external_processing: true,
+          tools_allowed: false,
+        },
+        reversible: false,
+      }],
+    };
+
+    const decisions = [{
+      step_id: stepId,
+      capability_id: "cognitive.deepseek.propose",
+      outcome: "allow",
+      reason_code: "PROPOSAL_ONLY_EXTERNAL_REASONING",
+      explanation:
+        "Explicit DeepSeek selection authorized proposal-only external processing without tool or write authority.",
+    }];
+
+    const results = [{
+      step_id: stepId,
+      capability_id: "cognitive.deepseek.propose",
+      status: "verified",
+      evidence: [{
+        source: "external:deepseek",
+        observed_at: receipt.created_at,
+        attributes: {
+          provider_id: receipt.provider_id,
+          model: receipt.model,
+          mode: receipt.mode,
+          provider_invoked: receipt.provider_invoked,
+          proposal_validated: receipt.proposal_validated,
+          external_processing_used:
+            receipt.external_processing_used,
+          execution_authorized:
+            receipt.execution_authorized,
+          tool_capabilities_executed:
+            receipt.tool_capabilities_executed,
+          approval_requested:
+            receipt.approval_requested,
+          files_modified:
+            receipt.files_modified,
+          external_writes:
+            receipt.external_writes,
+          hidden_reasoning_stored:
+            receipt.hidden_reasoning_stored,
+          request_sha256:
+            receipt.request_sha256,
+          context_sha256:
+            receipt.context_sha256,
+          response_sha256:
+            receipt.response_sha256,
+        },
+      }],
+      error_code: null,
+    }];
+
+    const events = receipt.events.map((event) => ({
+      event_id: crypto.randomUUID(),
+      sequence: event.sequence,
+      state: event.state,
+      event_type: event.event_type,
+      occurred_at: event.occurred_at,
+      detail: event.detail,
+    }));
+
+    const task = {
+      task_id: receipt.receipt_id,
+      request_id: receipt.request_id,
+      user_session_id: sessionId,
+      state: "completed",
+      intent,
+      plan,
+      policy_decisions: decisions,
+      results,
+      events,
+      approval: null,
+      created_at: receipt.created_at,
+      updated_at: receipt.created_at,
+    };
+
+    const actionReceipt = {
+      receipt_id: receipt.receipt_id,
+      receipt_version: 1,
+      task_id: receipt.receipt_id,
+      request_id: receipt.request_id,
+      state: "completed",
+      intent,
+      plan_id: receipt.receipt_id,
+      policy_decisions: decisions,
+      results,
+      events,
+      created_at: receipt.created_at,
+      updated_at: receipt.created_at,
+      verified: true,
+      reversible: false,
+    };
+
+    renderTask(task, actionReceipt);
+  } catch (error) {
+    addMessage(
+      "assistant",
+      error instanceof Error
+        ? error.message
+        : "The cognitive provider request failed closed.",
+      true,
+    );
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function executeLegacyInstruction(
   utterance,
   channel = "text",
   options = {},
 ) {
+  if (/^\/(?:deepseek|auto)(?:\s|$)/i.test(utterance.trim())) {
+    setBusy(true);
+    stopSpeaking();
+    await executeAutonomousInstruction(utterance, channel);
+    return;
+  }
+
   setBusy(true);
   if (!options.userAlreadyAdded) addMessage("user", utterance);
   stopSpeaking();
@@ -1288,6 +2018,11 @@ async function executeInstruction(
       "assistant",
       "Interpreting intent, generating a capability plan, and evaluating policy…",
     );
+  }
+
+  if (wantsDeepSeekCognition(utterance)) {
+    await executeCognitiveInstruction(utterance, channel);
+    return;
   }
 
   const payload = {
@@ -1347,7 +2082,20 @@ async function decideApproval(decisionKind) {
     hideApproval();
     renderTask(task, receipt);
     addMessage("assistant", summarizeTask(task), false, { speak: true });
-    showToast(decisionKind === "approve" ? "Exact action approved and verified." : "Action cancelled. No write occurred.");
+    // P6.13 ASYNC PACKAGE APPROVAL POLLING
+    const developmentPackageTask = task.plan?.steps?.some(
+      (step) => step.capability_id === "engineering.package.apply",
+    );
+    if (
+      decisionKind === "approve" &&
+      developmentPackageTask &&
+      ["approved", "executing", "verifying"].includes(task.state)
+    ) {
+      void pollTaskUntilResolved(task.task_id);
+      showToast("Development package approved. Isolated validation is running.");
+    } else {
+      showToast(decisionKind === "approve" ? "Exact action approved and verified." : "Action cancelled. No write occurred.");
+    }
   } catch (error) {
     addMessage("assistant", error instanceof Error ? error.message : "Approval failed", true);
   } finally {
@@ -1396,6 +2144,46 @@ document.querySelectorAll(".tab").forEach((button) => {
   });
 });
 
+
+/* P6.11 UNIFIED USER-TURN SUBMISSION */
+let nexussUnifiedTurnPromise = null;
+
+async function submitUnifiedUserTurn(
+  utterance,
+  channel = "text",
+) {
+  const originalUserText = String(utterance || "").trim();
+
+  if (!originalUserText) {
+    return;
+  }
+
+  if (nexussUnifiedTurnPromise) {
+    showToast(
+      "Nexuss is already processing this turn. "
+      + "No duplicate interaction was created.",
+    );
+    return nexussUnifiedTurnPromise;
+  }
+
+  setBusy(true);
+  stopSpeaking();
+  addMessage("user", originalUserText);
+
+  const turnPromise = Promise.resolve().then(() => (
+    executeInstruction(originalUserText, channel)
+  ));
+  const trackedPromise = turnPromise.finally(() => {
+    if (nexussUnifiedTurnPromise === trackedPromise) {
+      nexussUnifiedTurnPromise = null;
+    }
+    elements.input.focus();
+  });
+
+  nexussUnifiedTurnPromise = trackedPromise;
+  return trackedPromise;
+}
+
 elements.form.addEventListener("submit", (event) => {
   event.preventDefault();
   const utterance = elements.input.value.trim();
@@ -1406,7 +2194,11 @@ elements.form.addEventListener("submit", (event) => {
   elements.input.style.height = "auto";
 
   if (selectedArchive) {
-    void executeArchiveInstruction(utterance);
+    if (isDevelopmentPackageInstruction(utterance)) {
+      void executeDevelopmentPackageInstruction(utterance);
+    } else {
+      void executeArchiveInstruction(utterance);
+    }
     return;
   }
 
@@ -1418,7 +2210,7 @@ elements.form.addEventListener("submit", (event) => {
     return;
   }
 
-  void understandAndExecute(utterance, channel);
+  void submitUnifiedUserTurn(utterance, channel);
 });
 
 elements.input.addEventListener("keydown", (event) => {
@@ -1444,7 +2236,7 @@ elements.archiveInput.addEventListener("change", () => {
   try {
     selectArchiveAttachment(elements.archiveInput.files?.[0] || null);
     if (selectedArchive) {
-      elements.input.placeholder = "Example: Create a private repository named fenril-task and deploy this ZIP.";
+      elements.input.placeholder = "Example: Nexuss, inspect and apply this approved development package.";
       elements.input.focus();
     }
   } catch (error) {
@@ -1781,6 +2573,1814 @@ elements.voiceReplies?.addEventListener("change", (event) => {
 
 void initialiseVoice();
 
-void checkHealth();
-setInterval(checkHealth, 30000);
+/* P6.12 visibility-aware health polling */
+const HEALTH_POLL_VISIBLE_MS = 60000;
+let healthPollTimer = null;
+
+function scheduleHealthCheck(delay = HEALTH_POLL_VISIBLE_MS) {
+  if (healthPollTimer) clearTimeout(healthPollTimer);
+  healthPollTimer = setTimeout(async () => {
+    healthPollTimer = null;
+    if (document.visibilityState === "visible") {
+      await checkHealth();
+    }
+    scheduleHealthCheck();
+  }, delay);
+}
+
+void checkHealth().finally(() => scheduleHealthCheck());
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  void checkHealth();
+  scheduleHealthCheck();
+});
 elements.input.focus();
+
+
+const NEXUSS_FOCUS_PREFERENCE_KEY = "nexuss-focus-deck-v1";
+
+function readFocusDeckState() {
+  const defaults = {
+    conversation: true,
+    inspector: true,
+    workspace: false,
+    mode: "split",
+  };
+
+  try {
+    const stored = JSON.parse(
+      localStorage.getItem(NEXUSS_FOCUS_PREFERENCE_KEY) || "null",
+    );
+
+    return {
+      ...defaults,
+      ...(stored && typeof stored === "object" ? stored : {}),
+    };
+  } catch (_error) {
+    return defaults;
+  }
+}
+
+let focusDeckState = readFocusDeckState();
+
+function saveFocusDeckState() {
+  localStorage.setItem(
+    NEXUSS_FOCUS_PREFERENCE_KEY,
+    JSON.stringify(focusDeckState),
+  );
+}
+
+function updateFocusDeckButtons() {
+  document.querySelectorAll("[data-focus-command]").forEach((button) => {
+    const command = button.dataset.focusCommand;
+    let pressed = false;
+
+    if (command === "conversation") {
+      pressed = focusDeckState.conversation;
+    } else if (command === "inspector") {
+      pressed = focusDeckState.inspector;
+    } else if (command === "workspace") {
+      pressed = focusDeckState.workspace;
+    } else if (command === "split") {
+      pressed = focusDeckState.mode === "split";
+    }
+
+    button.setAttribute("aria-pressed", String(pressed));
+  });
+}
+
+function applyFocusDeckState() {
+  const conversation = document.querySelector("#conversation-app");
+  const inspector = document.querySelector("#action-control-app");
+  const workspace = document.querySelector("#p5-workspace");
+
+  if (conversation) {
+    conversation.hidden = !focusDeckState.conversation;
+  }
+
+  if (inspector) {
+    inspector.hidden = !focusDeckState.inspector;
+  }
+
+  if (workspace && focusDeckState.workspace) {
+    workspace.hidden = false;
+  }
+
+  document.body.dataset.focusMode = focusDeckState.mode;
+  updateFocusDeckButtons();
+  saveFocusDeckState();
+}
+
+function setFocusDeckMode(mode) {
+  if (mode === "conversation") {
+    focusDeckState = {
+      ...focusDeckState,
+      conversation: true,
+      inspector: false,
+      mode,
+    };
+  } else if (mode === "inspector") {
+    focusDeckState = {
+      ...focusDeckState,
+      conversation: false,
+      inspector: true,
+      mode,
+    };
+  } else {
+    focusDeckState = {
+      ...focusDeckState,
+      conversation: true,
+      inspector: true,
+      mode: "split",
+    };
+  }
+
+  applyFocusDeckState();
+}
+
+function toggleFocusDeckApp(app) {
+  if (app === "conversation") {
+    if (
+      focusDeckState.conversation
+      && focusDeckState.mode === "conversation"
+    ) {
+      focusDeckState.conversation = false;
+      focusDeckState.mode = "split";
+    } else {
+      setFocusDeckMode("conversation");
+      return;
+    }
+  }
+
+  if (app === "inspector") {
+    if (
+      focusDeckState.inspector
+      && focusDeckState.mode === "inspector"
+    ) {
+      focusDeckState.inspector = false;
+      focusDeckState.mode = "split";
+    } else {
+      setFocusDeckMode("inspector");
+      return;
+    }
+  }
+
+  if (app === "workspace") {
+    const workspace = document.querySelector("#p5-workspace");
+    const next = workspace ? workspace.hidden : !focusDeckState.workspace;
+    focusDeckState.workspace = next;
+
+    if (workspace) {
+      workspace.hidden = !next;
+    }
+  }
+
+  applyFocusDeckState();
+}
+
+function restoreFocusDeck() {
+  focusDeckState = {
+    conversation: true,
+    inspector: true,
+    workspace: false,
+    mode: "split",
+  };
+
+  const workspace = document.querySelector("#p5-workspace");
+
+  if (workspace) {
+    workspace.hidden = true;
+  }
+
+  applyFocusDeckState();
+}
+
+function initializeFocusDeck() {
+  document.querySelectorAll("[data-focus-command]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const command = button.dataset.focusCommand;
+
+      if (command === "conversation") {
+        toggleFocusDeckApp("conversation");
+      } else if (command === "inspector") {
+        toggleFocusDeckApp("inspector");
+      } else if (command === "workspace") {
+        toggleFocusDeckApp("workspace");
+      } else if (command === "split") {
+        setFocusDeckMode("split");
+      } else if (command === "restore") {
+        restoreFocusDeck();
+      }
+    });
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.altKey && event.key === "1") {
+      event.preventDefault();
+      setFocusDeckMode("conversation");
+    }
+
+    if (event.altKey && event.key === "2") {
+      event.preventDefault();
+      setFocusDeckMode("inspector");
+    }
+
+    if (event.altKey && event.key === "3") {
+      event.preventDefault();
+      toggleFocusDeckApp("workspace");
+    }
+
+    if (event.ctrlKey && event.key === "\\") {
+      event.preventDefault();
+      toggleFocusDeckApp("inspector");
+    }
+
+    if (event.key === "Escape") {
+      setFocusDeckMode("split");
+    }
+  });
+
+  applyFocusDeckState();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener(
+    "DOMContentLoaded",
+    initializeFocusDeck,
+    { once: true },
+  );
+} else {
+  initializeFocusDeck();
+}
+
+
+/* P6.9D PERSISTENT CONVERSATION ROUTER */
+
+const nexussConversationStorageKey =
+  "nexuss.activeConversationId";
+const nexussConversationTokenStorageKey =
+  "nexuss.conversationContinuationToken";
+
+let activeConversationId =
+  localStorage.getItem(nexussConversationStorageKey);
+let conversationContinuationToken =
+  localStorage.getItem(
+    nexussConversationTokenStorageKey,
+  );
+let conversationHistoryRestored = false;
+
+/* P6.10G CONVERSATION INITIALIZATION SINGLE-FLIGHT */
+let persistentConversationInitializationKey = null;
+let persistentConversationInitializationPromise = null;
+
+function resetPersistentConversationInitialization() {
+  persistentConversationInitializationKey = null;
+  persistentConversationInitializationPromise = null;
+}
+
+function ensureConversationIdentifiers() {
+  if (!activeConversationId) {
+    activeConversationId = crypto.randomUUID();
+    localStorage.setItem(
+      nexussConversationStorageKey,
+      activeConversationId,
+    );
+  }
+
+  if (!conversationContinuationToken) {
+    conversationContinuationToken =
+      `${crypto.randomUUID()}${crypto.randomUUID()}`;
+    localStorage.setItem(
+      nexussConversationTokenStorageKey,
+      conversationContinuationToken,
+    );
+  }
+}
+
+function startNewPersistentConversation() {
+  activeConversationId = crypto.randomUUID();
+  conversationContinuationToken =
+    `${crypto.randomUUID()}${crypto.randomUUID()}`;
+
+  localStorage.setItem(
+    nexussConversationStorageKey,
+    activeConversationId,
+  );
+  localStorage.setItem(
+    nexussConversationTokenStorageKey,
+    conversationContinuationToken,
+  );
+
+  resetPersistentConversationInitialization();
+  conversationHistoryRestored = true;
+  addMessage(
+    "assistant",
+    "Started a new saved conversation.",
+  );
+}
+
+async function ensurePersistentConversation() {
+  ensureConversationIdentifiers();
+
+  const conversationId = activeConversationId;
+  const continuationToken = conversationContinuationToken;
+  const initializationKey = `${conversationId}:${sessionId}`;
+
+  if (
+    persistentConversationInitializationPromise
+    && persistentConversationInitializationKey
+      === initializationKey
+  ) {
+    return persistentConversationInitializationPromise;
+  }
+
+  const initializationPromise = (async () => {
+    const response = await fetch("/v1/conversations", {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        user_session_id: sessionId,
+        provider_id: "auto",
+        title: "New conversation",
+        continuation_token: continuationToken,
+      }),
+    });
+
+    if (!response.ok) {
+      let problem = null;
+
+      try {
+        problem = await response.json();
+      } catch {
+        problem = null;
+      }
+
+      const detail = problem?.detail || {};
+
+      throw new Error(
+        detail.message
+        || `Conversation initialization failed (${response.status}).`,
+      );
+    }
+
+    return response.json();
+  })();
+
+  persistentConversationInitializationKey = initializationKey;
+  persistentConversationInitializationPromise = initializationPromise;
+
+  try {
+    return await initializationPromise;
+  } catch (error) {
+    if (
+      persistentConversationInitializationPromise
+        === initializationPromise
+    ) {
+      resetPersistentConversationInitialization();
+    }
+
+    throw error;
+  }
+}
+
+async function restorePersistentConversation() {
+  if (conversationHistoryRestored) return;
+
+  try {
+    const history = await ensurePersistentConversation();
+    const messages = history.messages || [];
+
+    if (messages.length) {
+      addMessage(
+        "assistant",
+        `Continuing saved conversation: ${history.conversation.title}`,
+      );
+
+      for (const message of messages) {
+        addMessage(
+          message.role,
+          message.text,
+          false,
+          {
+            speak: false,
+            rich: false,
+          },
+        );
+      }
+    }
+
+    conversationHistoryRestored = true;
+  } catch (error) {
+    console.warn(
+      "Persistent conversation restore failed.",
+      error,
+    );
+  }
+}
+
+async function executeConversationTurn(utterance, channel) {
+  try {
+    await ensurePersistentConversation();
+
+    const response = await fetch(
+      `/v1/conversations/${activeConversationId}/turns`,
+      {
+        method: "POST",
+        headers: apiHeaders(),
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          user_session_id: sessionId,
+          text: utterance,
+          provider_id: "auto",
+          external_processing_approved: true,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      let problem = null;
+
+      try {
+        problem = await response.json();
+      } catch {
+        problem = null;
+      }
+
+      const detail = problem?.detail || {};
+
+      throw new Error(
+        detail.message
+        || `Conversation routing failed (${response.status}).`,
+      );
+    }
+
+    const turn = await response.json();
+
+    if (turn.route === "chat") {
+      addMessage(
+        "assistant",
+        {
+          text: turn.assistant_message.text,
+          blocks: [],
+          cognitive: {
+            provider: "DeepSeek",
+            model: turn.model,
+            mode: "conversation",
+            trust: [
+              "Conversation saved locally for continuation.",
+              "No capability was required for this reply.",
+              "Nexuss retained policy and final authority.",
+            ],
+          },
+        },
+        false,
+        {
+          speak: channel === "voice",
+          rich: true,
+        },
+      );
+      setBusy(false);
+      return;
+    }
+
+    if (turn.route === "clarification") {
+      addMessage(
+        "assistant",
+        turn.clarification_question
+        || turn.assistant_message.text,
+        false,
+        {
+          speak: channel === "voice",
+          rich: false,
+        },
+      );
+      setBusy(false);
+      return;
+    }
+
+    if (
+      turn.route === "action"
+      && turn.action_instruction
+    ) {
+      addMessage(
+        "assistant",
+        turn.assistant_message.text
+        || "I understood the action and am routing it through Nexuss.",
+      );
+
+      await executeLegacyInstruction(
+        turn.action_instruction,
+        channel,
+      );
+      return;
+    }
+
+    throw new Error(
+      "The conversation router returned an unsupported state.",
+    );
+  } catch (error) {
+    addMessage(
+      "assistant",
+      error instanceof Error
+        ? error.message
+        : "Conversation routing failed closed.",
+      true,
+    );
+    setBusy(false);
+  }
+}
+
+async function executePreUnifiedInstruction(utterance, channel) {
+  const normalized = utterance.trim();
+
+  if (!normalized) {
+    setBusy(false);
+    return;
+  }
+
+  if (/^\/newchat$/i.test(normalized)) {
+    startNewPersistentConversation();
+    setBusy(false);
+    return;
+  }
+
+  // Explicit slash commands preserve expert control.
+  if (/^\//.test(normalized)) {
+    await executeLegacyInstruction(utterance, channel);
+    return;
+  }
+
+  await executeConversationTurn(utterance, channel);
+}
+
+window.NexussConversation = Object.freeze({
+  newConversation: startNewPersistentConversation,
+  currentConversationId: () => activeConversationId,
+});
+
+setTimeout(() => {
+  void restorePersistentConversation();
+}, 0);
+
+/* P6.10A MULTITASKING MEDIA SHELL */
+
+(() => {
+  "use strict";
+
+  const STORAGE_KEY = "nexuss.media.presentationMode";
+  const POSITION_KEY = "nexuss.media.miniPosition";
+  const VALID_MODES = new Set([
+    "expanded",
+    "mini",
+    "compact",
+  ]);
+
+  let currentMode = "expanded";
+  let observer = null;
+  let dragState = null;
+
+  function mediaDock() {
+    return document.getElementById("media-dock");
+  }
+
+  function restorePill() {
+    return document.getElementById(
+      "nexuss-media-restore-pill",
+    );
+  }
+
+  function currentMediaTitle(dock) {
+    const selectors = [
+      "[data-now-playing-title]",
+      ".now-playing-title",
+      ".media-now-playing-title",
+      ".media-title",
+      "h2",
+      "h3",
+    ];
+
+    for (const selector of selectors) {
+      const candidate = dock.querySelector(selector);
+      const value = candidate?.textContent?.trim();
+
+      if (
+        value
+        && !/^(media workspace|youtube results)$/i.test(value)
+      ) {
+        return value;
+      }
+    }
+
+    return "Media is still playing";
+  }
+
+  function createButton({
+    action,
+    label,
+    title,
+  }) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "nexuss-media-mode-button";
+    button.dataset.mediaShellAction = action;
+    button.textContent = label;
+    button.title = title;
+    button.setAttribute("aria-label", title);
+    return button;
+  }
+
+  function ensureRestorePill() {
+    let pill = restorePill();
+
+    if (pill) {
+      return pill;
+    }
+
+    pill = document.createElement("section");
+    pill.id = "nexuss-media-restore-pill";
+    pill.className = "nexuss-media-restore-pill";
+    pill.hidden = true;
+    pill.setAttribute("aria-label", "Hidden media controls");
+    pill.setAttribute("aria-live", "polite");
+
+    const status = document.createElement("div");
+    status.className = "nexuss-media-restore-copy";
+
+    const eyebrow = document.createElement("span");
+    eyebrow.className = "nexuss-media-restore-eyebrow";
+    eyebrow.textContent = "NOW PLAYING";
+
+    const title = document.createElement("strong");
+    title.className = "nexuss-media-restore-title";
+    title.textContent = "Media is still playing";
+
+    status.append(eyebrow, title);
+
+    const restore = createButton({
+      action: "restore",
+      label: "Restore",
+      title: "Restore the full media workspace",
+    });
+
+    const mini = createButton({
+      action: "mini",
+      label: "Mini",
+      title: "Open the floating mini-player",
+    });
+
+    pill.append(status, mini, restore);
+    document.body.append(pill);
+
+    return pill;
+  }
+
+  function ensureToolbar(dock) {
+    let toolbar = dock.querySelector(
+      "[data-nexuss-media-shell-controls]",
+    );
+
+    if (toolbar) {
+      return toolbar;
+    }
+
+    toolbar = document.createElement("div");
+    toolbar.className = "nexuss-media-shell-controls";
+    toolbar.dataset.nexussMediaShellControls = "true";
+    toolbar.setAttribute(
+      "aria-label",
+      "Media multitasking controls",
+    );
+
+    const grip = document.createElement("button");
+    grip.type = "button";
+    grip.className = "nexuss-media-drag-handle";
+    grip.textContent = "Move";
+    grip.title = "Drag the floating mini-player";
+    grip.setAttribute(
+      "aria-label",
+      "Drag the floating mini-player",
+    );
+
+    const label = document.createElement("span");
+    label.className = "nexuss-media-shell-label";
+    label.textContent = "Media workspace";
+
+    const expanded = createButton({
+      action: "expanded",
+      label: "Expand",
+      title: "Restore media to the main workspace",
+    });
+
+    const mini = createButton({
+      action: "mini",
+      label: "Mini",
+      title: "Float media above the current workspace",
+    });
+
+    const compact = createButton({
+      action: "compact",
+      label: "Hide",
+      title: "Hide the player while playback continues",
+    });
+
+    toolbar.append(
+      grip,
+      label,
+      expanded,
+      mini,
+      compact,
+    );
+
+    dock.prepend(toolbar);
+    bindDragHandle(grip, dock);
+    return toolbar;
+  }
+
+  function savedPosition() {
+    try {
+      const raw = localStorage.getItem(POSITION_KEY);
+
+      if (!raw) {
+        return null;
+      }
+
+      const parsed = JSON.parse(raw);
+
+      if (
+        Number.isFinite(parsed?.left)
+        && Number.isFinite(parsed?.top)
+      ) {
+        return parsed;
+      }
+    } catch {
+      return null;
+    }
+
+    return null;
+  }
+
+  function applySavedPosition(dock) {
+    const position = savedPosition();
+
+    if (!position || currentMode !== "mini") {
+      return;
+    }
+
+    const maximumLeft = Math.max(
+      8,
+      window.innerWidth - dock.offsetWidth - 8,
+    );
+    const maximumTop = Math.max(
+      8,
+      window.innerHeight - dock.offsetHeight - 8,
+    );
+
+    dock.style.left =
+      `${Math.min(Math.max(8, position.left), maximumLeft)}px`;
+    dock.style.top =
+      `${Math.min(Math.max(8, position.top), maximumTop)}px`;
+    dock.style.right = "auto";
+    dock.style.bottom = "auto";
+  }
+
+  function clearPosition(dock) {
+    dock.style.removeProperty("left");
+    dock.style.removeProperty("top");
+    dock.style.removeProperty("right");
+    dock.style.removeProperty("bottom");
+  }
+
+  function updateControls(dock) {
+    const toolbar = ensureToolbar(dock);
+
+    for (
+      const button of toolbar.querySelectorAll(
+        "[data-media-shell-action]",
+      )
+    ) {
+      const selected =
+        button.dataset.mediaShellAction === currentMode;
+
+      button.classList.toggle("is-active", selected);
+      button.setAttribute(
+        "aria-pressed",
+        selected ? "true" : "false",
+      );
+    }
+
+    const grip = toolbar.querySelector(
+      ".nexuss-media-drag-handle",
+    );
+
+    if (grip) {
+      grip.disabled = currentMode !== "mini";
+      grip.hidden = currentMode !== "mini";
+    }
+
+    const pill = ensureRestorePill();
+    const title = pill.querySelector(
+      ".nexuss-media-restore-title",
+    );
+
+    if (title) {
+      title.textContent = currentMediaTitle(dock);
+    }
+
+    pill.hidden = currentMode !== "compact";
+  }
+
+  function setMode(
+    requestedMode,
+    {
+      persist = true,
+      announce = true,
+    } = {},
+  ) {
+    const dock = mediaDock();
+
+    if (!dock) {
+      return false;
+    }
+
+    const mode = VALID_MODES.has(requestedMode)
+      ? requestedMode
+      : "expanded";
+
+    currentMode = mode;
+    dock.dataset.presentationMode = mode;
+    document.documentElement.dataset.mediaPresentationMode =
+      mode;
+
+    if (mode !== "mini") {
+      clearPosition(dock);
+    }
+
+    updateControls(dock);
+
+    if (mode === "mini") {
+      requestAnimationFrame(() => {
+        applySavedPosition(dock);
+      });
+    }
+
+    if (persist) {
+      localStorage.setItem(STORAGE_KEY, mode);
+    }
+
+    if (announce) {
+      const message = {
+        expanded: "Media restored to the workspace.",
+        mini: "Media moved to the floating mini-player.",
+        compact:
+          "Media hidden. Playback remains mounted and can be restored.",
+      }[mode];
+
+      window.dispatchEvent(
+        new CustomEvent("nexuss:media-mode-changed", {
+          detail: {
+            mode,
+            message,
+          },
+        }),
+      );
+    }
+
+    return true;
+  }
+
+  function toggleMini() {
+    return setMode(
+      currentMode === "mini" ? "expanded" : "mini",
+    );
+  }
+
+  function toggleCompact() {
+    return setMode(
+      currentMode === "compact" ? "expanded" : "compact",
+    );
+  }
+
+  function bindDragHandle(handle, dock) {
+    if (handle.dataset.dragBound === "true") {
+      return;
+    }
+
+    handle.dataset.dragBound = "true";
+
+    handle.addEventListener("pointerdown", (event) => {
+      if (currentMode !== "mini") {
+        return;
+      }
+
+      event.preventDefault();
+      handle.setPointerCapture(event.pointerId);
+
+      const rectangle = dock.getBoundingClientRect();
+
+      dragState = {
+        pointerId: event.pointerId,
+        offsetX: event.clientX - rectangle.left,
+        offsetY: event.clientY - rectangle.top,
+      };
+
+      dock.classList.add("is-dragging");
+    });
+
+    handle.addEventListener("pointermove", (event) => {
+      if (
+        !dragState
+        || dragState.pointerId !== event.pointerId
+        || currentMode !== "mini"
+      ) {
+        return;
+      }
+
+      const maximumLeft = Math.max(
+        8,
+        window.innerWidth - dock.offsetWidth - 8,
+      );
+      const maximumTop = Math.max(
+        8,
+        window.innerHeight - dock.offsetHeight - 8,
+      );
+
+      const left = Math.min(
+        Math.max(8, event.clientX - dragState.offsetX),
+        maximumLeft,
+      );
+      const top = Math.min(
+        Math.max(8, event.clientY - dragState.offsetY),
+        maximumTop,
+      );
+
+      dock.style.left = `${left}px`;
+      dock.style.top = `${top}px`;
+      dock.style.right = "auto";
+      dock.style.bottom = "auto";
+    });
+
+    function finishDrag(event) {
+      if (
+        !dragState
+        || dragState.pointerId !== event.pointerId
+      ) {
+        return;
+      }
+
+      const rectangle = dock.getBoundingClientRect();
+
+      localStorage.setItem(
+        POSITION_KEY,
+        JSON.stringify({
+          left: Math.round(rectangle.left),
+          top: Math.round(rectangle.top),
+        }),
+      );
+
+      dragState = null;
+      dock.classList.remove("is-dragging");
+    }
+
+    handle.addEventListener("pointerup", finishDrag);
+    handle.addEventListener("pointercancel", finishDrag);
+  }
+
+  function handleAction(event) {
+    const button = event.target.closest(
+      "[data-media-shell-action]",
+    );
+
+    if (!button) {
+      return;
+    }
+
+    const action = button.dataset.mediaShellAction;
+
+    if (action === "restore" || action === "expanded") {
+      setMode("expanded");
+    } else if (action === "mini") {
+      setMode("mini");
+    } else if (action === "compact") {
+      setMode("compact");
+    }
+  }
+
+  function initialiseDock() {
+    const dock = mediaDock();
+
+    if (!dock) {
+      return false;
+    }
+
+    ensureToolbar(dock);
+    ensureRestorePill();
+
+    const savedMode = localStorage.getItem(STORAGE_KEY);
+    const initialMode = VALID_MODES.has(savedMode)
+      ? savedMode
+      : "expanded";
+
+    setMode(initialMode, {
+      persist: false,
+      announce: false,
+    });
+
+    return true;
+  }
+
+  function observeMediaWorkspace() {
+    /* P6.10A.1 MEDIA OBSERVER HOTFIX */
+    if (mediaDock()) {
+      return;
+    }
+
+    if (observer) {
+      return;
+    }
+
+    observer = new MutationObserver(() => {
+      if (!mediaDock()) {
+        return;
+      }
+
+      observer.disconnect();
+      observer = null;
+      initialiseDock();
+    });
+
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+    });
+  }
+
+  document.addEventListener("click", handleAction);
+
+  document.addEventListener("keydown", (event) => {
+    if (
+      event.altKey
+      && !event.ctrlKey
+      && !event.metaKey
+      && event.key.toLowerCase() === "m"
+    ) {
+      event.preventDefault();
+
+      if (event.shiftKey) {
+        toggleCompact();
+      } else {
+        toggleMini();
+      }
+    }
+  });
+
+  window.addEventListener("resize", () => {
+    const dock = mediaDock();
+
+    if (dock && currentMode === "mini") {
+      applySavedPosition(dock);
+    }
+  });
+
+  window.NexussMediaWorkspace = Object.freeze({
+    expand: () => setMode("expanded"),
+    minimize: () => setMode("mini"),
+    hide: () => setMode("compact"),
+    toggleMini,
+    toggleCompact,
+    mode: () => currentMode,
+  });
+
+  function start() {
+    initialiseDock();
+    observeMediaWorkspace();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener(
+      "DOMContentLoaded",
+      start,
+      { once: true },
+    );
+  } else {
+    start();
+  }
+})();
+
+/* P6.10B UNIFIED INTERACTION RUNTIME */
+
+const nexussInteractionCache = new Map();
+let selectedNexussInteractionId = null;
+
+function ensureInteractionTray() {
+  let tray = document.getElementById("nexuss-interaction-tray");
+
+  if (tray) {
+    return tray;
+  }
+
+  tray = document.createElement("section");
+  tray.id = "nexuss-interaction-tray";
+  tray.className = "nexuss-interaction-tray";
+  tray.setAttribute("aria-label", "Recent Nexuss activity");
+
+  const header = document.createElement("header");
+  header.className = "nexuss-interaction-tray-header";
+
+  const title = document.createElement("div");
+  title.className = "nexuss-interaction-tray-title";
+
+  const heading = document.createElement("strong");
+  heading.textContent = "Activity";
+
+  const subtitle = document.createElement("span");
+  subtitle.textContent = "Unified interactions";
+
+  title.append(heading, subtitle);
+
+  const actions = document.createElement("div");
+  actions.className = "nexuss-interaction-tray-actions";
+
+  const save = document.createElement("button");
+  save.type = "button";
+  save.textContent = "Save session";
+  save.title = "Prepare a managed session note with approval.";
+  save.addEventListener("click", () => {
+    void saveCurrentConversationAsNote();
+  });
+
+  const newChat = document.createElement("button");
+  newChat.type = "button";
+  newChat.textContent = "New";
+  newChat.title = "Start a separate saved conversation";
+  newChat.addEventListener("click", () => {
+    if (window.NexussConversation?.newConversation) {
+      window.NexussConversation.newConversation();
+      nexussInteractionCache.clear();
+      selectedNexussInteractionId = null;
+      renderInteractionTray();
+    }
+  });
+
+  actions.append(save, newChat);
+  header.append(title, actions);
+
+  const list = document.createElement("div");
+  list.className = "nexuss-interaction-tray-list";
+  list.dataset.interactionTrayList = "true";
+
+  tray.append(header, list);
+  document.body.append(tray);
+  return tray;
+}
+
+function interactionStateLabel(interaction) {
+  const labels = {
+    responded: "Answered",
+    completed: "Completed",
+    awaiting_approval: "Approval",
+    failed: "Failed",
+    denied: "Denied",
+  };
+
+  return labels[interaction.state]
+    || titleCase(interaction.state || "received");
+}
+
+function renderInteractionTray() {
+  const tray = ensureInteractionTray();
+  const list = tray.querySelector("[data-interaction-tray-list]");
+  list.replaceChildren();
+
+  const interactions = Array.from(
+    nexussInteractionCache.values(),
+  ).sort((left, right) => (
+    new Date(right.updated_at).getTime()
+    - new Date(left.updated_at).getTime()
+  )).slice(0, 8);
+
+  if (!interactions.length) {
+    const empty = document.createElement("p");
+    empty.className = "nexuss-interaction-tray-empty";
+    empty.textContent = "No governed interactions yet.";
+    list.append(empty);
+    return;
+  }
+
+  for (const interaction of interactions) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "nexuss-interaction-item";
+    button.classList.toggle(
+      "is-selected",
+      selectedNexussInteractionId
+        === interaction.interaction_id,
+    );
+
+    const top = document.createElement("span");
+    top.className = "nexuss-interaction-item-top";
+
+    const kind = document.createElement("strong");
+    kind.textContent = titleCase(interaction.kind);
+
+    const state = document.createElement("span");
+    state.className = (
+      `nexuss-interaction-state is-${interaction.state}`
+    );
+    state.textContent = interactionStateLabel(interaction);
+
+    top.append(kind, state);
+
+    const summary = document.createElement("span");
+    summary.className = "nexuss-interaction-item-summary";
+    summary.textContent = interaction.display_text;
+
+    button.append(top, summary);
+    button.addEventListener("click", () => {
+      void selectUnifiedInteraction(interaction.interaction_id);
+    });
+    list.append(button);
+  }
+}
+
+function rememberUnifiedInteraction(interaction) {
+  nexussInteractionCache.set(
+    interaction.interaction_id,
+    interaction,
+  );
+  selectedNexussInteractionId = interaction.interaction_id;
+  renderInteractionTray();
+}
+
+function renderUnifiedInteraction(interaction) {
+  selectedNexussInteractionId = interaction.interaction_id;
+  renderInteractionTray();
+
+  if (elements?.receiptState) {
+    elements.receiptState.textContent =
+      interactionStateLabel(interaction);
+  }
+
+  if (elements?.metricIntent) {
+    elements.metricIntent.textContent = (
+      interaction.kind === "chat"
+        ? "Assistant Conversation"
+        : interaction.kind === "clarification"
+          ? "Target Clarification"
+          : "Governed Action"
+    );
+  }
+
+  if (elements?.metricConfidence) {
+    elements.metricConfidence.textContent = "Verified";
+  }
+
+  if (elements?.metricRisk) {
+    elements.metricRisk.textContent = (
+      interaction.kind === "action"
+        ? "Policy governed"
+        : "Informational"
+    );
+  }
+
+  if (elements?.metricState) {
+    elements.metricState.textContent =
+      interactionStateLabel(interaction);
+  }
+
+  if (
+    typeof renderEvents === "function"
+    && interaction.events
+  ) {
+    renderEvents(interaction.events);
+  }
+
+  if (elements?.planList) {
+    elements.planList.className = "detail-list";
+    elements.planList.replaceChildren();
+
+    const details = {
+      route: interaction.kind,
+      state: interaction.state,
+      provider: interaction.provider_id,
+      model: interaction.model,
+      internal_user_rewrite: "not shown",
+    };
+
+    if (interaction.resolved_instruction) {
+      details.resolved_instruction =
+        interaction.resolved_instruction;
+    }
+
+    if (interaction.capability_hint) {
+      details.capability_hint = interaction.capability_hint;
+    }
+
+    if (interaction.core_task_id) {
+      details.task_id = interaction.core_task_id;
+    }
+
+    elements.planList.append(
+      createDetailCard(
+        "Unified interaction",
+        interaction.state,
+        details,
+      ),
+    );
+  }
+
+  if (elements?.policySummary) {
+    elements.policySummary.textContent = (
+      interaction.kind === "action"
+        ? (
+          interaction.approval_required
+            ? "Protected action · approval required"
+            : "Nexuss Core governed the action"
+        )
+        : "No capability execution required"
+    );
+  }
+
+  if (elements?.evidenceList) {
+    elements.evidenceList.className = "detail-list";
+    elements.evidenceList.replaceChildren();
+
+    if (interaction.receipt_id || interaction.evidence_count) {
+      elements.evidenceList.append(
+        createDetailCard(
+          "Canonical evidence",
+          interaction.state,
+          {
+            receipt_id: interaction.receipt_id || "pending",
+            evidence_records:
+              String(interaction.evidence_count || 0),
+            interaction_id: interaction.interaction_id,
+          },
+        ),
+      );
+    } else {
+      elements.evidenceList.className =
+        "detail-list empty-state";
+      elements.evidenceList.textContent = (
+        interaction.kind === "chat"
+          ? "Conversation saved locally; no tool evidence required."
+          : "Evidence has not been produced yet."
+      );
+    }
+  }
+
+  if (elements?.evidenceSummary) {
+    elements.evidenceSummary.textContent = (
+      `${interaction.evidence_count || 0} evidence record`
+      + `${interaction.evidence_count === 1 ? "" : "s"}`
+    );
+  }
+
+  if (elements?.receiptId) {
+    elements.receiptId.textContent = (
+      interaction.receipt_id || interaction.interaction_id
+    );
+  }
+
+  if (elements?.receiptVerified) {
+    elements.receiptVerified.textContent = (
+      interaction.state === "completed"
+      || interaction.state === "responded"
+        ? "Yes"
+        : "Pending"
+    );
+  }
+
+  if (elements?.receiptTitle) {
+    elements.receiptTitle.textContent = (
+      `${titleCase(interaction.kind)} interaction`
+    );
+  }
+}
+
+/* P6.10D AUTHORITATIVE PRESENTATION SYNCHRONIZER */
+
+function isP610DMediaTask(task, interaction) {
+  const instruction = String(
+    interaction?.resolved_instruction || "",
+  ).toLowerCase();
+
+  if (/\b(youtube|media|play|watch|video|music)\b/.test(instruction)) {
+    return true;
+  }
+
+  return (task?.results || []).some((result) => (
+    String(result?.capability_id || "").startsWith("media.")
+  ));
+}
+
+function p610DMediaRendered() {
+  const workspace = document.getElementById("media-dock");
+  const queue = document.getElementById("media-queue");
+  const video = document.getElementById("media-video");
+  const title = document.getElementById("media-title");
+
+  if (!workspace || workspace.hidden) {
+    return false;
+  }
+
+  return Boolean(
+    queue?.children?.length
+    || video?.querySelector("iframe, video")
+    || String(title?.textContent || "").trim(),
+  );
+}
+
+async function p610DPresentCoreTask(interaction, presentation) {
+  const task = presentation?.task;
+  const receipt = presentation?.receipt || null;
+
+  if (!task) {
+    return { presented: false, message: interaction.display_text };
+  }
+
+  if (typeof renderTask !== "function") {
+    throw new Error("The verified task renderer is unavailable.");
+  }
+
+  renderTask(task, receipt);
+
+  if (
+    task.state === "awaiting_approval"
+    && task.approval
+    && typeof showApproval === "function"
+  ) {
+    await showApproval(task.approval);
+  } else if (typeof hideApproval === "function") {
+    hideApproval();
+  }
+
+  if (isP610DMediaTask(task, interaction)) {
+    const workspace = document.getElementById("media-dock");
+    if (workspace) {
+      workspace.hidden = false;
+    }
+
+    if (window.NexussMediaWorkspace?.expand) {
+      window.NexussMediaWorkspace.expand();
+    }
+
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    if (task.state === "completed" && !p610DMediaRendered()) {
+      return {
+        presented: false,
+        message: (
+          "The media task completed without a visible player or "
+          + "results. Nexuss is not claiming playback."
+        ),
+      };
+    }
+  }
+
+  return { presented: true, message: interaction.display_text };
+}
+
+async function p610DFetchPresentation(interaction) {
+  if (interaction?.presentation?.task) {
+    return interaction.presentation;
+  }
+
+  if (!interaction?.interaction_id) {
+    return null;
+  }
+
+  const response = await fetch(
+    `/v1/interactions/${interaction.interaction_id}/presentation`,
+    { headers: apiHeaders() },
+  );
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return response.json();
+}
+
+function isP610DLocalMediaCommand(utterance) {
+  const normalized = String(utterance || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[.!?]+$/g, "");
+
+  return new Set([
+    "open youtube",
+    "show youtube",
+    "restore youtube",
+    "open media",
+    "show media",
+    "restore media",
+    "show the player",
+    "restore the player",
+  ]).has(normalized);
+}
+
+function p610DOpenMediaWorkspace() {
+  const workspace = document.getElementById("media-dock");
+  if (!workspace) return false;
+
+  workspace.hidden = false;
+  if (window.NexussMediaWorkspace?.expand) {
+    window.NexussMediaWorkspace.expand();
+  }
+  workspace.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  return true;
+}
+
+async function loadCoreTaskForInteraction(interaction) {
+  if (!interaction?.core_task_id && !interaction?.presentation?.task) {
+    return;
+  }
+
+  try {
+    const presentation = await p610DFetchPresentation(interaction);
+
+    if (presentation?.task) {
+      await p610DPresentCoreTask(interaction, presentation);
+      return;
+    }
+
+    if (!interaction.core_task_id) {
+      return;
+    }
+
+    const taskResponse = await fetch(
+      `/v1/tasks/${interaction.core_task_id}`,
+      { headers: apiHeaders() },
+    );
+
+    if (!taskResponse.ok) {
+      throw new Error(`Task refresh failed (${taskResponse.status}).`);
+    }
+
+    const task = await taskResponse.json();
+    let receipt = null;
+
+    try {
+      receipt = await fetchReceipt(task.task_id);
+    } catch (error) {
+      console.warn("Task receipt is not available yet.", error);
+    }
+
+    await p610DPresentCoreTask(
+      interaction,
+      { task, receipt },
+    );
+  } catch (error) {
+    console.error("Interaction presentation failed.", error);
+    addMessage(
+      "assistant",
+      error instanceof Error
+        ? error.message
+        : "The interaction presentation failed closed.",
+      true,
+    );
+  }
+}
+
+async function selectUnifiedInteraction(interactionId) {
+  const cached = nexussInteractionCache.get(interactionId);
+
+  if (!cached) {
+    return;
+  }
+
+  renderUnifiedInteraction(cached);
+  await loadCoreTaskForInteraction(cached);
+}
+
+async function loadRecentUnifiedInteractions() {
+  try {
+    await ensurePersistentConversation();
+
+    const encoded = encodeURIComponent(activeConversationId);
+    const response = await fetch(
+      `/v1/interactions?conversation_id=${encoded}&limit=8`,
+      { headers: apiHeaders() },
+    );
+
+    if (!response.ok) {
+      return;
+    }
+
+    const payload = await response.json();
+
+    for (const interaction of payload.interactions || []) {
+      nexussInteractionCache.set(
+        interaction.interaction_id,
+        interaction,
+      );
+    }
+
+    renderInteractionTray();
+  } catch (error) {
+    console.warn("Recent interaction loading failed.", error);
+  }
+}
+
+async function saveCurrentConversationAsNote() {
+  try {
+    await ensurePersistentConversation();
+
+    const response = await fetch(
+      `/v1/interactions/conversations/${activeConversationId}/save`,
+      {
+        method: "POST",
+        headers: apiHeaders(),
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          user_session_id: sessionId,
+          note_title: null,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      let problem = null;
+
+      try {
+        problem = await response.json();
+      } catch {
+        problem = null;
+      }
+
+      const detail = problem?.detail || {};
+
+      throw new Error(
+        detail.message
+        || `Session save failed (${response.status}).`,
+      );
+    }
+
+    const result = await response.json();
+
+    addMessage(
+      "assistant",
+      result.approval_required
+        ? (
+          "This conversation is already saved locally. "
+          + "I prepared a managed session note and paused "
+          + "for your exact approval."
+        )
+        : (
+          "The conversation is saved locally and the "
+          + "managed session note was created."
+        ),
+    );
+
+    if (result.presentation?.task) {
+      await p610DPresentCoreTask(
+        {
+          interaction_id: null,
+          core_task_id: result.core_task_id,
+          display_text: "Session note approval",
+          resolved_instruction: "Create managed session note",
+        },
+        result.presentation,
+      );
+    } else if (result.core_task_id) {
+      await loadCoreTaskForInteraction({
+        core_task_id: result.core_task_id,
+        approval_required: result.approval_required,
+      });
+    }
+  } catch (error) {
+    addMessage(
+      "assistant",
+      error instanceof Error
+        ? error.message
+        : "Session promotion failed closed.",
+      true,
+    );
+  }
+}
+
+
+/* P6.11 REMOVED OBSOLETE P6.10C PRESENTATION BRIDGE */
+
+async function executeUnifiedInteraction(
+  utterance,
+  channel,
+) {
+  if (isP610DLocalMediaCommand(utterance)) {
+    const opened = p610DOpenMediaWorkspace();
+    addMessage(
+      "assistant",
+      opened
+        ? "Opened the Nexuss media workspace."
+        : "The media workspace is unavailable in this interface state.",
+      !opened,
+      { speak: channel === "voice" },
+    );
+    setBusy(false);
+    return;
+  }
+
+  try {
+    await ensurePersistentConversation();
+
+    const response = await fetch("/v1/interactions", {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify({
+        request_id: crypto.randomUUID(),
+        conversation_id: activeConversationId,
+        user_session_id: sessionId,
+        text: utterance,
+        provider_id: "auto",
+        external_processing_approved: true,
+      }),
+    });
+
+    if (!response.ok) {
+      let problem = null;
+      try {
+        problem = await response.json();
+      } catch {
+        problem = null;
+      }
+      const detail = problem?.detail || {};
+      throw new Error(
+        detail.message
+        || `Unified interaction failed (${response.status}).`,
+      );
+    }
+
+    const interaction = await response.json();
+    rememberUnifiedInteraction(interaction);
+    renderUnifiedInteraction(interaction);
+
+    let displayText = interaction.display_text;
+    let presentationResult = null;
+
+    if (interaction.kind === "action") {
+      const presentation = await p610DFetchPresentation(interaction);
+      presentationResult = await p610DPresentCoreTask(
+        interaction,
+        presentation,
+      );
+
+      if (presentationResult && !presentationResult.presented) {
+        displayText = presentationResult.message;
+      }
+    }
+
+    addMessage(
+      "assistant",
+      displayText,
+      !presentationResult?.presented && interaction.kind === "action",
+      {
+        speak: channel === "voice",
+        rich: interaction.kind === "chat",
+      },
+    );
+  } catch (error) {
+    addMessage(
+      "assistant",
+      error instanceof Error
+        ? error.message
+        : "The interaction failed closed.",
+      true,
+    );
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function executeInstruction(utterance, channel) {
+  const normalized = utterance.trim();
+
+  if (!normalized) {
+    setBusy(false);
+    return;
+  }
+
+  if (/^\//.test(normalized)) {
+    await executePreUnifiedInstruction(utterance, channel);
+    return;
+  }
+
+  await executeUnifiedInteraction(utterance, channel);
+}
+
+window.NexussUnifiedSubmission = Object.freeze({
+  submit: submitUnifiedUserTurn,
+  legacyGatewayActiveForNormalSubmit: false,
+});
+
+window.NexussInteractions = Object.freeze({
+  recent: loadRecentUnifiedInteractions,
+  saveSession: saveCurrentConversationAsNote,
+  select: selectUnifiedInteraction,
+});
+
+setTimeout(() => {
+  ensureInteractionTray();
+  void loadRecentUnifiedInteractions();
+}, 0);

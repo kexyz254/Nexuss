@@ -43,6 +43,11 @@ class OpenAICompatibleProvider:
             "temperature": 0,
             "max_tokens": self.profile.max_output_tokens,
         }
+
+        if self.profile.provider_id == "deepseek":
+            body["thinking"] = {"type": "disabled"}
+            body["tool_choice"] = "none"
+
         try:
             with httpx.Client(
                 base_url=self.profile.api_base.rstrip("/"),
