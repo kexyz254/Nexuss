@@ -12,6 +12,7 @@ from nexuss.conversation.api import register_conversation_routes
 from nexuss.collaboration.api import register_collaboration_routes
 
 from nexuss.orchestration.api import register_orchestration_routes
+from nexuss.connectors.trading import register_trading_routes
 
 import ipaddress
 import os
@@ -388,6 +389,8 @@ async def create_development_package(
             },
         ) from exc
 
+
+register_trading_routes(app, _require_local_control)
 
 register_cognitive_routes(
     app,
