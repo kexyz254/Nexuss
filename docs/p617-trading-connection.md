@@ -14,6 +14,13 @@ origins, embedded credentials, redirects and oversized responses.
 - GET /v1/trading/evidence/status
 - GET /v1/trading/evidence/decisions?symbol=BTC%2FUSDT
 - POST /v1/trading/feedback
+- GET /v1/trading/worker/status
+- GET /v1/trading/observations?after=0&limit=100
+
+The VPS observer persists health transitions and hourly checkpoints while Nexuss
+is offline. Read pages using next_cursor, persisting the cursor after processing.
+This API enables replay but does not yet run an automatic replay consumer. Check
+last_checked for worker staleness and backlog_full for exhausted storage capacity.
 
 These require the existing local-control boundary. Feedback follows the TAS
 gateway schema and is advisory only; duplicate IDs cannot replace evidence.

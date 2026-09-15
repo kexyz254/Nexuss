@@ -33,7 +33,8 @@ class TradingClient:
     def request(self, method, target, payload=None):
         allowed = (method == "GET" and target.startswith("/agent/v1/evidence/")) or (
             method == "POST" and target == "/agent/v1/feedback") or (
-            method == "GET" and target == "/agent/v1/capabilities")
+            method == "GET" and target in {"/agent/v1/capabilities", "/agent/v1/worker/status"}) or (
+            method == "GET" and target.startswith("/agent/v1/observations?"))
         if not allowed:
             raise ValueError("Operation not supported")
         body = b"" if payload is None else json.dumps(payload, separators=(",", ":"), allow_nan=False).encode()
@@ -61,6 +62,11 @@ class TradingClient:
             raise ValueError("Unknown evidence resource")
         return self.request("GET", "/agent/v1/evidence/" + resource + "?" + urlencode({"symbol": symbol}))
 
+    def observations(self, after=0, limit=100):
+        if type(after) is not int or after < 0 or type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("Invalid observation cursor or limit")
+        return self.request("GET", "/agent/v1/observations?" + urlencode({"after": after, "limit": limit}))
+
 
 def register_trading_routes(app, require_local_control):
     def client():
@@ -77,6 +83,24 @@ def register_trading_routes(app, require_local_control):
             return client().evidence(resource, symbol)
         except (httpx.HTTPError, ValueError):
             raise HTTPException(502, "Trading evidence unavailable") from None
+
+    @app.get("/v1/trading/worker/status")
+    def worker_status(request: Request):
+        require_local_control(request)
+        try:
+            return client().request("GET", "/agent/v1/worker/status")
+        except (httpx.HTTPError, ValueError):
+            raise HTTPException(502, "Trading worker unavailable") from None
+
+    @app.get("/v1/trading/observations")
+    def observations(request: Request, after: int = 0, limit: int = 100):
+        require_local_control(request)
+        if after < 0 or not 1 <= limit <= 100:
+            raise HTTPException(422, "Invalid observation cursor or limit")
+        try:
+            return client().observations(after, limit)
+        except (httpx.HTTPError, ValueError):
+            raise HTTPException(502, "Trading observations unavailable") from None
 
     @app.post("/v1/trading/feedback")
     def feedback(payload: dict, request: Request):
