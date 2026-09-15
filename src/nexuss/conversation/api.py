@@ -6,7 +6,7 @@ from collections.abc import Callable
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import FastAPI, Header, HTTPException, Request, status
+from fastapi import FastAPI, Header, HTTPException, Request, Response, status
 
 from nexuss.ai.connections import (
     AIProviderConnectionError,
@@ -25,7 +25,7 @@ from nexuss.conversation.models import (
     ConversationTurnResponse,
     CreateConversationRequest,
     MessageRole,
-)
+    RenameConversationRequest,)
 from nexuss.conversation.router import (
     ConversationRouterService,
     ConversationRoutingError,
@@ -181,9 +181,90 @@ def register_conversation_routes(
             ]
         }
 
+    @app.patch(
+        "/v1/conversations/{conversation_id}",
+        response_model=ConversationHistoryResponse,
+    )
+    def rename_conversation(
+        conversation_id: UUID,
+        body: RenameConversationRequest,
+        request: Request,
+        session_id: Annotated[
+            UUID,
+            Header(alias="X-Nexuss-Session-ID"),
+        ],
+        authenticated: Annotated[
+            bool,
+            Header(alias="X-Nexuss-Session-Authenticated"),
+        ],
+    ) -> ConversationHistoryResponse:
+        require_local_control(request)
+        record = store.get(conversation_id)
+
+        if record is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Conversation was not found.",
+            )
+
+        validate_session(
+            expected=record.user_session_id,
+            actual=session_id,
+            authenticated=authenticated,
+        )
+
+        renamed = store.rename(
+            conversation_id,
+            title=body.title,
+        )
+
+        if renamed is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Conversation was not found.",
+            )
+
+        return ConversationHistoryResponse(
+            conversation=renamed,
+            messages=store.messages(conversation_id),
+        )
+
+    @app.delete(
+        "/v1/conversations/{conversation_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    def delete_conversation(
+        conversation_id: UUID,
+        request: Request,
+        session_id: Annotated[
+            UUID,
+            Header(alias="X-Nexuss-Session-ID"),
+        ],
+        authenticated: Annotated[
+            bool,
+            Header(alias="X-Nexuss-Session-Authenticated"),
+        ],
+    ) -> Response:
+        require_local_control(request)
+        record = store.get(conversation_id)
+
+        if record is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Conversation was not found.",
+            )
+
+        validate_session(
+            expected=record.user_session_id,
+            actual=session_id,
+            authenticated=authenticated,
+        )
+
+        store.delete(conversation_id)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
     @app.post(
-        "/v1/conversations/{conversation_id}/turns",
-        response_model=ConversationTurnResponse,
+        "/v1/conversations/{conversation_id}/turns",        response_model=ConversationTurnResponse,
     )
     def create_turn(
         conversation_id: UUID,

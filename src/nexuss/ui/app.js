@@ -35,6 +35,10 @@ const elements = {
   receiptReversible: document.querySelector("#receipt-reversible"),
   receiptTitle: document.querySelector("#receipt-title"),
   sessionLabel: document.querySelector("#session-label"),
+  newChat: document.querySelector("#new-chat-button"),
+  chatList: document.querySelector("#chat-list"),
+  conversationTitle: document.querySelector("#conversation-title"),
+  conversationSubtitle: document.querySelector("#conversation-subtitle"),
   reviewApproval: document.querySelector("#review-approval-button"),
   copyPath: document.querySelector("#copy-path-button"),
   rollback: document.querySelector("#rollback-button"),
@@ -509,7 +513,9 @@ function addMessage(role, text, isError = false, options = {}) {
   const author = document.createElement("span");
   author.textContent = role === "user" ? "You" : "Nexuss";
   const timestamp = document.createElement("time");
-  timestamp.textContent = timeLabel();
+  timestamp.textContent = timeLabel(
+    options.createdAt ? new Date(options.createdAt) : new Date(),
+  );
   meta.append(author, timestamp);
 
   const bubble = document.createElement("div");
@@ -2814,22 +2820,14 @@ if (document.readyState === "loading") {
 }
 
 
-/* P6.9D PERSISTENT CONVERSATION ROUTER */
+/* P6.15 MULTI-CHAT SESSION LAYER */
 
-const nexussConversationStorageKey =
-  "nexuss.activeConversationId";
-const nexussConversationTokenStorageKey =
-  "nexuss.conversationContinuationToken";
+let activeConversationId = null;
+let conversationContinuationToken = null;
+let activeConversationRecord = null;
+let activeConversationPersisted = false;
+let conversationIndex = [];
 
-let activeConversationId =
-  localStorage.getItem(nexussConversationStorageKey);
-let conversationContinuationToken =
-  localStorage.getItem(
-    nexussConversationTokenStorageKey,
-  );
-let conversationHistoryRestored = false;
-
-/* P6.10G CONVERSATION INITIALIZATION SINGLE-FLIGHT */
 let persistentConversationInitializationKey = null;
 let persistentConversationInitializationPromise = null;
 
@@ -2838,53 +2836,403 @@ function resetPersistentConversationInitialization() {
   persistentConversationInitializationPromise = null;
 }
 
-function ensureConversationIdentifiers() {
-  if (!activeConversationId) {
-    activeConversationId = crypto.randomUUID();
-    localStorage.setItem(
-      nexussConversationStorageKey,
-      activeConversationId,
-    );
-  }
-
-  if (!conversationContinuationToken) {
-    conversationContinuationToken =
-      `${crypto.randomUUID()}${crypto.randomUUID()}`;
-    localStorage.setItem(
-      nexussConversationTokenStorageKey,
-      conversationContinuationToken,
-    );
-  }
-}
-
-function startNewPersistentConversation() {
+function createConversationIdentifiers() {
   activeConversationId = crypto.randomUUID();
   conversationContinuationToken =
     `${crypto.randomUUID()}${crypto.randomUUID()}`;
+}
 
-  localStorage.setItem(
-    nexussConversationStorageKey,
-    activeConversationId,
-  );
-  localStorage.setItem(
-    nexussConversationTokenStorageKey,
-    conversationContinuationToken,
-  );
+function updateConversationHeader(record = null) {
+  if (
+    !elements.conversationTitle
+    || !elements.conversationSubtitle
+  ) {
+    return;
+  }
 
-  resetPersistentConversationInitialization();
-  conversationHistoryRestored = true;
+  if (!record) {
+    elements.conversationTitle.textContent = "New chat";
+    elements.conversationSubtitle.textContent =
+      "Fresh conversation Â· saved locally after your first message.";
+    return;
+  }
+
+  elements.conversationTitle.textContent =
+    record.title || "New chat";
+
+  const updated = record.updated_at
+    ? new Date(record.updated_at).toLocaleString()
+    : "just now";
+
+  elements.conversationSubtitle.textContent =
+    `Saved Nexuss chat Â· updated ${updated}`;
+}
+
+function clearConversationTimeline(message = null) {
+  elements.timeline.replaceChildren();
+
   addMessage(
     "assistant",
-    "Started a new saved conversation.",
+    message || (
+      "New chat ready. Ask Nexuss anything, or choose a saved "
+      + "chat from the sidebar."
+    ),
+    false,
+    {
+      speak: false,
+      rich: false,
+    },
   );
 }
 
+function resetConversationActivity() {
+  nexussInteractionCache.clear();
+  selectedNexussInteractionId = null;
+  renderInteractionTray();
+}
+
+function renderConversationList() {
+  if (!elements.chatList) {
+    return;
+  }
+
+  elements.chatList.replaceChildren();
+
+  if (!conversationIndex.length) {
+    const empty = document.createElement("p");
+    empty.className = "chat-list-empty";
+    empty.textContent = "No saved chats yet.";
+    elements.chatList.append(empty);
+    return;
+  }
+
+  for (const conversation of conversationIndex) {
+    const row = document.createElement("div");
+    row.className = "chat-list-row";
+    row.classList.toggle(
+      "is-active",
+      activeConversationPersisted
+        && conversation.conversation_id === activeConversationId,
+    );
+
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "chat-list-item";
+    open.setAttribute(
+      "aria-current",
+      row.classList.contains("is-active")
+        ? "page"
+        : "false",
+    );
+
+    const title = document.createElement("strong");
+    title.textContent =
+      conversation.title || "New conversation";
+
+    const meta = document.createElement("span");
+    meta.textContent = conversation.updated_at
+      ? new Date(conversation.updated_at).toLocaleString()
+      : "Saved chat";
+
+    open.append(title, meta);
+    open.addEventListener("click", () => {
+      void selectPersistentConversation(
+        conversation.conversation_id,
+      );
+    });
+
+    const actions = document.createElement("div");
+    actions.className = "chat-list-actions";
+
+    const rename = document.createElement("button");
+    rename.type = "button";
+    rename.className = "chat-list-action";
+    rename.textContent = "âœŽ";
+    rename.title = "Rename chat";
+    rename.setAttribute(
+      "aria-label",
+      `Rename ${conversation.title}`,
+    );
+    rename.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void renamePersistentConversation(conversation);
+    });
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "chat-list-action is-danger";
+    remove.textContent = "Ã—";
+    remove.title = "Delete chat";
+    remove.setAttribute(
+      "aria-label",
+      `Delete ${conversation.title}`,
+    );
+    remove.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void deletePersistentConversation(conversation);
+    });
+
+    actions.append(rename, remove);
+    row.append(open, actions);
+    elements.chatList.append(row);
+  }
+}
+
+async function refreshConversationList() {
+  try {
+    const response = await fetch(
+      "/v1/conversations",
+      {
+        headers: apiHeaders(),
+        cache: "no-store",
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Conversation list failed (${response.status}).`,
+      );
+    }
+
+    const payload = await response.json();
+
+    conversationIndex = Array.isArray(
+      payload.conversations,
+    )
+      ? payload.conversations
+      : [];
+
+    renderConversationList();
+  } catch (error) {
+    console.warn(
+      "Conversation list refresh failed.",
+      error,
+    );
+  }
+}
+
+function startNewPersistentConversation(options = {}) {
+  createConversationIdentifiers();
+  activeConversationRecord = null;
+  activeConversationPersisted = false;
+  resetPersistentConversationInitialization();
+  updateConversationHeader();
+
+  clearConversationTimeline(
+    options.announce === false
+      ? null
+      : (
+        "Started a new chat. Your previous chats remain "
+        + "in the sidebar."
+      ),
+  );
+
+  renderConversationList();
+  resetConversationActivity();
+  elements.input?.focus();
+}
+
+function renderStoredConversation(history) {
+  const messages = history.messages || [];
+  elements.timeline.replaceChildren();
+
+  if (!messages.length) {
+    addMessage(
+      "assistant",
+      "This saved chat is empty. Continue it with a new message.",
+    );
+    return;
+  }
+
+  for (const message of messages) {
+    addMessage(
+      message.role,
+      message.text,
+      false,
+      {
+        speak: false,
+        rich: false,
+        createdAt: message.created_at,
+      },
+    );
+  }
+}
+
+async function selectPersistentConversation(
+  conversationId,
+) {
+  try {
+    const response = await fetch(
+      `/v1/conversations/${encodeURIComponent(
+        conversationId
+      )}`,
+      {
+        headers: apiHeaders(),
+        cache: "no-store",
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Conversation load failed (${response.status}).`,
+      );
+    }
+
+    const history = await response.json();
+
+    activeConversationId =
+      history.conversation.conversation_id;
+    conversationContinuationToken = null;
+    activeConversationRecord = history.conversation;
+    activeConversationPersisted = true;
+
+    resetPersistentConversationInitialization();
+    updateConversationHeader(activeConversationRecord);
+    renderStoredConversation(history);
+    renderConversationList();
+    resetConversationActivity();
+
+    await loadRecentUnifiedInteractions();
+    elements.input?.focus();
+  } catch (error) {
+    showToast(
+      error instanceof Error
+        ? error.message
+        : "The saved chat could not be loaded.",
+    );
+  }
+}
+
+async function renamePersistentConversation(
+  conversation,
+) {
+  const nextTitle = window.prompt(
+    "Rename chat",
+    conversation.title || "New conversation",
+  );
+
+  if (nextTitle === null) {
+    return;
+  }
+
+  const title = nextTitle.trim();
+
+  if (!title) {
+    showToast("Chat title cannot be empty.");
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `/v1/conversations/${encodeURIComponent(
+        conversation.conversation_id
+      )}`,
+      {
+        method: "PATCH",
+        headers: apiHeaders(),
+        body: JSON.stringify({ title }),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Rename failed (${response.status}).`,
+      );
+    }
+
+    const history = await response.json();
+
+    if (
+      history.conversation.conversation_id
+      === activeConversationId
+    ) {
+      activeConversationRecord = history.conversation;
+      updateConversationHeader(
+        activeConversationRecord,
+      );
+    }
+
+    await refreshConversationList();
+  } catch (error) {
+    showToast(
+      error instanceof Error
+        ? error.message
+        : "Chat rename failed.",
+    );
+  }
+}
+
+async function deletePersistentConversation(
+  conversation,
+) {
+  const confirmed = window.confirm(
+    `Delete "${conversation.title}"? `
+    + "This removes its saved messages.",
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `/v1/conversations/${encodeURIComponent(
+        conversation.conversation_id
+      )}`,
+      {
+        method: "DELETE",
+        headers: apiHeaders(),
+      },
+    );
+
+    if (!response.ok && response.status !== 204) {
+      throw new Error(
+        `Delete failed (${response.status}).`,
+      );
+    }
+
+    if (
+      conversation.conversation_id
+      === activeConversationId
+    ) {
+      startNewPersistentConversation({
+        announce: false,
+      });
+    }
+
+    await refreshConversationList();
+  } catch (error) {
+    showToast(
+      error instanceof Error
+        ? error.message
+        : "Chat delete failed.",
+    );
+  }
+}
+
 async function ensurePersistentConversation() {
-  ensureConversationIdentifiers();
+  if (
+    activeConversationPersisted
+    && activeConversationRecord
+  ) {
+    return {
+      conversation: activeConversationRecord,
+      messages: [],
+    };
+  }
+
+  if (
+    !activeConversationId
+    || !conversationContinuationToken
+  ) {
+    createConversationIdentifiers();
+  }
 
   const conversationId = activeConversationId;
-  const continuationToken = conversationContinuationToken;
-  const initializationKey = `${conversationId}:${sessionId}`;
+  const continuationToken =
+    conversationContinuationToken;
+  const initializationKey =
+    `${conversationId}:${sessionId}`;
 
   if (
     persistentConversationInitializationPromise
@@ -2895,17 +3243,20 @@ async function ensurePersistentConversation() {
   }
 
   const initializationPromise = (async () => {
-    const response = await fetch("/v1/conversations", {
-      method: "POST",
-      headers: apiHeaders(),
-      body: JSON.stringify({
-        conversation_id: conversationId,
-        user_session_id: sessionId,
-        provider_id: "auto",
-        title: "New conversation",
-        continuation_token: continuationToken,
-      }),
-    });
+    const response = await fetch(
+      "/v1/conversations",
+      {
+        method: "POST",
+        headers: apiHeaders(),
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          user_session_id: sessionId,
+          provider_id: "auto",
+          title: "New conversation",
+          continuation_token: continuationToken,
+        }),
+      },
+    );
 
     if (!response.ok) {
       let problem = null;
@@ -2920,22 +3271,39 @@ async function ensurePersistentConversation() {
 
       throw new Error(
         detail.message
-        || `Conversation initialization failed (${response.status}).`,
+        || (
+          "Conversation initialization failed "
+          + `(${response.status}).`
+        ),
       );
     }
 
-    return response.json();
+    const history = await response.json();
+
+    activeConversationRecord =
+      history.conversation;
+    activeConversationPersisted = true;
+
+    updateConversationHeader(
+      activeConversationRecord,
+    );
+
+    void refreshConversationList();
+
+    return history;
   })();
 
-  persistentConversationInitializationKey = initializationKey;
-  persistentConversationInitializationPromise = initializationPromise;
+  persistentConversationInitializationKey =
+    initializationKey;
+  persistentConversationInitializationPromise =
+    initializationPromise;
 
   try {
     return await initializationPromise;
   } catch (error) {
     if (
       persistentConversationInitializationPromise
-        === initializationPromise
+      === initializationPromise
     ) {
       resetPersistentConversationInitialization();
     }
@@ -2944,42 +3312,10 @@ async function ensurePersistentConversation() {
   }
 }
 
-async function restorePersistentConversation() {
-  if (conversationHistoryRestored) return;
-
-  try {
-    const history = await ensurePersistentConversation();
-    const messages = history.messages || [];
-
-    if (messages.length) {
-      addMessage(
-        "assistant",
-        `Continuing saved conversation: ${history.conversation.title}`,
-      );
-
-      for (const message of messages) {
-        addMessage(
-          message.role,
-          message.text,
-          false,
-          {
-            speak: false,
-            rich: false,
-          },
-        );
-      }
-    }
-
-    conversationHistoryRestored = true;
-  } catch (error) {
-    console.warn(
-      "Persistent conversation restore failed.",
-      error,
-    );
-  }
-}
-
-async function executeConversationTurn(utterance, channel) {
+async function executeConversationTurn(
+  utterance,
+  channel,
+) {
   try {
     await ensurePersistentConversation();
 
@@ -3011,11 +3347,24 @@ async function executeConversationTurn(utterance, channel) {
 
       throw new Error(
         detail.message
-        || `Conversation routing failed (${response.status}).`,
+        || (
+          "Conversation routing failed "
+          + `(${response.status}).`
+        ),
       );
     }
 
     const turn = await response.json();
+
+    activeConversationRecord =
+      turn.conversation;
+    activeConversationPersisted = true;
+
+    updateConversationHeader(
+      activeConversationRecord,
+    );
+
+    void refreshConversationList();
 
     if (turn.route === "chat") {
       addMessage(
@@ -3040,6 +3389,7 @@ async function executeConversationTurn(utterance, channel) {
           rich: true,
         },
       );
+
       setBusy(false);
       return;
     }
@@ -3047,14 +3397,17 @@ async function executeConversationTurn(utterance, channel) {
     if (turn.route === "clarification") {
       addMessage(
         "assistant",
-        turn.clarification_question
-        || turn.assistant_message.text,
+        (
+          turn.clarification_question
+          || turn.assistant_message.text
+        ),
         false,
         {
           speak: channel === "voice",
           rich: false,
         },
       );
+
       setBusy(false);
       return;
     }
@@ -3065,14 +3418,20 @@ async function executeConversationTurn(utterance, channel) {
     ) {
       addMessage(
         "assistant",
-        turn.assistant_message.text
-        || "I understood the action and am routing it through Nexuss.",
+        (
+          turn.assistant_message.text
+          || (
+            "I understood the action and am routing "
+            + "it through Nexuss."
+          )
+        ),
       );
 
       await executeLegacyInstruction(
         turn.action_instruction,
         channel,
       );
+
       return;
     }
 
@@ -3087,11 +3446,15 @@ async function executeConversationTurn(utterance, channel) {
         : "Conversation routing failed closed.",
       true,
     );
+
     setBusy(false);
   }
 }
 
-async function executePreUnifiedInstruction(utterance, channel) {
+async function executePreUnifiedInstruction(
+  utterance,
+  channel,
+) {
   const normalized = utterance.trim();
 
   if (!normalized) {
@@ -3105,23 +3468,52 @@ async function executePreUnifiedInstruction(utterance, channel) {
     return;
   }
 
-  // Explicit slash commands preserve expert control.
   if (/^\//.test(normalized)) {
-    await executeLegacyInstruction(utterance, channel);
+    await executeLegacyInstruction(
+      utterance,
+      channel,
+    );
     return;
   }
 
-  await executeConversationTurn(utterance, channel);
+  await executeConversationTurn(
+    utterance,
+    channel,
+  );
 }
 
 window.NexussConversation = Object.freeze({
-  newConversation: startNewPersistentConversation,
-  currentConversationId: () => activeConversationId,
+  newConversation:
+    startNewPersistentConversation,
+  currentConversationId:
+    () => activeConversationId,
+  list:
+    refreshConversationList,
+  select:
+    selectPersistentConversation,
+  rename:
+    renamePersistentConversation,
+  delete:
+    deletePersistentConversation,
 });
 
-setTimeout(() => {
-  void restorePersistentConversation();
-}, 0);
+elements.newChat?.addEventListener(
+  "click",
+  () => {
+    startNewPersistentConversation();
+  },
+);
+
+setTimeout(
+  () => {
+    startNewPersistentConversation({
+      announce: false,
+    });
+
+    void refreshConversationList();
+  },
+  0,
+);
 
 /* P6.10A MULTITASKING MEDIA SHELL */
 
@@ -4313,6 +4705,10 @@ async function executeUnifiedInteraction(
     }
 
     const interaction = await response.json();
+    activeConversationRecord = interaction.conversation;
+    activeConversationPersisted = true;
+    updateConversationHeader(activeConversationRecord);
+    void refreshConversationList();
     rememberUnifiedInteraction(interaction);
     renderUnifiedInteraction(interaction);
 
@@ -4382,5 +4778,5 @@ window.NexussInteractions = Object.freeze({
 
 setTimeout(() => {
   ensureInteractionTray();
-  void loadRecentUnifiedInteractions();
+  renderInteractionTray();
 }, 0);

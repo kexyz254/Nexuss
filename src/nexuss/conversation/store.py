@@ -516,6 +516,51 @@ class SQLiteConversationStore:
             for row in rows
         )
 
+    def rename(
+        self,
+        conversation_id: UUID,
+        *,
+        title: str,
+    ) -> ConversationRecord | None:
+        normalized = " ".join(title.split()).strip()
+        if not normalized:
+            raise ValueError("Conversation title cannot be empty.")
+
+        now = datetime.now(UTC)
+
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE conversations
+                SET title = ?, updated_at = ?
+                WHERE conversation_id = ?
+                """,
+                (
+                    normalized[:160],
+                    now.isoformat(),
+                    str(conversation_id),
+                ),
+            )
+
+        if cursor.rowcount != 1:
+            return None
+
+        return self.get(conversation_id)
+
+    def delete(self, conversation_id: UUID) -> bool:
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            cursor = connection.execute(
+                """
+                DELETE FROM conversations
+                WHERE conversation_id = ?
+                """,
+                (str(conversation_id),),
+            )
+            connection.execute("COMMIT")
+
+        return cursor.rowcount == 1
+
     def recent_context(
         self,
         conversation_id: UUID,

@@ -64,6 +64,12 @@ class CreateConversationRequest(BaseModel):
     continuation_token: str = Field(min_length=32, max_length=256)
 
 
+class RenameConversationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=160)
+
+
 class ConversationTurnRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -1905,4 +1905,130 @@ html[data-media-presentation-mode="compact"]
     bottom: 72px;
   }
 }
+/* P6.15 MULTI-CHAT SESSION LAYER */
+.chat-nav-heading {
+  align-items: center;
+  margin-bottom: 7px;
+}
 
+.new-chat-button {
+  border: 1px solid rgba(111, 227, 255, .24);
+  background: rgba(111, 227, 255, .06);
+  color: var(--cyan);
+  border-radius: 8px;
+  padding: 6px 9px;
+  font: inherit;
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.new-chat-button:hover {
+  background: rgba(111, 227, 255, .12);
+}
+
+.chat-list {
+  display: grid;
+  gap: 5px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 0 2px 12px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 12px;
+}
+
+.chat-list-empty {
+  margin: 0;
+  padding: 9px 8px 12px;
+  color: var(--muted-dark);
+  font-size: 8px;
+}
+
+.chat-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px;
+  align-items: stretch;
+  border: 1px solid transparent;
+  border-radius: 9px;
+}
+
+.chat-list-row.is-active {
+  border-color: rgba(111, 227, 255, .25);
+  background: rgba(111, 227, 255, .05);
+}
+
+.chat-list-item {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 8px 6px 8px 8px;
+  cursor: pointer;
+}
+
+.chat-list-item strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+}
+
+.chat-list-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted-dark);
+  font-size: 7px;
+}
+
+.chat-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding-right: 4px;
+  opacity: 0;
+  transition: opacity .16s ease;
+}
+
+.chat-list-row:hover .chat-list-actions,
+.chat-list-row:focus-within .chat-list-actions {
+  opacity: 1;
+}
+
+.chat-list-action {
+  width: 25px;
+  height: 25px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.chat-list-action:hover {
+  background: rgba(255, 255, 255, .06);
+  color: var(--text);
+}
+
+.chat-list-action.is-danger:hover {
+  color: #ff8798;
+  background: rgba(255, 89, 111, .08);
+}
+
+.capability-heading {
+  margin-top: 0;
+}
+
+@media (max-width: 980px) {
+  .chat-list {
+    max-height: 150px;
+  }
+
+  .chat-list-actions {
+    opacity: 1;
+  }
+}
