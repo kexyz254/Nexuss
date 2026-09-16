@@ -13,6 +13,24 @@ import httpx
 from fastapi import HTTPException, Request
 
 
+def trading_client_from_environment():
+    """Environment overrides a persistent, non-secret connection descriptor."""
+    root = Path(os.getenv("LOCALAPPDATA") or Path.home() / ".local" / "share")
+    descriptor = root / "Nexuss" / "bridge" / "connection.json"
+    settings = {}
+    if descriptor.exists():
+        if descriptor.stat().st_size > 4096:
+            raise ValueError("Invalid bridge settings")
+        settings = json.loads(descriptor.read_text(encoding="utf-8-sig"))
+        if not isinstance(settings, dict) or set(settings) - {"url", "secret_file"}:
+            raise ValueError("Invalid bridge settings")
+    url = os.getenv("NEXUSS_TAS_BRIDGE_URL") or settings.get("url")
+    secret_file = os.getenv("NEXUSS_TAS_SECRET_FILE") or settings.get("secret_file")
+    if not isinstance(url, str) or not isinstance(secret_file, str):
+        raise ValueError("Trading bridge not configured")
+    return TradingClient(url, Path(secret_file).read_bytes().strip())
+
+
 class TradingClient:
     def __init__(self, url, secret, transport=None):
         parsed = urlsplit(url)
@@ -71,8 +89,7 @@ class TradingClient:
 def register_trading_routes(app, require_local_control):
     def client():
         try:
-            return TradingClient(os.environ["NEXUSS_TAS_BRIDGE_URL"],
-                                 Path(os.environ["NEXUSS_TAS_SECRET_FILE"]).read_bytes().strip())
+            return trading_client_from_environment()
         except (KeyError, OSError, ValueError):
             raise HTTPException(503, "Trading bridge not configured") from None
 

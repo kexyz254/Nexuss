@@ -52,3 +52,18 @@ def test_observation_cursor_is_signed_and_validated():
         client.observations(-1)
     with pytest.raises(ValueError):
         client.observations(0, 101)
+
+
+def test_saved_configuration_survives_new_process_environment(tmp_path, monkeypatch):
+    from nexuss.connectors.trading import trading_client_from_environment
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.delenv("NEXUSS_TAS_BRIDGE_URL", raising=False)
+    monkeypatch.delenv("NEXUSS_TAS_SECRET_FILE", raising=False)
+    folder = tmp_path / "Nexuss" / "bridge"
+    folder.mkdir(parents=True)
+    key = folder / "bridge.key"
+    key.write_bytes(SECRET)
+    (folder / "connection.json").write_text(json.dumps({"url": "http://127.0.0.1:8300", "secret_file": str(key)}))
+    assert trading_client_from_environment().secret == SECRET
+    monkeypatch.setenv("NEXUSS_TAS_BRIDGE_URL", "https://bridge.example")
+    assert trading_client_from_environment().url == "https://bridge.example"
