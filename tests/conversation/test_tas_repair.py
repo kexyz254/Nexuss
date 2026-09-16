@@ -1,5 +1,6 @@
 import json
 import io
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,7 +16,9 @@ def setup_run(tmp_path):
     store = InvestigationStore(tmp_path / "workflow.db")
     run_id = store.create("owner")
     store.save(run_id, "owner", "Engineering / source", "completed", {"commit": "a" * 40})
-    store.save(run_id, "owner", "Research / incident", "completed", {"reason_code": "execution_errors"})
+    now = datetime.now(timezone.utc).isoformat()
+    store.save(run_id, "owner", "Research / incident", "completed", {"reason_code": "execution_errors", "retrieved_at": now})
+    store.save(run_id, "owner", "Maintenance / health", "completed", {"score": 40, "retrieved_at": now})
     return store, run_id
 
 
@@ -106,6 +109,14 @@ def test_validation_requires_baseline_failure_and_candidate_success(tmp_path):
 def test_unpinned_image_rejected():
     with pytest.raises(ValueError):
         DockerValidator("python:latest")
+
+
+def test_stale_evidence_blocks_preparation_before_model_or_tests(tmp_path):
+    store, run_id = setup_run(tmp_path)
+    store.save(run_id, "owner", "Maintenance / health", "completed",
+               {"score": 40, "retrieved_at": "2000-01-01T00:00:00+00:00"})
+    text = prepare_repair(store, run_id, "owner", lambda: pytest.fail("Model must not run"))
+    assert "must be recent" in text
 
 
 def test_credential_shaped_source_blocks_model_disclosure(tmp_path):

@@ -14,6 +14,20 @@ It is not twelve autonomous deployed agents or full TAS administration.
 - `Investigate TAS and prepare a tested repair if a defect is found`
 
 Both legacy chat and the unified desktop/mobile chat route use the same workflow.
+Natural cause questions such as `Why is TAS's breaker tripped?` start an
+investigation. `Continue the investigation`, `try again`, and `prepare a repair`
+resolve the latest run in the same authenticated conversation. Other TAS phrasing
+can use the configured AI provider to select a strictly allowlisted read intent;
+this requires the existing external-processing consent. The language planner
+cannot create shell, trade, restart, reset or deployment actions.
+
+Blocked reads distinguish connection errors, timeouts, authentication rejection,
+missing endpoints and unavailable upstream TAS evidence without copying raw
+exceptions. Partial evidence yields a partial risk assessment, not an implied
+completed diagnosis. Repair preparation requires completed health, incident and
+source steps, and health/incident capture times within five minutes. Restart is
+distinct from clearing the breaker; neither has an execution adapter here.
+
 Investigations are scoped to the authenticated user session and conversation.
 SQLite receipts live under `%LOCALAPPDATA%/Nexuss/workflows/tas.sqlite3` on Windows.
 Resume retains successful evidence and retries missing/failed reads. Start a new

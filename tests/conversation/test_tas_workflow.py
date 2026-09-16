@@ -1,4 +1,7 @@
 import json
+from types import SimpleNamespace
+
+import httpx
 
 import pytest
 
@@ -37,7 +40,7 @@ def test_resume_after_restart_retries_only_blocked_read(tmp_path):
     text, count = investigate("owner:conversation", lambda: client, source, store=store, run_id=run_id)
     assert count == 2
     assert "Research / incident: blocked" in text
-    assert "not connected yet" in text
+    assert "Repair preparation is blocked" in text
     assert "password" not in json.dumps(store.get(run_id, "owner:conversation"))
     client.incident_available = True
     text, count = investigate("owner:conversation", lambda: client, source,
@@ -92,3 +95,53 @@ def test_invalid_evidence_does_not_complete_step(tmp_path):
     text, _ = investigate("owner", Invalid, source, store=store)
     assert "Maintenance / health: blocked" in text
     assert "Research / incident: blocked" in text
+
+
+def test_connection_failure_is_actionable_without_leaking_details(tmp_path):
+    class Disconnected:
+        def evidence(self, resource):
+            raise httpx.ConnectError("password=secret-private-host")
+    text, _ = investigate("owner", Disconnected, source, store=InvestigationStore(tmp_path / "db"))
+    assert "SSH tunnel" in text
+    assert "secret-private-host" not in text
+    assert "Risk / assessment: partial" in text
+    assert "Prepare a bounded repair" not in text
+
+
+def test_natural_followup_uses_same_run_and_shared_evidence(tmp_path):
+    store = InvestigationStore(tmp_path / "db")
+    client = Evidence()
+    handle_trading_chat("Why is TAS's breaker tripped?", owner="owner", workflow_store=store,
+                       client_factory=lambda: client, inspect_source=source)
+    run_id = store.latest("owner")
+    store.save(run_id, "owner", "Validation / repair", "completed", {"passed": True})
+    client.incident_available = True
+    reply = handle_trading_chat("continue the investigation", owner="owner", workflow_store=store,
+                       client_factory=lambda: client, inspect_source=lambda: pytest.fail("Source already shared"))
+    assert run_id in reply.text
+    assert store.latest("owner") == run_id
+    assert client.calls == ["health", "incident", "incident"]
+    assert store.get(run_id, "owner")["Validation / repair"]["data"]["passed"] is True
+    assert handle_trading_chat("continue the investigation", owner="different", workflow_store=store) is None
+
+
+def test_model_interprets_unfamiliar_request_but_cannot_invent_commands(tmp_path):
+    def factory(intent):
+        return lambda: lambda request: SimpleNamespace(done=True, tool_requests=(),
+            completion_message=json.dumps({"intent": intent, "symbol": None}))
+    store = InvestigationStore(tmp_path / "db")
+    reply = handle_trading_chat("TAS has gone quiet; look into it", owner="owner", workflow_store=store,
+        client_factory=Evidence, inspect_source=source, proposer_factory=factory("investigate"))
+    assert "TAS investigation" in reply.text
+    rejected = handle_trading_chat("TAS has gone quiet; look into it", owner="owner", workflow_store=store,
+        client_factory=lambda: pytest.fail("Invalid action executed"), proposer_factory=factory("run_shell"))
+    assert "could not resolve" in rejected.text
+
+
+@pytest.mark.parametrize("code,expected", [(401, "authentication"), (404, "updated version"), (502, "TAS dashboard")])
+def test_http_failures_are_distinguished(code, expected):
+    from nexuss.conversation.tas_workflow import evidence_failure
+    response = httpx.Response(code, request=httpx.Request("GET", "https://private.example"))
+    value = evidence_failure(httpx.HTTPStatusError("secret", request=response.request, response=response))
+    assert expected in value["reason"]
+    assert "private.example" not in json.dumps(value)

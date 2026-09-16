@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import threading
 from uuid import uuid4
+from datetime import datetime, timezone
 
 from nexuss.engineering.providers.base import ProviderRequest
 from .security import sanitize_text
@@ -151,8 +152,17 @@ def prepare_repair(store, run_id, owner, proposer_factory, *, loader=load_repair
     steps = store.get(run_id, owner)
     source = steps.get("Engineering / source", {})
     incident = steps.get("Research / incident", {})
-    if source.get("status") != "completed" or incident.get("status") != "completed":
-        return "Repair preparation blocked: complete the incident and source evidence steps first."
+    if (source.get("status") != "completed" or incident.get("status") != "completed"
+            or steps.get("Maintenance / health", {}).get("status") != "completed"):
+        return "Repair preparation blocked: complete the health, incident and source evidence steps first."
+    try:
+        for name in ("Maintenance / health", "Research / incident"):
+            stamp = datetime.fromisoformat(steps[name]["data"]["retrieved_at"])
+            age = (datetime.now(timezone.utc) - stamp).total_seconds()
+            if not -60 <= age <= 300:
+                raise ValueError("Stale evidence")
+    except (KeyError, ValueError, TypeError):
+        return "Repair preparation blocked: health and incident evidence must be recent. Start a new TAS investigation to refresh both."
     if "Engineering / candidate" in steps:
         return "This investigation already has a candidate receipt. Start a new investigation for a new repair attempt."
     try:
