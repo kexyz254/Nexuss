@@ -124,6 +124,24 @@ def handle_trading_chat(text, *, client_factory=configured_client, inspect_sourc
         return TradingReply(describe_roles())
     if not re.search(r"\b(tas|ats|trading analysis (?:system|platform))\b", normalized):
         return None
+    if re.search(r"\b(transport|tunnel|connection)\b", normalized) and re.search(r"\b(show|check|status)\b", normalized):
+        from nexuss.connectors.trading_tunnel import managed_tunnel
+        state = managed_tunnel.status()
+        explanations = {
+            "disabled": "Managed SSH transport is not enabled. Configure it once, or use the private Tailscale listener.",
+            "configuration_invalid": "The local tunnel settings or SSH identity path are invalid.",
+            "ssh_unavailable": "OpenSSH is unavailable on the Nexuss host.",
+            "starting": "The Nexuss-owned connection supervisor is starting.",
+            "connecting": "The supervisor is establishing the SSH forward using noninteractive key authentication.",
+            "forwarding": "The managed SSH process is running and the loopback port is listening.",
+            "external_listener": "Another process already owns the loopback listener; Nexuss has not taken ownership of it.",
+            "retry_wait": "SSH exited. Nexuss will retry with backoff. Check key authentication, the verified host key and network access.",
+            "launch_failed": "The SSH process could not be started; Nexuss will retry.",
+            "supervisor_error": "The transport supervisor encountered a local error and will retry.",
+            "stopped": "The managed transport is stopped.",
+        }
+        return TradingReply("TAS transport: " + state["state"] + ". " + explanations.get(state["state"], "Status unavailable.")
+            + " A listening port does not establish authenticated bridge access or TAS health. Ask 'check TAS health' to verify the signed read.")
     if re.match(r"^(?:please )?(?:explain\b|describe\b|what (?:is|are)\b|how (?:does|do)\b)", normalized) and not re.search(r"\b(investigate|check|inspect|run|prepare|restart|reset|deploy)\b", normalized):
         if "circuit breaker" in normalized:
             return TradingReply("A trading circuit breaker pauses new position entries when a protection condition is met, such as repeated execution failures or a loss limit. Its purpose is to contain risk while the cause is investigated. Restarting a service and deliberately clearing a breaker are different operations. This is an explanation; I have not queried or changed TAS.")
@@ -149,6 +167,8 @@ def handle_trading_chat(text, *, client_factory=configured_client, inspect_sourc
         except Exception:
             return TradingReply("Investigation unavailable in this conversation. No TAS changes made.", workflow=True, blocked=True)
     if re.search(r"\b(investigate|investigation|diagnose|debug|troubleshoot)\b", normalized) or (
+        re.search(r"\b(restore|recover)\b", normalized) and "health" in normalized
+    ) or (
         re.search(r"\b(why|what caused|find the cause|figure out)\b", normalized)
         and re.search(r"\b(breaker|tripped|unhealthy|failing|failure|stopped)\b", normalized)
     ):
@@ -163,13 +183,13 @@ def handle_trading_chat(text, *, client_factory=configured_client, inspect_sourc
             run_id = match[1] if match else store.create(owner)
             result, calls = investigate(owner, client_factory, inspect_source,
                                         store=store, run_id=run_id)
-            if re.search(r"\b(repair|fix)\b", normalized) and proposer_factory is not None:
+            if re.search(r"\b(repair|fix|restore|recover)\b", normalized) and proposer_factory is not None:
                 from .tas_repair import prepare_repair
                 result += "\n\n" + prepare_repair(store, run_id, owner, proposer_factory)
             steps = store.get(run_id, owner)
             blocked = any(steps[name]["status"] != "completed" for name in (
                 "Maintenance / health", "Research / incident", "Engineering / source"))
-            if re.search(r"\b(repair|fix)\b", normalized) and proposer_factory is not None:
+            if re.search(r"\b(repair|fix|restore|recover)\b", normalized) and proposer_factory is not None:
                 blocked = blocked or repair_blocked(store, run_id, owner)
             return TradingReply(result, calls, workflow=True, blocked=blocked)
         except Exception:
