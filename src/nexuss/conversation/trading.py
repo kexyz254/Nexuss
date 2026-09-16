@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import os
 from pathlib import Path
 import re
+import ast
 
 import httpx
 
@@ -30,8 +31,17 @@ def source_report():
     )
     snapshot = plane.create_snapshot(selection)
     report = plane.analyze_snapshot(snapshot.snapshot_id)
+    breaker = plane.read_snapshot_file(snapshot.snapshot_id, "trading_assistant/agents/circuit_breaker.py")
+    tree = ast.parse(breaker.content)
+    methods = {node.name: node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
+    restore = methods.get("_restore_from_journal")
+    calls = {node.func.attr for node in ast.walk(restore) if isinstance(node, ast.Call)
+             and isinstance(node.func, ast.Attribute)} if restore else set()
     return {"commit": report.resolved_commit_sha, "snapshot": str(snapshot.snapshot_id),
             "source_files": report.source_files, "test_files": report.test_files,
+            "breaker_facts": {"restores_persisted_trip": "latest_circuit_breaker_event" in calls,
+                              "records_results": "record_result" in methods,
+                              "explicit_reset": "reset" in methods},
             "build_systems": list(report.build_systems), "ref": selection.requested_ref}
 
 
@@ -54,16 +64,55 @@ def _time(value):
         return "unavailable"
 
 
-def handle_trading_chat(text, *, client_factory=configured_client, inspect_source=source_report):
+def handle_trading_chat(text, *, client_factory=configured_client, inspect_source=source_report,
+                        owner=None, workflow_store=None, proposer_factory=None):
     normalized = " ".join(text.casefold().split())
+    if re.search(r"\b(show|list)\b.*\b(agents|specialists|agent capabilities)\b", normalized):
+        from .agent_roles import describe_roles
+        return TradingReply(describe_roles())
     if not re.search(r"\b(tas|ats|trading analysis (?:system|platform))\b", normalized):
         return None
+    review_match = re.search(r"\breview\s+(?:tas|ats)\s+repair\s+([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\b", normalized)
+    if review_match and owner:
+        from .tas_workflow import InvestigationStore
+        from .tas_repair import review_repair
+        try:
+            return TradingReply(review_repair(workflow_store or InvestigationStore(), review_match[1], owner))
+        except Exception:
+            return TradingReply("Repair receipt unavailable in this conversation.")
+    repair_match = re.search(r"\bprepare\s+(?:tas|ats)\s+repair\s+([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\b", normalized)
+    if repair_match and owner:
+        from .tas_workflow import InvestigationStore
+        from .tas_repair import prepare_repair
+        if proposer_factory is None:
+            return TradingReply("Repair preparation requires a configured Nexuss AI provider and external-processing consent.")
+        try:
+            return TradingReply(prepare_repair(workflow_store or InvestigationStore(), repair_match[1], owner, proposer_factory))
+        except Exception:
+            return TradingReply("Investigation unavailable in this conversation. No TAS changes made.")
+    if re.search(r"\b(investigate|investigation|diagnose)\b", normalized):
+        if not owner:
+            return TradingReply("Open an authenticated Nexuss conversation to start a TAS investigation.")
+        from .tas_workflow import investigate, InvestigationStore
+        match = re.search(r"\bresume\b.*\b([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\b", normalized)
+        if "resume" in normalized and match is None:
+            return TradingReply("Include the investigation ID shown in this conversation.")
+        try:
+            store = workflow_store or InvestigationStore()
+            run_id = match[1] if match else store.create(owner)
+            result, calls = investigate(owner, client_factory, inspect_source,
+                                        store=store, run_id=run_id)
+            if re.search(r"\b(repair|fix)\b", normalized) and proposer_factory is not None:
+                from .tas_repair import prepare_repair
+                result += "\n\n" + prepare_repair(store, run_id, owner, proposer_factory)
+            return TradingReply(result, calls)
+        except Exception:
+            return TradingReply("Investigation unavailable in this conversation. No TAS changes made.")
     if re.search(r"\b(buy|sell|place|cancel|execute|reset|restart|deploy|modify|upgrade|fix|repair|improve)\b", normalized):
         return TradingReply(
-            "TAS engineering request received. Chat can inspect live health, decisions, offline "
-            "observations and a versioned source snapshot. A TAS patch/test/deployment executor "
-            "is not connected yet, so I have not changed the system or requested a misleading "
-            "approval. Ask ‘inspect TAS code’ or ‘check TAS’ to gather evidence for that work. "
+            "Start with ‘investigate TAS and prepare a tested repair if a defect is found’. "
+            "The bounded repair path requires configured AI consent and an isolated test image. "
+            "Live deployment is not connected yet; no reset, trading, or configuration change was made. "
             "TAS retains trade execution authority."
         )
     if re.search(r"\b(code|source|repository|repo)\b", normalized):
@@ -146,7 +195,8 @@ def handle_trading_chat(text, *, client_factory=configured_client, inspect_sourc
             return TradingReply("\n".join(lines), 1)
         return TradingReply("TAS is available through these chat requests: ‘check TAS’, ‘show TAS "
                             "decisions for BTC/USDT’, ‘show TAS offline observations’, and ‘inspect TAS code’. "
-                            "Live editing, deployment and automatic research are not connected yet.")
+                            "You can also ask ‘investigate TAS’ or ‘list Nexuss agents’. "
+                            "Live deployment and automatic internet research are not connected yet.")
     except (KeyError, OSError, ValueError, TypeError, AttributeError, httpx.HTTPError):
         return TradingReply("TAS evidence is unavailable. Check the bridge connection and Nexuss's "
                             "private runtime configuration. I have not substituted cached health, "

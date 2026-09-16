@@ -327,7 +327,14 @@ class UnifiedInteractionService:
         if continuation is not None:
             routing_text = continuation
 
-        trading = handle_trading_chat(sanitized.value)
+        def tas_proposer():
+            profile = self._providers.select(provider_id=request.provider_id, mode=CognitiveMode.ANALYZE)
+            return self._resolver.resolve(profile=profile, request_id=request.request_id,
+                instruction=sanitized.value,
+                external_processing_approved=request.external_processing_approved).proposer
+
+        trading = handle_trading_chat(sanitized.value, owner=f"{request.user_session_id}:{request.conversation_id}",
+                                     proposer_factory=tas_proposer)
         deterministic = deterministic_route_result(
             routing_text
         ) if trading is None else None
