@@ -272,6 +272,9 @@ class UnifiedInteractionService:
         )
 
         if existing is not None:
+            if (existing.conversation.user_session_id != request.user_session_id
+                    or existing.conversation_id != request.conversation_id):
+                raise UnifiedInteractionError("INTERACTION_SESSION_MISMATCH", "Request belongs to another conversation.")
             return existing
 
         conversation = self._conversations.get(
@@ -299,6 +302,8 @@ class UnifiedInteractionService:
             state: str,
             detail: str,
         ) -> None:
+            from nexuss.interactions.progress import emit
+            emit(event_type, state, detail)
             events.append(
                 InteractionEvent(
                     sequence=len(events) + 1,
@@ -327,7 +332,19 @@ class UnifiedInteractionService:
         if continuation is not None:
             routing_text = continuation
 
-        trading = handle_trading_chat(sanitized.value)
+        def tas_proposer():
+            profile = self._providers.select(provider_id=request.provider_id, mode=CognitiveMode.ANALYZE)
+            return self._resolver.resolve(profile=profile, request_id=request.request_id,
+                instruction=sanitized.value,
+                external_processing_approved=request.external_processing_approved).proposer
+
+        from nexuss.interactions.progress import recording
+        def record_progress(kind, state, detail):
+            events.append(InteractionEvent(sequence=len(events) + 1, event_type=kind,
+                state=state, detail=detail, occurred_at=datetime.now(UTC)))
+        with recording(record_progress):
+            trading = handle_trading_chat(sanitized.value, owner=f"{request.user_session_id}:{request.conversation_id}",
+                                         proposer_factory=tas_proposer)
         deterministic = deterministic_route_result(
             routing_text
         ) if trading is None else None
@@ -394,6 +411,8 @@ class UnifiedInteractionService:
             f"nexuss:interaction:{request.request_id}",
         )
         kind = InteractionKind(classification.route.value)
+        if trading is not None and trading.workflow:
+            kind = InteractionKind.WORKFLOW
 
         if classification.route is ConversationRoute.CHAT:
             display = classification.response
@@ -425,7 +444,8 @@ class UnifiedInteractionService:
                 request_id=request.request_id,
                 conversation_id=request.conversation_id,
                 kind=kind,
-                state=InteractionState.RESPONDED,
+                state=(InteractionState.BLOCKED if trading.blocked else InteractionState.COMPLETED)
+                      if kind is InteractionKind.WORKFLOW else InteractionState.RESPONDED,
                 display_text=display,
                 provider_id=route_provider_id,
                 model=route_model,

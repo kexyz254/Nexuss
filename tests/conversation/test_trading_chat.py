@@ -78,7 +78,7 @@ def test_unified_chat_persists_without_ai_provider(tmp_path, monkeypatch):
     owner, cid = uuid4(), uuid4()
     conversations.create(conversation_id=cid, user_session_id=owner, title="New conversation",
                          provider_id="deepseek", model="test", continuation_token="x" * 64)
-    monkeypatch.setattr(module, "handle_trading_chat", lambda text: handle_trading_chat(text, client_factory=Client))
+    monkeypatch.setattr(module, "handle_trading_chat", lambda text, **kw: handle_trading_chat(text, client_factory=Client, **kw))
     service = UnifiedInteractionService(providers=None, resolver=None, conversation_store=conversations,
                                         interaction_store=interactions, core_service=None)
     request = InteractionRequest(request_id=uuid4(), conversation_id=cid, user_session_id=owner, text="check TAS")

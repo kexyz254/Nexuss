@@ -302,7 +302,14 @@ def register_conversation_routes(
 
         sanitized = sanitize_text(body.text)
 
-        trading = handle_trading_chat(sanitized.value)
+        def tas_proposer():
+            profile = providers.select(provider_id=body.provider_id, mode=CognitiveMode.ANALYZE)
+            return AIProviderConnectionResolver().resolve(profile=profile, request_id=body.request_id,
+                instruction=sanitized.value,
+                external_processing_approved=body.external_processing_approved).proposer
+
+        trading = handle_trading_chat(sanitized.value, owner=f"{session_id}:{conversation_id}",
+                                     proposer_factory=tas_proposer)
         if trading is not None:
             response_text = trading.text
             if sanitized.redactions:
