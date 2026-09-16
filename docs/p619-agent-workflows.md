@@ -1,5 +1,27 @@
 # P6.19: specialist roles and bounded TAS engineering
 
+## Visible workflow progress
+
+The canonical `/v1/interactions` response distinguishes `chat` answers from
+TAS `workflow` runs, including the `blocked` terminal state. The desktop chat
+polls the authenticated `/v1/interactions/progress/{request_id}` endpoint while
+the original request is running. It renders actual plan/step/result events,
+including reused evidence, in a collapsible chat panel. It never resubmits an
+action because progress polling failed. Plain breaker explanations do not run
+an investigation. Progress conveys operational rationale and evidence, not
+private model reasoning or a claim that a model's thoughts are verified.
+
+The live buffer is bounded and process-local; its endpoint assumes the existing
+single-process desktop runtime. Workflow events also persist in the final
+interaction receipt. An interrupted request may lack a final interaction, while
+its completed investigation steps remain in the workflow database. This is not
+a durable background job queue or cancellation service. The legacy conversation
+endpoint remains synchronous without a live progress panel.
+
+Repeated blocked investigations give a concise blocker and next action instead
+of repeating the complete report. Restoring an SSH tunnel is still an operator
+task. No bridge supervision, remote restart or breaker-reset authority was added.
+
 This increment implements a twelve-role catalogue, durable TAS investigations,
 structured breaker incident evidence, and a bounded candidate-preparation path.
 It is not twelve autonomous deployed agents or full TAS administration.

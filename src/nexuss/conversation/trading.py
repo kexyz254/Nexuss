@@ -15,10 +15,20 @@ from nexuss.connectors.trading import trading_client_from_environment
 class TradingReply:
     text: str
     tools_executed: int = 0
+    workflow: bool = False
+    blocked: bool = False
 
 
 def configured_client():
     return trading_client_from_environment()
+
+
+def repair_blocked(store, run_id, owner):
+    steps = store.get(run_id, owner)
+    candidate = steps.get("Engineering / candidate", {}).get("data", {})
+    if candidate.get("defect_found") is False:
+        return False
+    return steps.get("Validation / repair", {}).get("data", {}).get("passed") is not True
 
 
 def source_report():
@@ -114,6 +124,10 @@ def handle_trading_chat(text, *, client_factory=configured_client, inspect_sourc
         return TradingReply(describe_roles())
     if not re.search(r"\b(tas|ats|trading analysis (?:system|platform))\b", normalized):
         return None
+    if re.match(r"^(?:please )?(?:explain\b|describe\b|what (?:is|are)\b|how (?:does|do)\b)", normalized) and not re.search(r"\b(investigate|check|inspect|run|prepare|restart|reset|deploy)\b", normalized):
+        if "circuit breaker" in normalized:
+            return TradingReply("A trading circuit breaker pauses new position entries when a protection condition is met, such as repeated execution failures or a loss limit. Its purpose is to contain risk while the cause is investigated. Restarting a service and deliberately clearing a breaker are different operations. This is an explanation; I have not queried or changed TAS.")
+        return None
     review_match = re.search(r"\breview\s+(?:tas|ats)\s+repair\s+([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\b", normalized)
     if review_match and owner:
         from .tas_workflow import InvestigationStore
@@ -129,9 +143,11 @@ def handle_trading_chat(text, *, client_factory=configured_client, inspect_sourc
         if proposer_factory is None:
             return TradingReply("Repair preparation requires a configured Nexuss AI provider and external-processing consent.")
         try:
-            return TradingReply(prepare_repair(workflow_store or InvestigationStore(), repair_match[1], owner, proposer_factory))
+            store = workflow_store or InvestigationStore()
+            result = prepare_repair(store, repair_match[1], owner, proposer_factory)
+            return TradingReply(result, workflow=True, blocked=repair_blocked(store, repair_match[1], owner))
         except Exception:
-            return TradingReply("Investigation unavailable in this conversation. No TAS changes made.")
+            return TradingReply("Investigation unavailable in this conversation. No TAS changes made.", workflow=True, blocked=True)
     if re.search(r"\b(investigate|investigation|diagnose|debug|troubleshoot)\b", normalized) or (
         re.search(r"\b(why|what caused|find the cause|figure out)\b", normalized)
         and re.search(r"\b(breaker|tripped|unhealthy|failing|failure|stopped)\b", normalized)
@@ -150,9 +166,14 @@ def handle_trading_chat(text, *, client_factory=configured_client, inspect_sourc
             if re.search(r"\b(repair|fix)\b", normalized) and proposer_factory is not None:
                 from .tas_repair import prepare_repair
                 result += "\n\n" + prepare_repair(store, run_id, owner, proposer_factory)
-            return TradingReply(result, calls)
+            steps = store.get(run_id, owner)
+            blocked = any(steps[name]["status"] != "completed" for name in (
+                "Maintenance / health", "Research / incident", "Engineering / source"))
+            if re.search(r"\b(repair|fix)\b", normalized) and proposer_factory is not None:
+                blocked = blocked or repair_blocked(store, run_id, owner)
+            return TradingReply(result, calls, workflow=True, blocked=blocked)
         except Exception:
-            return TradingReply("Investigation unavailable in this conversation. No TAS changes made.")
+            return TradingReply("Investigation unavailable in this conversation. No TAS changes made.", workflow=True, blocked=True)
     if re.search(r"\b(buy|sell|place|cancel|execute|reset|restart|deploy|modify|upgrade|fix|repair|improve)\b", normalized):
         return TradingReply(
             "Start with ‘investigate TAS and prepare a tested repair if a defect is found’. "

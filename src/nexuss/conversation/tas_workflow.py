@@ -9,6 +9,7 @@ import sqlite3
 from uuid import uuid4
 from datetime import datetime, timezone
 import httpx
+from nexuss.interactions.progress import emit
 
 
 def evidence_failure(exc):
@@ -124,7 +125,9 @@ def investigate(owner, client_factory, inspect_source, *, store=None, run_id=Non
     store = store or InvestigationStore()
     run_id = run_id or store.create(owner)
     steps = store.get(run_id, owner)
+    resuming = bool(steps)
     calls = 0
+    emit("workflow_plan", "planned", "Investigate TAS: read live health and the recorded trip trigger, inspect the pinned source, then assess what the evidence supports. No restart or reset is planned.")
     tasks = (
         ("Maintenance / health", lambda: normalize_health(client_factory().evidence("health"))),
         ("Research / incident", lambda: normalize_incident(client_factory().evidence("incident"))),
@@ -133,16 +136,20 @@ def investigate(owner, client_factory, inspect_source, *, store=None, run_id=Non
     for name, operation in tasks:
         # Resume retries failed reads; completed evidence remains bound to this run.
         if steps.get(name, {}).get("status") == "completed":
+            emit("workflow_step", "reused", f"{name}: reusing the retained evidence for this investigation.")
             continue
+        emit("workflow_step", "running", f"{name}: collecting evidence.")
         try:
             data = operation()
             calls += 1
             store.save(run_id, owner, name, "completed", data)
+            emit("workflow_step", "completed", f"{name}: evidence recorded.")
         except Exception as exc:
             # Provider/transport exceptions can contain credentials.
             failure = ({"code": "source_unavailable", "reason": "The GitHub source snapshot could not be inspected. Check Nexuss's repository access and requested source ref."}
                        if name == "Engineering / source" else evidence_failure(exc))
             store.save(run_id, owner, name, "blocked", failure)
+            emit("workflow_step", "blocked", f"{name}: {failure['reason']}")
     steps = store.get(run_id, owner)
     health = steps["Maintenance / health"].get("data", {})
     incident = steps["Research / incident"].get("data", {})
@@ -156,6 +163,7 @@ def investigate(owner, client_factory, inspect_source, *, store=None, run_id=Non
         issues.append("Retained health evidence is older than five minutes; start a new investigation before preparing a repair.")
     issues.append("Repository snapshot has not been matched to the deployed source and local configuration.")
     evidence_complete = all(steps[name]["status"] == "completed" for name, _ in tasks)
+    emit("workflow_assessment", "running", "Assessing evidence gaps and operational risk; a tripped flag alone does not establish a software defect.")
     store.save(run_id, owner, "Risk / assessment", "completed" if evidence_complete else "partial", {"findings": issues})
     store.save(run_id, owner, "Security / boundary", "completed", {
         "checks": ["Only typed evidence retained", "No raw exceptions persisted", "No source execution", "No credentials sent to a model"],
@@ -190,4 +198,13 @@ def investigate(owner, client_factory, inspect_source, *, store=None, run_id=Non
         lines.append("Next: restore the failed evidence connection, then say 'continue the investigation'. Repair preparation is blocked until its evidence prerequisites are met.")
     lines.append("A restart is not a breaker reset. No restart adapter is connected; recovery would require verified repair, an explicit proposed operation, and a post-operation health check.")
     lines.append(f"Run reference: {run_id}. For fresh evidence, ask for a new TAS investigation.")
+    emit("workflow_result", "completed" if evidence_complete else "blocked",
+         "Evidence collection completed; review findings before proposing a repair." if evidence_complete else "Investigation blocked by missing evidence. Restore the failed connection before retrying; no TAS changes were made.")
+    if resuming and not evidence_complete:
+        reasons = list(dict.fromkeys(steps[name]["data"]["reason"] for name, _ in tasks
+                                    if steps[name]["status"] == "blocked"))
+        lines = [f"Investigation {run_id} is still blocked.", *reasons,
+                 "Successful evidence remains attached to this investigation; I retried only the failed reads.",
+                 "Next action: resolve the connection or access problem above, then ask me to continue. Repeating the investigation cannot restore that connection.",
+                 "I have not established the cause of the trip, prepared a verified repair, restarted TAS or reset its breaker."]
     return "\n".join(lines), calls
