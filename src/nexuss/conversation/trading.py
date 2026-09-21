@@ -1,14 +1,18 @@
 """Evidence-backed TAS chat, independent of a paid model or its tool guesses."""
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import os
 from pathlib import Path
 import re
 import ast
+from typing import Any
 
 import httpx
 
 from nexuss.connectors.trading import trading_client_from_environment
+from nexuss.engineering.models import ModelProposal
+from nexuss.engineering.providers.base import ProviderRequest
 
 
 @dataclass(frozen=True)
@@ -103,8 +107,17 @@ def plan_tas_read(text, proposer_factory):
     return commands.get(intent)
 
 
-def handle_trading_chat(text, *, client_factory=configured_client, inspect_source=source_report,
-                        owner=None, workflow_store=None, proposer_factory=None):
+def handle_trading_chat(
+    text: str,
+    *,
+    client_factory: Callable[[], Any] = configured_client,
+    inspect_source: Callable[[], Any] = source_report,
+    owner: str | None = None,
+    workflow_store: Any | None = None,
+    proposer_factory: (
+        Callable[[], Callable[[ProviderRequest], ModelProposal]] | None
+    ) = None,
+) -> TradingReply | None:
     normalized = " ".join(text.casefold().split())
     # Resolve short follow-ups only within this authenticated conversation.
     # Resolution selects a bounded workflow; it never grants execution authority.
