@@ -98,6 +98,12 @@ $EscapedPython = $PythonExecutable.Replace("'", "''")
 
 $LocalControlCommand = @"
 Set-Location '$EscapedRepository'
+Get-ChildItem Env: | Where-Object {
+    `$_.Name -ne 'NEXUSS_LOCAL_CONTROL_SECRET' -and
+    `$_.Name -match '(?i)(API_KEY|TOKEN|PASSWORD|SECRET)'
+} | Remove-Item -ErrorAction SilentlyContinue
+`$env:NEXUSS_LOCAL_CONTROL_SECRET = '$LocalControlSecret'
+`$env:NEXUSS_REPOSITORY_ROOT = '$EscapedRepository'
 `$env:PYTHONPATH = '$EscapedRepository\src'
 `$env:PYTHONDONTWRITEBYTECODE = '1'
 & '$EscapedPython' -m uvicorn nexuss.local_control.app:app --host 127.0.0.1 --port 8300
