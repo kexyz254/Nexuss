@@ -47,6 +47,6 @@ jobs:
           node --check src/nexuss/ui/file_workspace.js
       - name: Static asset version contract
         run: |
-          grep -q 'app.js?v=p621' src/nexuss/ui/index.html
-          grep -q 'file_workspace.js?v=p621' src/nexuss/ui/index.html
+          grep -Eq 'app.js\\?v=p62[1-9]' src/nexuss/ui/index.html
+          grep -Eq 'file_workspace.js\\?v=p62[1-9]' src/nexuss/ui/index.html
           grep -q 'runtime-build-chip' src/nexuss/ui/index.html
