@@ -38,6 +38,7 @@ from nexuss.interactions.service import (
     UnifiedInteractionService,
 )
 from nexuss.interactions.store import SQLiteInteractionStore
+from nexuss.interactions.progress import ProgressHub, reporting
 
 
 def register_interaction_routes(
@@ -48,6 +49,7 @@ def register_interaction_routes(
 ) -> None:
     conversation_store = SQLiteConversationStore()
     interaction_store = SQLiteInteractionStore()
+    progress = ProgressHub()
     service = UnifiedInteractionService(
         providers=default_provider_registry(),
         resolver=AIProviderConnectionResolver(),
@@ -94,8 +96,47 @@ def register_interaction_routes(
             authenticated=authenticated,
         )
 
+        conversation = conversation_store.get(body.conversation_id)
+        if (
+            conversation is None
+            or conversation.user_session_id != session_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Conversation not found",
+            )
+
         try:
-            return service.interact(body)
+            progress.start(
+                body.request_id,
+                session_id,
+                body.conversation_id,
+            )
+        except PermissionError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Request not found",
+            ) from None
+        except RuntimeError:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Request is already running or progress capacity is full"
+                ),
+            ) from None
+
+        try:
+            with reporting(
+                lambda kind, state, detail: progress.append(
+                    body.request_id,
+                    kind,
+                    state,
+                    detail,
+                )
+            ):
+                result = service.interact(body)
+            progress.finish(body.request_id, result.state.value)
+            return result
         except (
             AIProviderRegistryError,
             AIProviderConnectionError,
@@ -103,6 +144,7 @@ def register_interaction_routes(
             EngineeringError,
             UnifiedInteractionError,
         ) as exc:
+            progress.finish(body.request_id, "failed")
             code = getattr(
                 exc,
                 "code",
@@ -116,6 +158,43 @@ def register_interaction_routes(
                     "nexuss_retains_final_authority": True,
                 },
             ) from exc
+
+        except Exception:
+            progress.finish(body.request_id, "failed")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    "Interaction failed; inspect the retained workflow "
+                    "before retrying"
+                ),
+            ) from None
+
+    @app.get("/v1/interactions/progress/{request_id}")
+    def get_progress(
+        request_id: UUID,
+        request: Request,
+        session_id: Annotated[
+            UUID,
+            Header(alias="X-Nexuss-Session-ID"),
+        ],
+        authenticated: Annotated[
+            bool,
+            Header(alias="X-Nexuss-Session-Authenticated"),
+        ],
+    ) -> dict[str, object]:
+        require_local_control(request)
+        if not authenticated:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authenticated session is required",
+            )
+        try:
+            return progress.get(request_id, session_id)
+        except LookupError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Progress not found",
+            ) from None
 
     @app.get(
         "/v1/interactions/{interaction_id}/presentation",
