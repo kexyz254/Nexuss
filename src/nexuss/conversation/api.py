@@ -27,7 +27,6 @@ from nexuss.conversation.models import (
     ConversationTurnRequest,
     ConversationTurnResponse,
     CreateConversationRequest,
-    MessageRole,
     RenameConversationRequest,
 )
 from nexuss.conversation.router import (
@@ -105,59 +104,6 @@ def register_conversation_routes(
             actual=session_id,
             authenticated=authenticated,
         )
-
-        if body.attachment_ids:
-            try:
-                envelope = create_cognitive_proposal(
-                    request_id=body.request_id,
-                    instruction=provider_input,
-                    mode=_file_cognitive_mode(sanitized.value),
-                )
-            except (CognitiveProposalError, EngineeringError) as exc:
-                code = getattr(
-                    exc,
-                    "code",
-                    "CHAT_FILE_INTELLIGENCE_FAILED",
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail={"code": code, "message": str(exc)},
-                ) from exc
-
-            response_text = envelope.proposal.response
-            if sanitized.redactions:
-                response_text += (
-                    "\n\nNexuss removed credential-shaped content "
-                    "from extracted file context before external processing."
-                )
-
-            user_message, assistant_message, updated = store.append_turn(
-                conversation_id=conversation_id,
-                user_text=sanitized.value,
-                assistant_text=response_text,
-                route=ConversationRoute.CHAT,
-                provider_id=envelope.proposal.provider_id,
-                model=envelope.proposal.model,
-                pending_action=None,
-                pending_capability_hint=None,
-                attachment_ids=body.attachment_ids,
-            )
-            return ConversationTurnResponse(
-                conversation=updated,
-                user_message=user_message,
-                assistant_message=assistant_message,
-                route=ConversationRoute.CHAT,
-                provider_id=envelope.proposal.provider_id,
-                model=envelope.proposal.model,
-                attachments=tuple(
-                    record
-                    for record in (
-                        files.get_attachment(item)
-                        for item in body.attachment_ids
-                    )
-                    if record is not None
-                ),
-            )
 
         try:
             profile = providers.select(
@@ -402,6 +348,59 @@ def register_conversation_routes(
         provider_input = sanitized.value
         if safe_attachment_context:
             provider_input += "\n\n" + safe_attachment_context
+
+        if body.attachment_ids:
+            try:
+                envelope = create_cognitive_proposal(
+                    request_id=body.request_id,
+                    instruction=provider_input,
+                    mode=_file_cognitive_mode(sanitized.value),
+                )
+            except (CognitiveProposalError, EngineeringError) as exc:
+                code = getattr(
+                    exc,
+                    "code",
+                    "CHAT_FILE_INTELLIGENCE_FAILED",
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={"code": code, "message": str(exc)},
+                ) from exc
+
+            response_text = envelope.proposal.response
+            if sanitized.redactions:
+                response_text += (
+                    "\n\nNexuss removed credential-shaped content "
+                    "from extracted file context before external processing."
+                )
+
+            user_message, assistant_message, updated = store.append_turn(
+                conversation_id=conversation_id,
+                user_text=sanitized.value,
+                assistant_text=response_text,
+                route=ConversationRoute.CHAT,
+                provider_id=envelope.proposal.provider_id,
+                model=envelope.proposal.model,
+                pending_action=None,
+                pending_capability_hint=None,
+                attachment_ids=body.attachment_ids,
+            )
+            return ConversationTurnResponse(
+                conversation=updated,
+                user_message=user_message,
+                assistant_message=assistant_message,
+                route=ConversationRoute.CHAT,
+                provider_id=envelope.proposal.provider_id,
+                model=envelope.proposal.model,
+                attachments=tuple(
+                    record
+                    for record in (
+                        files.get_attachment(item)
+                        for item in body.attachment_ids
+                    )
+                    if record is not None
+                ),
+            )
 
         try:
             profile = providers.select(
