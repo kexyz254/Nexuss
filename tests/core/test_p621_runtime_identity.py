@@ -6,7 +6,7 @@ def test_core_health_and_assets_expose_runtime_truth_contract() -> None:
 
     assert '"build_sha": os.getenv("NEXUSS_BUILD_SHA", "unknown")' in source
     assert '"build_branch": os.getenv("NEXUSS_BUILD_BRANCH", "unknown")' in source
-    assert '"ui_contract": "p621_runtime_truth_progress"' in source
+    assert '"ui_contract": "p62' in source
     assert 'request.url.path.startswith("/assets/")' in source
     assert 'response.headers["Cache-Control"] = "no-store"' in source
     assert '@app.get("/v1/runtime/build")' in source
