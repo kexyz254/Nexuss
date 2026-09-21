@@ -165,10 +165,10 @@ class WorkspaceFileStore:
             user_session_id=UUID(str(row[2])),
             name=str(row[3]),
             media_type=str(row[4]),
-            size_bytes=int(row[5]),
+            size_bytes=int(str(row[5])),
             sha256=str(row[6]),
             extraction_status=ExtractionStatus(str(row[7])),
-            extracted_chars=int(row[8]),
+            extracted_chars=int(str(row[8])),
             created_at=datetime.fromisoformat(str(row[9])),
         )
 
