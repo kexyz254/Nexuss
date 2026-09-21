@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class AgentKind(StrEnum):
     CORE = "core"
     ENGINEERING = "engineering"
+    INTELLIGENCE = "intelligence"
     RESEARCH = "research"
     DEVICE = "device"
     OPERATIONS = "operations"
