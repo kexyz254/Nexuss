@@ -4955,6 +4955,24 @@ async function followCoreTaskLifecycle(interaction, conversationId) {
       }
 
       if (terminal.has(String(task.state || ""))) {
+        let refreshed = null;
+        try {
+          const refreshResponse = await fetch(
+            `/v1/interactions/${encodeURIComponent(interaction.interaction_id)}/refresh`,
+            {
+              method: "POST",
+              headers: apiHeaders(),
+            },
+          );
+          if (refreshResponse.ok) {
+            refreshed = await refreshResponse.json();
+            rememberUnifiedInteraction(refreshed);
+            renderUnifiedInteraction(refreshed);
+          }
+        } catch {
+          refreshed = null;
+        }
+
         let receipt = null;
         try {
           receipt = await fetchReceipt(task.task_id);
@@ -4966,7 +4984,7 @@ async function followCoreTaskLifecycle(interaction, conversationId) {
           renderTask(task, receipt);
         }
 
-        const report = coreTaskDisplayText(task);
+        const report = refreshed?.display_text || coreTaskDisplayText(task);
         title.textContent = task.state === "completed"
           ? "Governed task completed"
           : "Governed task finished";
@@ -4978,6 +4996,7 @@ async function followCoreTaskLifecycle(interaction, conversationId) {
           task.state !== "completed",
           { rich: false },
         );
+        void refreshConversationList();
         return;
       }
     } catch {
