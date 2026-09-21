@@ -14,6 +14,7 @@ import httpx
 from nexuss.device.signing import sign_payload
 from nexuss.local_control.models import (
     LocalControlCommandEnvelope,
+    LocalControlHealth,
     LocalControlOperation,
     LocalUpdateAccepted,
     LocalUpdateStatus,
@@ -27,6 +28,8 @@ class LocalControlError(RuntimeError):
 
 
 class LocalControlClient(Protocol):
+    def health(self) -> LocalControlHealth: ...
+
     def inspect_update(self) -> LocalUpdateStatus: ...
 
     def apply_update(
@@ -38,6 +41,9 @@ class LocalControlClient(Protocol):
 
 
 class DisabledLocalControlClient:
+    def health(self) -> LocalControlHealth:
+        raise LocalControlError("LOCAL_CONTROL_NOT_CONFIGURED")
+
     def inspect_update(self) -> LocalUpdateStatus:
         raise LocalControlError("LOCAL_CONTROL_NOT_CONFIGURED")
 
@@ -82,6 +88,25 @@ class HttpLocalControlClient:
         if not base_url or not secret:
             return DisabledLocalControlClient()
         return cls(base_url=base_url, shared_secret=secret)
+
+    def health(self) -> LocalControlHealth:
+        try:
+            with httpx.Client(
+                timeout=min(self._timeout_seconds, 3.0),
+                trust_env=False,
+            ) as client:
+                response = client.get(
+                    f"{self._base_url}/health/ready",
+                )
+        except httpx.HTTPError as exc:
+            raise LocalControlError("LOCAL_CONTROL_UNREACHABLE") from exc
+
+        if response.status_code != 200:
+            raise LocalControlError(
+                f"LOCAL_CONTROL_REJECTED_{response.status_code}"
+            )
+
+        return LocalControlHealth.model_validate(response.json())
 
     def _post(
         self,
