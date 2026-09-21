@@ -33,12 +33,12 @@ from nexuss.interactions.models import (
     SaveConversationRequest,
     SaveConversationResponse,
 )
+from nexuss.interactions.progress import ProgressHub, reporting
 from nexuss.interactions.service import (
     UnifiedInteractionError,
     UnifiedInteractionService,
 )
 from nexuss.interactions.store import SQLiteInteractionStore
-from nexuss.interactions.progress import ProgressHub, reporting
 
 
 def register_interaction_routes(
@@ -159,7 +159,7 @@ def register_interaction_routes(
                 },
             ) from exc
 
-        except Exception:
+        except (LookupError, OSError, RuntimeError, ValueError) as exc:
             progress.finish(body.request_id, "failed")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -167,7 +167,7 @@ def register_interaction_routes(
                     "Interaction failed; inspect the retained workflow "
                     "before retrying"
                 ),
-            ) from None
+            ) from exc
 
     @app.get("/v1/interactions/progress/{request_id}")
     def get_progress(
