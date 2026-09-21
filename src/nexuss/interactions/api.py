@@ -231,6 +231,39 @@ def register_interaction_routes(
                 detail={"code": exc.code, "message": str(exc)},
             ) from exc
 
+    @app.post(
+        "/v1/interactions/{interaction_id}/refresh",
+        response_model=InteractionResponse,
+    )
+    def refresh_interaction(
+        interaction_id: UUID,
+        request: Request,
+        session_id: Annotated[
+            UUID,
+            Header(alias="X-Nexuss-Session-ID"),
+        ],
+        authenticated: Annotated[
+            bool,
+            Header(alias="X-Nexuss-Session-Authenticated"),
+        ],
+    ) -> InteractionResponse:
+        require_local_control(request)
+        if not authenticated:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authenticated session is required.",
+            )
+        try:
+            return service.refresh(
+                interaction_id=interaction_id,
+                user_session_id=session_id,
+            )
+        except UnifiedInteractionError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"code": exc.code, "message": str(exc)},
+            ) from exc
+
     @app.get(
         "/v1/interactions/{interaction_id}",
         response_model=InteractionResponse,
