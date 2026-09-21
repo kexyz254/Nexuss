@@ -49,6 +49,7 @@ from nexuss.connectors.google_workspace.api import (
 from nexuss.connectors.google_workspace.service import (
     GoogleWorkspaceConnectorService,
 )
+from nexuss.connectors.trading import register_trading_routes
 from nexuss.core.registry import list_capabilities
 from nexuss.core.task_status import (
     TaskProgressSnapshot,
@@ -393,6 +394,8 @@ async def create_development_package(
             },
         ) from exc
 
+
+register_trading_routes(app, _require_local_control)
 
 register_cognitive_routes(
     app,
