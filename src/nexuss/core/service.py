@@ -1072,6 +1072,24 @@ class CoreSimulatorService:
             ],
         )
 
+    def list_tasks(self) -> tuple[TaskView, ...]:
+        """Return a safe snapshot of authoritative Core tasks.
+
+        The Supervisor consumes this read-only projection; it never becomes a
+        second task state machine.
+        """
+
+        with self._lock:
+            ordered = sorted(
+                self._tasks.values(),
+                key=lambda item: item.updated_at,
+                reverse=True,
+            )
+            return tuple(
+                task.model_copy(deep=True)
+                for task in ordered
+            )
+
     def get_task(self, task_id: UUID) -> TaskView:
         with self._lock:
             task = self._tasks.get(task_id)
