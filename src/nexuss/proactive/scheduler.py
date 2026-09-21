@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from threading import Event, Lock, Thread
+from uuid import UUID
 
 from nexuss.conversation.models import ConversationRoute, MessageRole
 from nexuss.conversation.store import SQLiteConversationStore
@@ -87,10 +88,10 @@ class ProactiveScheduler:
     def _emit(
         self,
         *,
-        conversation_id,
-        user_session_id,
+        conversation_id: UUID,
+        user_session_id: UUID,
         source_type: str,
-        source_id,
+        source_id: UUID,
         title: str,
         detail: str,
         fired_at: datetime,
