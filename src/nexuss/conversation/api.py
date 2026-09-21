@@ -16,6 +16,7 @@ from nexuss.ai.registry import (
     AIProviderRegistryError,
     default_provider_registry,
 )
+from nexuss.chat_files.store import ChatFileError, WorkspaceFileStore
 from nexuss.cognitive.models import CognitiveMode
 from nexuss.engineering.errors import EngineeringError
 from nexuss.conversation.models import (
@@ -25,7 +26,8 @@ from nexuss.conversation.models import (
     ConversationTurnResponse,
     CreateConversationRequest,
     MessageRole,
-    RenameConversationRequest,)
+    RenameConversationRequest,
+)
 from nexuss.conversation.router import (
     ConversationRouterService,
     ConversationRoutingError,
@@ -40,6 +42,7 @@ def register_conversation_routes(
     require_local_control: Callable[[Request], None],
 ) -> None:
     store = SQLiteConversationStore()
+    files = WorkspaceFileStore()
     providers = default_provider_registry()
 
     def validate_session(
@@ -117,6 +120,7 @@ def register_conversation_routes(
         return ConversationHistoryResponse(
             conversation=record,
             messages=store.messages(record.conversation_id),
+            attachments=files.list_attachments(record.conversation_id),
         )
 
     @app.get(
@@ -152,6 +156,7 @@ def register_conversation_routes(
         return ConversationHistoryResponse(
             conversation=record,
             messages=store.messages(conversation_id),
+            attachments=files.list_attachments(conversation_id),
         )
 
     @app.get("/v1/conversations")
@@ -300,6 +305,26 @@ def register_conversation_routes(
         )
 
         sanitized = sanitize_text(body.text)
+        try:
+            attachment_context = files.context_for(
+                attachment_ids=body.attachment_ids,
+                conversation_id=conversation_id,
+                user_session_id=session_id,
+            )
+        except ChatFileError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": exc.code, "message": str(exc)},
+            ) from exc
+
+        safe_attachment_context = (
+            sanitize_text(attachment_context).value
+            if attachment_context
+            else ""
+        )
+        provider_input = sanitized.value
+        if safe_attachment_context:
+            provider_input += "\n\n" + safe_attachment_context
 
         try:
             profile = providers.select(
@@ -309,7 +334,7 @@ def register_conversation_routes(
             resolved = AIProviderConnectionResolver().resolve(
                 profile=profile,
                 request_id=body.request_id,
-                instruction=sanitized.value,
+                instruction=provider_input,
                 external_processing_approved=(
                     body.external_processing_approved
                 ),
@@ -320,7 +345,7 @@ def register_conversation_routes(
                 proposer=resolved.proposer,
             )
             classification = router.route(
-                user_text=sanitized.value,
+                user_text=provider_input,
                 conversation_context=store.recent_context(
                     conversation_id
                 ),
@@ -376,6 +401,7 @@ def register_conversation_routes(
                 pending_capability_hint=(
                     pending_capability_hint
                 ),
+                attachment_ids=body.attachment_ids,
             )
         )
 
@@ -391,4 +417,12 @@ def register_conversation_routes(
             capability_hint=classification.capability_hint,
             provider_id=profile.provider_id,
             model=resolved.model,
+            attachments=tuple(
+                record
+                for record in (
+                    files.get_attachment(item)
+                    for item in body.attachment_ids
+                )
+                if record is not None
+            ),
         )
