@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import re
 import shutil
-import subprocess
+import subprocess  # nosec B404 - only bounded Docker CLI execution is permitted
 import tempfile
 import threading
 from uuid import uuid4
@@ -83,13 +83,20 @@ class DockerValidator:
                    "--network=none", "--read-only", "--cap-drop=ALL",
                    "--security-opt=no-new-privileges", "--user=65532:65532",
                    "--pids-limit=128", "--memory=768m", "--cpus=1",
-                   "--tmpfs", "/tmp:rw,nosuid,nodev,size=134217728",
+                   "--tmpfs", "/tmp:rw,nosuid,nodev,size=134217728",  # nosec B108 - container tmpfs
                    "--mount", f"type=bind,source={root.resolve()},target=/workspace,readonly",
                    "--workdir=/workspace", "--env", "PYTHONDONTWRITEBYTECODE=1",
                    "--env", "PYTHONPATH=/workspace", "--entrypoint=python", self.image,
                    "-m", "pytest", "-q", "-p", "no:cacheprovider", *test_paths]
         # Logs can contain credentials or model-generated text. Keep only their hash.
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        # Docker is resolved locally, the image is immutable-by-digest, and
+        # command arguments are a fixed list with no shell interpolation.
+        process = subprocess.Popen(  # nosec B603
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            shell=False,
+        )
         raw = bytearray()
         oversized = threading.Event()
         def consume():
@@ -115,8 +122,14 @@ class DockerValidator:
             if process.poll() is None:
                 process.kill()
             process.wait(timeout=5)
-            subprocess.run([self.docker, "rm", "-f", name], stdout=subprocess.DEVNULL,
-                           stderr=subprocess.DEVNULL, timeout=15, check=False)
+            subprocess.run(  # nosec B603
+                [self.docker, "rm", "-f", name],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=15,
+                check=False,
+                shell=False,
+            )
             reader.join(timeout=5)
             process.stdout.close()
 
