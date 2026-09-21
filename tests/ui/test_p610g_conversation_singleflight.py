@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 STORE_MARKER = "P6.10G ATOMIC CONVERSATION CREATE OR REBIND"
 API_CODE = "CONVERSATION_CONTINUATION_TOKEN_INVALID"
 
