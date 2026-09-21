@@ -23,6 +23,9 @@ if ($LASTEXITCODE -ne 0 -or -not $PythonVersion.StartsWith("3.12.")) {
     )
 }
 
+$BuildSha = (git rev-parse HEAD).Trim()
+$BuildBranch = (git branch --show-current).Trim()
+
 if ((git branch --show-current).Trim() -ne "feature/p5-knowledge-media-mobile") {
     Write-Warning (
         "P5 normally runs from feature/p5-knowledge-media-mobile " +
@@ -312,6 +315,8 @@ Write-Host "Phone:   $MobileUrl"
 Write-Host "Node:    $($NodeHealth.node_id) | $($NodeHealth.mode)"
 Write-Host "Local:   $($LocalControlHealth.mode)"
 Write-Host "Core:    $($CoreHealth.mode)"
+Write-Host "Build:   $BuildSha"
+Write-Host "Branch:  $BuildBranch"
 Write-Host "Python:  $PythonExecutable"
 Write-Host (
     "YouTube: " +
