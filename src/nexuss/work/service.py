@@ -105,23 +105,35 @@ class WorkCommandService:
             return LocalWorkResponse(f"Active work{project_label}:\n" + "\n".join(lines))
 
         if match := _COMPLETE_TASK.match(value):
-            item = self.store.find_item(user_session_id, match.group(1).strip(" \"'."))
-            if item is None:
-                raise WorkStoreError("WORK_ITEM_NOT_FOUND", "That work item was not found.")
+            selected_item = self.store.find_item(
+                user_session_id,
+                match.group(1).strip(" \"'."),
+            )
+            if selected_item is None:
+                raise WorkStoreError(
+                    "WORK_ITEM_NOT_FOUND",
+                    "That work item was not found.",
+                )
             updated = self.store.update_status(
                 user_session_id=user_session_id,
-                work_item_id=item.work_item_id,
+                work_item_id=selected_item.work_item_id,
                 status=WorkStatus.COMPLETED,
             )
             return LocalWorkResponse(f"Completed task “{updated.title}”.")
 
         if match := _START_TASK.match(value):
-            item = self.store.find_item(user_session_id, match.group(1).strip(" \"'."))
-            if item is None:
-                raise WorkStoreError("WORK_ITEM_NOT_FOUND", "That work item was not found.")
+            selected_item = self.store.find_item(
+                user_session_id,
+                match.group(1).strip(" \"'."),
+            )
+            if selected_item is None:
+                raise WorkStoreError(
+                    "WORK_ITEM_NOT_FOUND",
+                    "That work item was not found.",
+                )
             updated = self.store.update_status(
                 user_session_id=user_session_id,
-                work_item_id=item.work_item_id,
+                work_item_id=selected_item.work_item_id,
                 status=WorkStatus.IN_PROGRESS,
             )
             return LocalWorkResponse(f"Task “{updated.title}” is now in progress.")
