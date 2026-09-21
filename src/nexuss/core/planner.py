@@ -120,6 +120,45 @@ def _direct_specs(intent: Intent) -> list[StepSpec] | None:
             )
         ]
 
+    if intent.kind is IntentKind.SYSTEM_UPDATE_STATUS:
+        return [
+            (
+                "system.update.inspect",
+                RiskTier.LOW,
+                ["local_update_status"],
+                {},
+                False,
+            )
+        ]
+
+    if intent.kind is IntentKind.SYSTEM_UPDATE_APPLY:
+        return [
+            (
+                "system.update.apply",
+                RiskTier.HIGH,
+                [
+                    "local_update_receipt",
+                    "target_sha_verification",
+                    "restart_scheduled",
+                ],
+                {
+                    "branch": intent.entities.get(
+                        "branch",
+                        "feature/p5-knowledge-media-mobile",
+                    ),
+                    "expected_current_sha": intent.entities.get(
+                        "current_sha",
+                        "",
+                    ),
+                    "expected_target_sha": intent.entities.get(
+                        "target_sha",
+                        "",
+                    ),
+                },
+                True,
+            )
+        ]
+
     if intent.kind is IntentKind.CREATE_NOTE:
         prepared = prepare_note(
             intent.entities["title"],
@@ -468,9 +507,9 @@ def _fallback_specs(intent: Intent) -> list[StepSpec]:
         ],
         IntentKind.SYSTEM_HEALTH: [
             (
-                "nexuss.read_health",
+                "system.runtime.inspect",
                 RiskTier.LOW,
-                ["health_snapshot"],
+                ["system_intelligence_snapshot"],
                 {},
                 False,
             )
