@@ -33,7 +33,7 @@ jobs:
       - run: pip install -e '.[dev]'
       - name: Targeted Ruff
         run: |
-          ruff check --diff \
+          ruff check \
             src/nexuss/conversation/stabilization.py \
             src/nexuss/interactions/service.py \
             src/nexuss/core/executor.py \
