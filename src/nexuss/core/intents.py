@@ -561,6 +561,42 @@ def _is_open_question(display_text: str) -> bool:
 
 
 
+_GENERAL_INTELLIGENCE_PREFIXES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("analyze", ("analyze ", "analyse ", "reason through ", "evaluate ", "solve ")),
+    ("compare", ("compare ", "contrast ")),
+    ("plan", ("plan how to ", "create a plan for ", "make a plan for ")),
+    ("summarize", ("summarize ", "summarise ", "condense ")),
+    ("review", ("review ", "critique ", "assess ")),
+    ("rewrite", ("rewrite ", "rephrase ", "polish ")),
+    ("write", ("write ", "draft ", "compose ")),
+    ("design", ("design ", "architect ")),
+    ("debug", ("debug ", "troubleshoot ")),
+    ("code", ("code ", "implement in code ", "write code for ")),
+    (
+        "research_synthesis",
+        ("synthesize ", "synthesise ", "combine these findings "),
+    ),
+    ("create", ("brainstorm ", "generate ideas for ")),
+)
+
+
+def _match_general_intelligence(
+    display_text: str,
+) -> dict[str, str] | None:
+    normalized = display_text.strip().casefold()
+    for mode, prefixes in _GENERAL_INTELLIGENCE_PREFIXES:
+        for prefix in prefixes:
+            if normalized.startswith(prefix):
+                instruction = display_text.strip()
+                if len(instruction.split()) < 2:
+                    return None
+                return {
+                    "mode": mode,
+                    "instruction": instruction,
+                }
+    return None
+
+
 _GITHUB_CREATE_PREFIX = re.compile(
     r"^(?:please\s+)?(?:create|make)\s+"
     r"(?:(?:a|new|private)\s+)*"
@@ -835,6 +871,25 @@ def classify_intent(utterance: str) -> Intent:
     ):
         kind = IntentKind.SYSTEM_UPDATE_STATUS
         confidence = 0.99
+    elif _contains_any(
+        normalized,
+        (
+            "last nexuss update result",
+            "nexuss update result",
+            "did nexuss update succeed",
+            "did the nexuss update succeed",
+            "was nexuss rolled back",
+            "check last nexuss update",
+        ),
+    ):
+        kind = IntentKind.SYSTEM_UPDATE_RESULT
+        confidence = 0.99
+    elif (
+        general_intelligence := _match_general_intelligence(display_text)
+    ) is not None:
+        kind = IntentKind.GENERAL_INTELLIGENCE
+        confidence = 0.98
+        entities = general_intelligence
     elif _contains_any(
         normalized,
         ("workspace", "repository", "repo", "computer"),
