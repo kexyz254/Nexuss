@@ -1,0 +1,60 @@
+name: P6.19 Work + Proactive Verification
+
+on:
+  push:
+    branches: [feature/p619-work-proactive-engine]
+  pull_request:
+    paths:
+      - 'src/nexuss/work/**'
+      - 'src/nexuss/proactive/**'
+      - 'src/nexuss/conversation/api.py'
+      - 'src/nexuss/api/app.py'
+      - 'src/nexuss/orchestration/supervisor.py'
+      - 'src/nexuss/ui/proactive.js'
+      - 'src/nexuss/ui/index.html'
+      - 'tests/work/**'
+      - 'tests/proactive/**'
+      - 'tests/ui/test_p619_proactive_work.py'
+      - '.github/workflows/p619-targeted.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-p619:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e '.[dev]'
+      - name: Targeted Ruff
+        run: |
+          ruff check \
+            src/nexuss/work \
+            src/nexuss/proactive \
+            tests/work \
+            tests/proactive \
+            tests/ui/test_p619_proactive_work.py
+      - name: Targeted mypy
+        run: |
+          mypy \
+            src/nexuss/work \
+            src/nexuss/proactive
+      - name: P6.19 regression tests
+        run: |
+          pytest --noconftest --import-mode=importlib -q \
+            tests/work \
+            tests/proactive \
+            tests/ui/test_p619_proactive_work.py \
+            tests/conversation/test_multi_chat_lifecycle.py \
+            tests/ui/test_p618_chat_files.py \
+            tests/orchestration/test_agent_supervisor.py
+      - name: JavaScript syntax
+        run: |
+          node --check src/nexuss/ui/proactive.js
+      - name: Targeted Bandit
+        run: |
+          bandit -q -r src/nexuss/work src/nexuss/proactive

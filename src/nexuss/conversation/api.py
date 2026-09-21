@@ -35,6 +35,10 @@ from nexuss.conversation.router import (
 from nexuss.conversation.security import sanitize_text
 from nexuss.conversation.store import SQLiteConversationStore
 from nexuss.engineering.errors import EngineeringError
+from nexuss.proactive.service import ProactiveCommandService
+from nexuss.proactive.store import ProactiveStoreError
+from nexuss.work.service import WorkCommandService
+from nexuss.work.store import WorkStoreError
 
 
 def _file_cognitive_mode(text: str) -> CognitiveMode:
@@ -65,6 +69,8 @@ def register_conversation_routes(
 ) -> None:
     store = SQLiteConversationStore()
     files = WorkspaceFileStore()
+    work_commands = WorkCommandService()
+    proactive_commands = ProactiveCommandService()
     providers = default_provider_registry()
 
     def validate_session(
@@ -328,6 +334,55 @@ def register_conversation_routes(
         )
 
         sanitized = sanitize_text(body.text)
+
+        try:
+            local_response = work_commands.handle(
+                sanitized.value,
+                conversation_id=conversation_id,
+                user_session_id=session_id,
+            )
+            if local_response is None:
+                local_response = proactive_commands.handle(
+                    sanitized.value,
+                    conversation_id=conversation_id,
+                    user_session_id=session_id,
+                )
+        except (WorkStoreError, ProactiveStoreError) as exc:
+            code = getattr(exc, "code", "LOCAL_WORK_COMMAND_FAILED")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": code, "message": str(exc)},
+            ) from exc
+
+        if local_response is not None:
+            user_message, assistant_message, updated = store.append_turn(
+                conversation_id=conversation_id,
+                user_text=sanitized.value,
+                assistant_text=local_response.text,
+                route=ConversationRoute.CHAT,
+                provider_id="nexuss",
+                model=local_response.model,
+                pending_action=None,
+                pending_capability_hint=None,
+                attachment_ids=body.attachment_ids,
+            )
+            return ConversationTurnResponse(
+                conversation=updated,
+                user_message=user_message,
+                assistant_message=assistant_message,
+                route=ConversationRoute.CHAT,
+                provider_id="nexuss",
+                model=local_response.model,
+                attachments=tuple(
+                    record
+                    for record in (
+                        files.get_attachment(item)
+                        for item in body.attachment_ids
+                    )
+                    if record is not None
+                ),
+            )
+
         try:
             attachment_context = files.context_for(
                 attachment_ids=body.attachment_ids,

@@ -43,6 +43,8 @@ _CAPABILITY_OWNERS: tuple[tuple[str, str], ...] = (
     ("mobile.", "device.agent"),
     ("phone.", "device.agent"),
     ("workspace.", "operations.agent"),
+    ("work.", "operations.agent"),
+    ("proactive.", "operations.agent"),
     ("github.", "operations.agent"),
     ("calendar.", "operations.agent"),
     ("email.", "operations.agent"),
@@ -99,7 +101,7 @@ _BUILTIN_AGENTS: tuple[dict[str, object], ...] = (
         "agent_id": "operations.agent",
         "title": "Operations Agent",
         "kind": AgentKind.OPERATIONS,
-        "capabilities": ("workspace.*", "github.*", "calendar.*", "email.*", "system.*"),
+        "capabilities": ("workspace.*", "work.*", "proactive.*", "github.*", "calendar.*", "email.*", "system.*"),
         "dependencies": ("core.orchestrator",),
     },
     {

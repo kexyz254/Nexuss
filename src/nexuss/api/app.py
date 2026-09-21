@@ -97,6 +97,8 @@ from nexuss.mobile.models import (
 )
 from nexuss.mobile.store import device_store_from_environment
 from nexuss.mobile_fabric.api import register_mobile_fabric_routes
+from nexuss.proactive.api import register_proactive_routes
+from nexuss.work.api import register_work_routes
 from nexuss.understanding.api import register_understanding_routes
 from nexuss.understanding.commitment_executor import CommitmentGoalExecutor
 from nexuss.understanding.service import GoalUnderstandingService
@@ -422,6 +424,14 @@ register_conversation_routes(
     require_local_control=_require_local_control,
 )
 register_chat_file_routes(
+    app,
+    require_local_control=_require_local_control,
+)
+register_work_routes(
+    app,
+    require_local_control=_require_local_control,
+)
+register_proactive_routes(
     app,
     require_local_control=_require_local_control,
 )
