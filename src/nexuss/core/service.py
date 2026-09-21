@@ -50,6 +50,10 @@ from nexuss.domain.models import (
     TaskState,
     TaskView,
 )
+from nexuss.local_control.client import (
+    HttpLocalControlClient,
+    LocalControlError,
+)
 from nexuss.knowledge.provider import KnowledgeProvider, WikipediaKnowledgeProvider
 from nexuss.media.youtube import YouTubeDataProvider, YouTubeProvider
 from nexuss.memory.store import MemoryStore
@@ -282,6 +286,37 @@ class CoreSimulatorService:
             )
             destination_label = "Paired approval phone · YouTube"
             approval_channel = ApprovalChannel.PHONE
+        elif step.capability_id == "system.update.apply":
+            branch = str(
+                step.parameters.get(
+                    "branch",
+                    "feature/p5-knowledge-media-mobile",
+                )
+            )
+            current_sha = str(
+                step.parameters.get("expected_current_sha", "")
+            )
+            target_sha = str(
+                step.parameters.get("expected_target_sha", "")
+            )
+            action_title = "Apply verified Nexuss update"
+            action_summary = (
+                "Fast-forward the clean local Nexuss repository to the "
+                "exact GitHub revision below, restart the local runtime, "
+                "and roll back automatically if health checks fail."
+            )
+            exact_preview = (
+                f"Capability: {step.capability_id}\n"
+                f"Branch: {branch}\n"
+                f"Current SHA: {current_sha}\n"
+                f"Target SHA: {target_sha}\n"
+                "Git operation: fetch + merge --ff-only\n"
+                "Restart: local connector, trusted node, and Core\n"
+                "Failed startup: automatic git rollback to current SHA\n"
+                "Arbitrary shell: disabled"
+            )
+            destination_label = "Nexuss local runtime · verified GitHub revision"
+            approval_channel = ApprovalChannel.DESKTOP
         elif step.capability_id in {
             "engineering.build_artifact",
             "engineering.repair_failed_build",
@@ -573,6 +608,35 @@ class CoreSimulatorService:
                 intent = intent.model_copy(
                     update={"entities": entities}
                 )
+            if intent.kind is IntentKind.SYSTEM_UPDATE_APPLY:
+                entities = dict(intent.entities)
+                try:
+                    update_status = (
+                        HttpLocalControlClient.from_environment()
+                        .inspect_update()
+                    )
+                except (LocalControlError, ValueError):
+                    update_status = None
+
+                if update_status is not None:
+                    entities.update(
+                        {
+                            "branch": update_status.branch,
+                            "current_sha": update_status.current_sha,
+                            "target_sha": update_status.remote_sha,
+                            "clean_worktree": str(
+                                update_status.clean_worktree
+                            ).lower(),
+                            "fast_forward_available": str(
+                                update_status.fast_forward_available
+                            ).lower(),
+                        }
+                    )
+
+                intent = intent.model_copy(
+                    update={"entities": entities}
+                )
+
             events: list[ActionEvent] = []
             self._append_event(
                 task_id,
