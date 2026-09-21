@@ -8,7 +8,7 @@ import json
 import re
 import zipfile
 from pathlib import Path
-from xml.etree import ElementTree
+from xml.etree import ElementTree  # nosec B405 - guarded by _safe_xml
 
 _MAX_EXTRACTED_CHARS = 120_000
 _TEXT_SUFFIXES = {
@@ -33,10 +33,21 @@ def _decode_text(data: bytes) -> str:
     return _bound(data.decode("utf-8", errors="replace"))
 
 
+def _safe_xml(payload: bytes) -> ElementTree.Element:
+    if len(payload) > 8 * 1024 * 1024:
+        raise ValueError("Office XML part exceeds the extraction bound.")
+    upper = payload.upper()
+    if b"<!DOCTYPE" in upper or b"<!ENTITY" in upper:
+        raise ValueError("DTD/entity declarations are not accepted.")
+    return ElementTree.fromstring(  # nosec B314 - DTD/entity input rejected above
+        payload
+    )
+
+
 def _docx_text(data: bytes) -> str:
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         payload = archive.read("word/document.xml")
-    root = ElementTree.fromstring(payload)
+    root = _safe_xml(payload)
     parts = [
         node.text or ""
         for node in root.iter()
@@ -50,7 +61,7 @@ def _xlsx_text(data: bytes) -> str:
         names = set(archive.namelist())
         shared: list[str] = []
         if "xl/sharedStrings.xml" in names:
-            root = ElementTree.fromstring(archive.read("xl/sharedStrings.xml"))
+            root = _safe_xml(archive.read("xl/sharedStrings.xml"))
             for item in root:
                 shared.append(" ".join(
                     node.text or ""
@@ -65,7 +76,7 @@ def _xlsx_text(data: bytes) -> str:
         )[:12]
         for sheet_name in sheet_names:
             output.append(f"[{Path(sheet_name).stem}]")
-            root = ElementTree.fromstring(archive.read(sheet_name))
+            root = _safe_xml(archive.read(sheet_name))
             row_count = 0
             for row in root.iter():
                 if not row.tag.endswith("}row"):
