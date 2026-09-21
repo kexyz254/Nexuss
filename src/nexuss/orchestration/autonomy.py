@@ -104,6 +104,62 @@ def _web(arguments: dict[str, object]) -> str:
     return f"Open Chrome and search {_required(arguments, 'query', 240)}."
 
 
+def _cognitive(
+    arguments: dict[str, object],
+    verb: str,
+) -> str:
+    instruction = _required(arguments, "instruction", 8_000)
+    return f"{verb} {instruction}"
+
+
+def _analyze(arguments: dict[str, object]) -> str:
+    return _cognitive(arguments, "Analyze")
+
+
+def _compare(arguments: dict[str, object]) -> str:
+    return _cognitive(arguments, "Compare")
+
+
+def _plan(arguments: dict[str, object]) -> str:
+    return _cognitive(arguments, "Plan how to")
+
+
+def _summarize(arguments: dict[str, object]) -> str:
+    return _cognitive(arguments, "Summarize")
+
+
+def _review(arguments: dict[str, object]) -> str:
+    return _cognitive(arguments, "Review")
+
+
+def _write(arguments: dict[str, object]) -> str:
+    return _cognitive(arguments, "Write")
+
+
+def _rewrite(arguments: dict[str, object]) -> str:
+    return _cognitive(arguments, "Rewrite")
+
+
+def _design(arguments: dict[str, object]) -> str:
+    return _cognitive(arguments, "Design")
+
+
+def _debug(arguments: dict[str, object]) -> str:
+    return _cognitive(arguments, "Debug")
+
+
+def _code(arguments: dict[str, object]) -> str:
+    return _cognitive(arguments, "Code")
+
+
+def _synthesize(arguments: dict[str, object]) -> str:
+    return _cognitive(arguments, "Synthesize")
+
+
+def _create(arguments: dict[str, object]) -> str:
+    return _cognitive(arguments, "Brainstorm")
+
+
 def _repository(arguments: dict[str, object]) -> str:
     name = str(arguments.get("repository_name", arguments.get("name", ""))).strip()
     if not name or len(name) > 100:
@@ -123,6 +179,18 @@ _READ_ADAPTERS: dict[str, Callable[[dict[str, object]], str]] = {
     "knowledge.answer": _answer,
     "media.youtube.discover": _media,
     "memory.recall": _recall,
+    "intelligence.analyze": _analyze,
+    "intelligence.compare": _compare,
+    "intelligence.plan": _plan,
+    "intelligence.summarize": _summarize,
+    "intelligence.review": _review,
+    "intelligence.write": _write,
+    "intelligence.rewrite": _rewrite,
+    "intelligence.design": _design,
+    "intelligence.debug": _debug,
+    "intelligence.code": _code,
+    "intelligence.research_synthesis": _synthesize,
+    "intelligence.create": _create,
 }
 
 _APPROVAL_ADAPTERS: dict[str, Callable[[dict[str, object]], str]] = {
@@ -140,6 +208,7 @@ _READ_MODES = frozenset({
     "official_google_readonly",
     "official_media_connector",
     "cross_channel_readonly_intelligence",
+    "proposal_only_cognitive_provider",
 })
 
 
