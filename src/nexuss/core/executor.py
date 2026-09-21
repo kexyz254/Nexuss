@@ -45,7 +45,12 @@ from nexuss.intelligence.models import (
 from nexuss.intelligence.provider import ExtractiveReasoningProvider
 from nexuss.intelligence.router import ProviderRouter
 from nexuss.intelligence.service import IntelligenceService
+from nexuss.intelligence.system import collect_system_intelligence
 from nexuss.knowledge.provider import KnowledgeProvider, KnowledgeProviderError
+from nexuss.local_control.client import (
+    HttpLocalControlClient,
+    LocalControlError,
+)
 from nexuss.media.youtube import MediaProviderError, YouTubeProvider
 from nexuss.memory.models import SourceTrust, Volatility
 from nexuss.memory.store import MemoryStore, MemoryWriteRefused
@@ -1126,6 +1131,93 @@ def _execute_github_create_repository(
     )
 
 
+def _execute_system_intelligence(
+    step: PlanStep,
+    timestamp: datetime,
+) -> CapabilityResult:
+    attributes = collect_system_intelligence(observed_at=timestamp)
+    return CapabilityResult(
+        step_id=step.step_id,
+        capability_id=step.capability_id,
+        status=StepStatus.VERIFIED,
+        evidence=[
+            EvidenceRecord(
+                source="local:system_intelligence",
+                observed_at=timestamp,
+                attributes=attributes,
+            )
+        ],
+    )
+
+
+def _execute_update_inspect(
+    step: PlanStep,
+    timestamp: datetime,
+) -> CapabilityResult:
+    try:
+        status = HttpLocalControlClient.from_environment().inspect_update()
+    except (LocalControlError, ValueError) as exc:
+        return _failed(step, str(exc))
+
+    return CapabilityResult(
+        step_id=step.step_id,
+        capability_id=step.capability_id,
+        status=StepStatus.VERIFIED,
+        evidence=[
+            EvidenceRecord(
+                source="local:trusted_control",
+                observed_at=timestamp,
+                attributes={
+                    **status.model_dump(mode="json"),
+                    "source_mode": "trusted_local_control_readonly",
+                },
+            )
+        ],
+    )
+
+
+def _execute_update_apply(
+    step: PlanStep,
+    timestamp: datetime,
+    approval: ApprovalRequest | None,
+) -> CapabilityResult:
+    if approval is None:
+        return _failed(step, "LOCAL_UPDATE_APPROVAL_CONTEXT_MISSING")
+
+    current_sha = str(
+        step.parameters.get("expected_current_sha", "")
+    )
+    target_sha = str(
+        step.parameters.get("expected_target_sha", "")
+    )
+
+    try:
+        accepted = HttpLocalControlClient.from_environment().apply_update(
+            expected_current_sha=current_sha,
+            expected_target_sha=target_sha,
+        )
+    except (LocalControlError, ValueError) as exc:
+        return _failed(step, str(exc))
+
+    return CapabilityResult(
+        step_id=step.step_id,
+        capability_id=step.capability_id,
+        status=StepStatus.VERIFIED,
+        evidence=[
+            EvidenceRecord(
+                source="local:trusted_control",
+                observed_at=timestamp,
+                attributes={
+                    **accepted.model_dump(mode="json"),
+                    "approval_id": str(approval.approval_id),
+                    "source_mode": "trusted_local_control_verified_update",
+                    "arbitrary_shell_enabled": False,
+                },
+            )
+        ],
+    )
+
+
 def execute_step(
     step: PlanStep,
     observed_at: datetime | None = None,
@@ -1142,6 +1234,19 @@ def execute_step(
     approval: ApprovalRequest | None = None,
 ) -> CapabilityResult:
     timestamp = observed_at or datetime.now(UTC)
+
+    if step.capability_id == "system.runtime.inspect":
+        return _execute_system_intelligence(step, timestamp)
+
+    if step.capability_id == "system.update.inspect":
+        return _execute_update_inspect(step, timestamp)
+
+    if step.capability_id == "system.update.apply":
+        return _execute_update_apply(
+            step,
+            timestamp,
+            approval,
+        )
 
     if step.capability_id in {
         "github.connection.status",
