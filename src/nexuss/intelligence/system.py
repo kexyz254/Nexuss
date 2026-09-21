@@ -68,16 +68,16 @@ def collect_system_intelligence(
     local_control: dict[str, object]
     try:
         client = HttpLocalControlClient.from_environment()
-        update = client.inspect_update()
+        health = client.health()
         local_control = {
             "configured": True,
             "reachable": True,
-            "branch": update.branch,
-            "current_sha": update.current_sha,
-            "remote_sha": update.remote_sha,
-            "update_available": update.update_available,
-            "fast_forward_available": update.fast_forward_available,
-            "clean_worktree": update.clean_worktree,
+            "status": health.status,
+            "mode": health.mode,
+            "approved_branch": health.approved_branch,
+            "update_execution_enabled": (
+                health.update_execution_enabled
+            ),
         }
     except (LocalControlError, ValueError):
         local_control = {
