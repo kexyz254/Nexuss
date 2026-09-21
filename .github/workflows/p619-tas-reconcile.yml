@@ -1,0 +1,70 @@
+name: P6.19 TAS Reconciliation Verification
+
+on:
+  push:
+    branches: [integration/p619-tas-reconcile]
+  pull_request:
+    paths:
+      - 'src/nexuss/connectors/trading.py'
+      - 'src/nexuss/conversation/agent_roles.py'
+      - 'src/nexuss/conversation/tas_repair.py'
+      - 'src/nexuss/conversation/tas_workflow.py'
+      - 'src/nexuss/conversation/trading.py'
+      - 'src/nexuss/interactions/progress.py'
+      - 'src/nexuss/interactions/api.py'
+      - 'src/nexuss/interactions/models.py'
+      - 'src/nexuss/interactions/service.py'
+      - 'src/nexuss/conversation/api.py'
+      - 'src/nexuss/api/app.py'
+      - 'src/nexuss/ui/app.js'
+      - 'tests/connectors/test_trading.py'
+      - 'tests/conversation/test_live_workflow.py'
+      - 'tests/conversation/test_tas_repair.py'
+      - 'tests/conversation/test_tas_workflow.py'
+      - 'tests/conversation/test_trading_chat.py'
+      - '.github/workflows/p619-tas-reconcile.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-tas-reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e '.[dev]'
+      - name: Compile reconciled Python
+        run: |
+          python -m compileall -q \
+            src/nexuss/connectors/trading.py \
+            src/nexuss/conversation/agent_roles.py \
+            src/nexuss/conversation/tas_repair.py \
+            src/nexuss/conversation/tas_workflow.py \
+            src/nexuss/conversation/trading.py \
+            src/nexuss/interactions/progress.py \
+            src/nexuss/interactions/api.py \
+            src/nexuss/interactions/models.py \
+            src/nexuss/interactions/service.py \
+            src/nexuss/conversation/api.py
+      - name: TAS regression tests
+        run: |
+          pytest --noconftest --import-mode=importlib -q \
+            tests/connectors/test_trading.py \
+            tests/conversation/test_live_workflow.py \
+            tests/conversation/test_tas_repair.py \
+            tests/conversation/test_tas_workflow.py \
+            tests/conversation/test_trading_chat.py
+      - name: JavaScript syntax
+        run: node --check src/nexuss/ui/app.js
+      - name: Targeted Bandit
+        run: |
+          bandit -q \
+            src/nexuss/connectors/trading.py \
+            src/nexuss/conversation/tas_repair.py \
+            src/nexuss/conversation/tas_workflow.py \
+            src/nexuss/conversation/trading.py \
+            src/nexuss/interactions/progress.py
