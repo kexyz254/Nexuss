@@ -35,6 +35,8 @@ _TERMINAL_STATES = frozenset(
 
 _CAPABILITY_OWNERS: tuple[tuple[str, str], ...] = (
     ("engineering.", "engineering.agent"),
+    ("intelligence.", "intelligence.agent"),
+    ("system.", "operations.agent"),
     ("knowledge.", "research.agent"),
     ("media.", "research.agent"),
     ("device.", "device.agent"),
@@ -73,6 +75,13 @@ _BUILTIN_AGENTS: tuple[dict[str, object], ...] = (
         "dependencies": ("core.orchestrator",),
     },
     {
+        "agent_id": "intelligence.agent",
+        "title": "General Intelligence Agent",
+        "kind": AgentKind.INTELLIGENCE,
+        "capabilities": ("intelligence.*",),
+        "dependencies": ("core.orchestrator",),
+    },
+    {
         "agent_id": "research.agent",
         "title": "Research Agent",
         "kind": AgentKind.RESEARCH,
@@ -90,7 +99,7 @@ _BUILTIN_AGENTS: tuple[dict[str, object], ...] = (
         "agent_id": "operations.agent",
         "title": "Operations Agent",
         "kind": AgentKind.OPERATIONS,
-        "capabilities": ("workspace.*", "github.*", "calendar.*", "email.*"),
+        "capabilities": ("workspace.*", "github.*", "calendar.*", "email.*", "system.*"),
         "dependencies": ("core.orchestrator",),
     },
     {
