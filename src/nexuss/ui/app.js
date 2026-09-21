@@ -4780,3 +4780,230 @@ setTimeout(() => {
   ensureInteractionTray();
   renderInteractionTray();
 }, 0);
+
+/* P6.16A AGENT SUPERVISOR */
+
+const supervisorUi = {
+  card: document.querySelector("#agent-supervisor-card"),
+  badge: document.querySelector("#supervisor-state-badge"),
+  summary: document.querySelector("#supervisor-summary"),
+  agents: document.querySelector("#supervisor-agent-list"),
+  events: document.querySelector("#supervisor-event-list"),
+};
+
+const SUPERVISOR_REFRESH_MS = 5000;
+let supervisorRefreshTimer = null;
+
+function supervisorStatusLabel(status) {
+  return String(status || "unknown")
+    .replaceAll("_", " ")
+    .toUpperCase();
+}
+
+function supervisorStatusClass(status) {
+  const normalized = String(status || "unknown").toLowerCase();
+  return new Set([
+    "healthy",
+    "busy",
+    "degraded",
+    "offline",
+    "unknown",
+  ]).has(normalized)
+    ? normalized
+    : "unknown";
+}
+
+function renderSupervisorAgents(agents) {
+  if (!supervisorUi.agents) return;
+  supervisorUi.agents.replaceChildren();
+
+  if (!Array.isArray(agents) || !agents.length) {
+    supervisorUi.agents.className = "supervisor-agent-list empty-state";
+    supervisorUi.agents.textContent = "No agents are registered.";
+    return;
+  }
+
+  supervisorUi.agents.className = "supervisor-agent-list";
+
+  for (const agent of agents) {
+    const item = document.createElement("article");
+    item.className = "supervisor-agent";
+
+    const top = document.createElement("div");
+    top.className = "supervisor-agent-top";
+
+    const identity = document.createElement("div");
+    identity.className = "supervisor-agent-identity";
+
+    const title = document.createElement("strong");
+    title.textContent = agent.title || agent.agent_id;
+
+    const id = document.createElement("span");
+    id.textContent = agent.agent_id;
+
+    identity.append(title, id);
+
+    const status = document.createElement("span");
+    status.className = `supervisor-agent-status ${supervisorStatusClass(agent.status)}`;
+    status.textContent = supervisorStatusLabel(agent.status);
+
+    top.append(identity, status);
+
+    const meta = document.createElement("div");
+    meta.className = "supervisor-agent-meta";
+
+    const capabilityCount = Array.isArray(agent.capabilities)
+      ? agent.capabilities.length
+      : 0;
+
+    const capabilityText = document.createElement("span");
+    capabilityText.textContent =
+      `${capabilityCount} capability group`
+      + `${capabilityCount === 1 ? "" : "s"}`;
+
+    const taskText = document.createElement("span");
+    taskText.textContent = agent.current_task_id
+      ? `Task ${String(agent.current_task_id).slice(0, 8)}`
+      : "Idle";
+
+    meta.append(capabilityText, taskText);
+    item.append(top, meta);
+    supervisorUi.agents.append(item);
+  }
+}
+
+function renderSupervisorEvents(events) {
+  if (!supervisorUi.events) return;
+  supervisorUi.events.replaceChildren();
+
+  if (!Array.isArray(events) || !events.length) {
+    supervisorUi.events.className = "supervisor-event-list empty-state";
+    supervisorUi.events.textContent = "Supervisor events will appear here.";
+    return;
+  }
+
+  supervisorUi.events.className = "supervisor-event-list";
+
+  for (const event of events.slice(0, 8)) {
+    const item = document.createElement("article");
+    item.className = `supervisor-event ${event.severity || "info"}`;
+
+    const top = document.createElement("div");
+    top.className = "supervisor-event-top";
+
+    const type = document.createElement("strong");
+    type.textContent = String(event.event_type || "event").replaceAll(".", " ");
+
+    const source = document.createElement("span");
+    source.textContent = event.source_agent_id || "nexuss";
+
+    top.append(type, source);
+
+    const detail = document.createElement("p");
+    detail.textContent = event.detail || "Supervisor event.";
+
+    const time = document.createElement("time");
+    const timestamp = new Date(event.occurred_at);
+    time.textContent = Number.isNaN(timestamp.getTime())
+      ? ""
+      : timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+    item.append(top, detail, time);
+    supervisorUi.events.append(item);
+  }
+}
+
+function renderSupervisorSnapshot(snapshot) {
+  if (!snapshot || !supervisorUi.card) return;
+
+  const agents = Array.isArray(snapshot.agents) ? snapshot.agents : [];
+  const activeTasks = Array.isArray(snapshot.active_tasks)
+    ? snapshot.active_tasks
+    : [];
+
+  const unhealthy =
+    Number(snapshot.degraded_count || 0)
+    + Number(snapshot.offline_count || 0);
+
+  if (supervisorUi.badge) {
+    supervisorUi.badge.textContent = unhealthy
+      ? `${unhealthy} ATTENTION`
+      : "HEALTHY";
+    supervisorUi.badge.dataset.state =
+      unhealthy ? "attention" : "healthy";
+  }
+
+  if (supervisorUi.summary) {
+    const chain = snapshot.event_chain_valid
+      ? "event chain verified"
+      : "event chain invalid";
+
+    supervisorUi.summary.textContent =
+      `${agents.length} agents · `
+      + `${activeTasks.length} active task`
+      + `${activeTasks.length === 1 ? "" : "s"} · `
+      + chain;
+  }
+
+  renderSupervisorAgents(agents);
+  renderSupervisorEvents(snapshot.recent_events);
+}
+
+async function loadSupervisorSnapshot() {
+  if (!supervisorUi.card) return;
+
+  try {
+    const response = await fetch(
+      "/v1/supervisor/snapshot?event_limit=8",
+      {
+        headers: apiHeaders(),
+        cache: "no-store",
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Supervisor snapshot failed (${response.status}).`,
+      );
+    }
+
+    renderSupervisorSnapshot(await response.json());
+  } catch (error) {
+    if (supervisorUi.badge) {
+      supervisorUi.badge.textContent = "UNAVAILABLE";
+      supervisorUi.badge.dataset.state = "attention";
+    }
+
+    if (supervisorUi.summary) {
+      supervisorUi.summary.textContent =
+        "Agent Supervisor is temporarily unavailable.";
+    }
+
+    console.warn("Agent Supervisor refresh failed.", error);
+  }
+}
+
+function scheduleSupervisorRefresh() {
+  if (supervisorRefreshTimer !== null) {
+    clearTimeout(supervisorRefreshTimer);
+  }
+
+  supervisorRefreshTimer = window.setTimeout(
+    async () => {
+      if (document.visibilityState === "visible") {
+        await loadSupervisorSnapshot();
+      }
+      scheduleSupervisorRefresh();
+    },
+    SUPERVISOR_REFRESH_MS,
+  );
+}
+
+void loadSupervisorSnapshot();
+scheduleSupervisorRefresh();
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    void loadSupervisorSnapshot();
+  }
+});
