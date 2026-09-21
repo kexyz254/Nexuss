@@ -568,10 +568,10 @@ _GENERAL_INTELLIGENCE_PREFIXES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("summarize", ("summarize ", "summarise ", "condense ")),
     ("review", ("review ", "critique ", "assess ")),
     ("rewrite", ("rewrite ", "rephrase ", "polish ")),
+    ("code", ("write code for ", "code ", "implement in code ")),
     ("write", ("write ", "draft ", "compose ")),
     ("design", ("design ", "architect ")),
     ("debug", ("debug ", "troubleshoot ")),
-    ("code", ("code ", "implement in code ", "write code for ")),
     (
         "research_synthesis",
         ("synthesize ", "synthesise ", "combine these findings "),
