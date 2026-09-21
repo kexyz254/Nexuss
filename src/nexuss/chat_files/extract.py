@@ -44,6 +44,54 @@ def _safe_xml(payload: bytes) -> ElementTree.Element:
     )
 
 
+def _zip_text(data: bytes) -> str:
+    output: list[str] = ["[ARCHIVE CONTENTS]"]
+    total_uncompressed = 0
+    text_read = 0
+
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        members = [
+            item
+            for item in archive.infolist()
+            if not item.is_dir()
+        ][:300]
+
+        for item in members:
+            total_uncompressed += int(item.file_size)
+            if total_uncompressed > 20 * 1024 * 1024:
+                output.append("[Archive listing truncated: uncompressed limit reached]")
+                break
+
+            output.append(
+                f"- {item.filename} ({item.file_size} bytes)"
+            )
+
+        output.append("\n[TEXT CONTENT]")
+        for item in members:
+            suffix = Path(item.filename).suffix.casefold()
+            if suffix not in _TEXT_SUFFIXES:
+                continue
+            if item.file_size > 512 * 1024:
+                output.append(
+                    f"\n--- {item.filename} ---\n[Skipped: file too large]"
+                )
+                continue
+            if text_read >= 3 * 1024 * 1024:
+                output.append("\n[Archive text extraction limit reached]")
+                break
+
+            payload = archive.read(item)
+            text_read += len(payload)
+            output.append(
+                f"\n--- {item.filename} ---\n{_decode_text(payload)}"
+            )
+
+            if sum(len(value) for value in output) >= _MAX_EXTRACTED_CHARS:
+                break
+
+    return _bound("\n".join(output))
+
+
 def _docx_text(data: bytes) -> str:
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         payload = archive.read("word/document.xml")
@@ -125,6 +173,11 @@ def extract_text(name: str, media_type: str, data: bytes) -> tuple[str, str]:
     try:
         if media_type.startswith("text/") or suffix in _TEXT_SUFFIXES:
             return _decode_text(data), "extracted"
+        if suffix == ".zip" or media_type in {
+            "application/zip",
+            "application/x-zip-compressed",
+        }:
+            return _zip_text(data), "extracted"
         if suffix == ".docx":
             return _docx_text(data), "extracted"
         if suffix == ".xlsx":
