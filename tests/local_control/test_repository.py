@@ -96,14 +96,16 @@ def test_apply_is_exact_fast_forward_and_schedules_restart(
     helper.write_text("# test helper\n", encoding="utf-8")
 
     calls: list[list[str]] = []
+    real_popen = subprocess.Popen
 
     class FakeProcess:
         pass
 
     def fake_popen(command, **kwargs):
-        del kwargs
-        calls.append(list(command))
-        return FakeProcess()
+        if list(command)[0] == "powershell.exe":
+            calls.append(list(command))
+            return FakeProcess()
+        return real_popen(command, **kwargs)
 
     monkeypatch.setattr(subprocess, "Popen", fake_popen)
 
