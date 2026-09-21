@@ -859,16 +859,22 @@ def classify_intent(utterance: str) -> Intent:
     ):
         kind = IntentKind.SYSTEM_UPDATE_APPLY
         confidence = 0.99
-    elif _contains_any(
-        normalized,
-        (
-            "check for nexuss updates",
-            "check nexuss update",
-            "nexuss update status",
-            "is nexuss up to date",
-            "is nexuss updated",
-        ),
-    ):
+    elif normalized.rstrip(" ?!.") in {
+        "check for updates",
+        "check updates",
+        "check for update",
+        "check update",
+        "update status",
+        "any updates",
+        "any update",
+        "are there updates",
+        "are there any updates",
+        "check for nexuss updates",
+        "check nexuss update",
+        "nexuss update status",
+        "is nexuss up to date",
+        "is nexuss updated",
+    }:
         kind = IntentKind.SYSTEM_UPDATE_STATUS
         confidence = 0.99
     elif _contains_any(
