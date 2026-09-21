@@ -2192,6 +2192,7 @@ async function decideApproval(decisionKind) {
   } catch (error) {
     addMessage("assistant", error instanceof Error ? error.message : "Approval failed", true);
   } finally {
+    stopProgress(completedInteraction);
     setBusy(false);
   }
 }
