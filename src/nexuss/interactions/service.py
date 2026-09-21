@@ -769,6 +769,82 @@ class UnifiedInteractionService:
         self._interactions.save(response)
         return response
 
+    def refresh(
+        self,
+        *,
+        interaction_id: UUID,
+        user_session_id: UUID,
+    ) -> InteractionResponse:
+        stored = self._interactions.get(interaction_id)
+        if stored is None:
+            raise UnifiedInteractionError(
+                "INTERACTION_NOT_FOUND",
+                "The interaction was not found.",
+            )
+        if stored.conversation.user_session_id != user_session_id:
+            raise UnifiedInteractionError(
+                "INTERACTION_SESSION_MISMATCH",
+                "The interaction belongs to another session.",
+            )
+        if stored.core_task_id is None:
+            return stored
+
+        try:
+            task = self._core.get_task(stored.core_task_id)
+        except Exception as exc:
+            raise UnifiedInteractionError(
+                "INTERACTION_TASK_NOT_FOUND",
+                "The governed Core task could not be reloaded.",
+            ) from exc
+
+        receipt = None
+        try:
+            receipt = self._core.get_receipt(stored.core_task_id)
+        except Exception:
+            receipt = None
+
+        state_text = _task_state(task)
+        state = _interaction_state_for_core_task(state_text)
+        display = _task_display_text(
+            task,
+            fallback=stored.display_text,
+        )
+
+        assistant_message = stored.assistant_message
+        terminal = state in {
+            InteractionState.COMPLETED,
+            InteractionState.FAILED,
+            InteractionState.DENIED,
+        }
+        if terminal and display != assistant_message.text:
+            assistant_message = self._conversations.update_message_text(
+                conversation_id=stored.conversation_id,
+                message_id=assistant_message.message_id,
+                text=display,
+            )
+
+        updated = stored.model_copy(
+            update={
+                "state": state,
+                "display_text": display,
+                "core_task_state": state_text,
+                "approval_required": (
+                    state is InteractionState.AWAITING_APPROVAL
+                ),
+                "approval_id": _approval_id(task),
+                "receipt_id": _receipt_id(receipt),
+                "evidence_count": _evidence_count(task),
+                "presentation": InteractionPresentation(
+                    task=task,
+                    receipt=receipt,
+                ),
+                "assistant_message": assistant_message,
+                "updated_at": datetime.now(UTC),
+            }
+        )
+        self._interactions.save(updated)
+        return updated
+
     def presentation(
         self,
         *,
