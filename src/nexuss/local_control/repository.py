@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess
+import subprocess  # nosec B404 - bounded argv only; shell execution is disabled
 from pathlib import Path
 from uuid import uuid4
 
