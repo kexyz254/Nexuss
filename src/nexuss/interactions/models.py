@@ -17,6 +17,7 @@ from nexuss.domain.models import ActionReceipt, TaskView
 
 class InteractionKind(StrEnum):
     CHAT = "chat"
+    WORKFLOW = "workflow"
     ACTION = "action"
     CLARIFICATION = "clarification"
 
@@ -27,6 +28,7 @@ class InteractionState(StrEnum):
     AWAITING_APPROVAL = "awaiting_approval"
     COMPLETED = "completed"
     FAILED = "failed"
+    BLOCKED = "blocked"
     DENIED = "denied"
 
 
