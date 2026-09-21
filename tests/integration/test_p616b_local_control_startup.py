@@ -11,6 +11,7 @@ def test_startup_launches_three_bounded_local_services() -> None:
     assert "p616b_trusted_local_control" in script
     assert "local_control_process_id = $LocalControlProcess.Id" in script
     assert "NEXUSS_LOCAL_CONTROL_SECRET" in script
+    assert "API_KEY|TOKEN|PASSWORD|SECRET" in script
 
 
 def test_stop_script_handles_local_control_and_stale_pids() -> None:
