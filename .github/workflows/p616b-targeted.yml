@@ -1,6 +1,8 @@
 name: P6.16B Targeted Verification
 
 on:
+  push:
+    branches: [feature/p616b-local-control-intelligence]
   pull_request:
     paths:
       - 'src/nexuss/local_control/**'
