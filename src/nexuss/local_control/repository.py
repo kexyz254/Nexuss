@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from uuid import uuid4
@@ -29,6 +30,14 @@ class GitRepositoryManager:
             or (Path(configured) if configured else Path.cwd())
         )
         self._root = root.resolve()
+        self._git_executable = shutil.which("git")
+        self._powershell_executable = shutil.which("powershell.exe")
+
+        if self._git_executable is None:
+            raise LocalRepositoryError(
+                "LOCAL_GIT_NOT_AVAILABLE",
+                "Git executable is not available to local control.",
+            )
 
     @property
     def root(self) -> Path:
@@ -45,8 +54,8 @@ class GitRepositoryManager:
         check: bool = True,
     ) -> subprocess.CompletedProcess[str]:
         try:
-            return subprocess.run(
-                ["git", *args],
+            return subprocess.run(  # nosec B603 - fixed executable + argv, shell disabled
+                [self._git_executable, *args],
                 cwd=self._root,
                 capture_output=True,
                 text=True,
@@ -168,8 +177,15 @@ class GitRepositoryManager:
                 "The applied local revision did not match the approved target.",
             )
 
+        if self._powershell_executable is None:
+            self._git("reset", "--hard", expected_current_sha)
+            raise LocalRepositoryError(
+                "LOCAL_POWERSHELL_NOT_AVAILABLE",
+                "Update was rolled back because PowerShell is unavailable.",
+            )
+
         command = [
-            "powershell.exe",
+            self._powershell_executable,
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",
@@ -182,7 +198,7 @@ class GitRepositoryManager:
         ]
 
         try:
-            subprocess.Popen(
+            subprocess.Popen(  # nosec B603 - fixed PowerShell helper contract
                 command,
                 cwd=self._root,
                 stdin=subprocess.DEVNULL,
