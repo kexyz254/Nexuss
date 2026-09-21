@@ -138,6 +138,7 @@
         body: JSON.stringify({
           attachment_ids: records.map((item) => item.attachment_id),
           name: packageName(utterance),
+          instruction: utterance,
         }),
       },
     );
