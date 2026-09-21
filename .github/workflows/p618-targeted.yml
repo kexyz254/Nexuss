@@ -1,0 +1,63 @@
+name: P6.18 Chat File Workspace Verification
+
+on:
+  push:
+    branches: [feature/p618-chat-file-workspace]
+  pull_request:
+    paths:
+      - 'src/nexuss/chat_files/**'
+      - 'src/nexuss/conversation/**'
+      - 'src/nexuss/ui/app.js'
+      - 'src/nexuss/ui/index.html'
+      - 'src/nexuss/ui/file_workspace.js'
+      - 'src/nexuss/ui/file_workspace.css'
+      - 'src/nexuss/api/app.py'
+      - 'tests/chat_files/**'
+      - 'tests/conversation/test_file_attachments.py'
+      - 'tests/ui/test_p618_chat_files.py'
+      - '.github/workflows/p618-targeted.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-p618:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e '.[dev]'
+      - name: Targeted Ruff
+        run: |
+          ruff check \
+            src/nexuss/chat_files \
+            src/nexuss/conversation/models.py \
+            src/nexuss/conversation/store.py \
+            src/nexuss/conversation/api.py \
+            tests/chat_files \
+            tests/conversation/test_file_attachments.py \
+            tests/ui/test_p618_chat_files.py
+      - name: Targeted mypy
+        run: |
+          mypy \
+            src/nexuss/chat_files \
+            src/nexuss/conversation/models.py \
+            src/nexuss/conversation/store.py
+      - name: P6.18 regression tests
+        run: |
+          pytest --noconftest --import-mode=importlib -q \
+            tests/chat_files \
+            tests/conversation/test_file_attachments.py \
+            tests/ui/test_p618_chat_files.py \
+            tests/conversation/test_multi_chat_lifecycle.py \
+            tests/ui/test_p615_multi_chat_layer.py
+      - name: JavaScript syntax
+        run: |
+          node --check src/nexuss/ui/file_workspace.js
+          node --check src/nexuss/ui/app.js
+      - name: Targeted Bandit
+        run: |
+          bandit -q -r src/nexuss/chat_files
