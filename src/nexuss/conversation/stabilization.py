@@ -89,9 +89,15 @@ _CHROME_SEARCH = re.compile(
 )
 # P6.20 DETERMINISTIC UPDATE LIFECYCLE ROUTING
 _UPDATE_CHECK = re.compile(
-    r"^(?:please\s+)?(?:check\s+(?:for\s+)?nexuss\s+updates?|"
-    r"check\s+nexuss\s+update|nexuss\s+update\s+status|"
-    r"is\s+nexuss\s+up\s+to\s+date|is\s+nexuss\s+updated)[?!.]*$",
+    r"^(?:please\s+)?(?:"
+    r"check\s+(?:for\s+)?(?:nexuss\s+)?updates?|"
+    r"check\s+nexuss\s+update|"
+    r"(?:nexuss\s+)?update\s+status|"
+    r"any\s+(?:nexuss\s+)?updates?|"
+    r"are\s+there\s+(?:any\s+)?(?:nexuss\s+)?updates?|"
+    r"is\s+nexuss\s+up\s+to\s+date|"
+    r"is\s+nexuss\s+updated"
+    r")[?!.]*$",
     re.IGNORECASE,
 )
 _UPDATE_RESULT = re.compile(
