@@ -2517,3 +2517,219 @@ body[data-focus-mode="inspector"] .inspector {
     grid-template-columns: 1fr;
   }
 }
+
+/* P6.16A AGENT SUPERVISOR */
+
+.agent-supervisor-card {
+  margin: 16px 0 6px;
+  padding: 16px;
+  border: 1px solid rgba(112, 227, 255, .14);
+  border-radius: 16px;
+  background:
+    linear-gradient(145deg, rgba(16, 36, 56, .82), rgba(7, 18, 31, .86));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .025),
+    0 14px 38px rgba(0, 0, 0, .16);
+}
+
+.agent-supervisor-heading,
+.agent-supervisor-events-heading,
+.supervisor-agent-top,
+.supervisor-event-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agent-supervisor-heading h3 {
+  margin: 5px 0 0;
+  color: var(--text);
+  font-size: 13px;
+  letter-spacing: -.01em;
+}
+
+.supervisor-state-badge {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  border: 1px solid rgba(120, 167, 255, .22);
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(120, 167, 255, .045);
+  font-size: 7.5px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+
+.supervisor-state-badge[data-state="healthy"] {
+  color: var(--green);
+  border-color: rgba(111, 255, 192, .24);
+  background: rgba(111, 255, 192, .055);
+}
+
+.supervisor-state-badge[data-state="attention"] {
+  color: var(--amber);
+  border-color: rgba(255, 208, 121, .28);
+  background: rgba(255, 208, 121, .055);
+}
+
+.agent-supervisor-summary {
+  margin: 10px 0 13px;
+  color: var(--muted);
+  font-size: 8.5px;
+  line-height: 1.5;
+}
+
+.supervisor-agent-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.supervisor-agent-list.empty-state,
+.supervisor-event-list.empty-state {
+  display: block;
+}
+
+.supervisor-agent {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(145, 201, 235, .10);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, .018);
+}
+
+.supervisor-agent-identity {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.supervisor-agent-identity strong {
+  overflow: hidden;
+  color: #e4f5ff;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.supervisor-agent-identity span {
+  overflow: hidden;
+  color: var(--muted-dark);
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.supervisor-agent-status {
+  flex: 0 0 auto;
+  padding: 4px 6px;
+  border: 1px solid rgba(145, 201, 235, .12);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 6.5px;
+  font-weight: 900;
+  letter-spacing: .06em;
+}
+
+.supervisor-agent-status.healthy {
+  color: var(--green);
+  border-color: rgba(111, 255, 192, .20);
+}
+
+.supervisor-agent-status.busy {
+  color: var(--cyan);
+  border-color: rgba(111, 227, 255, .23);
+}
+
+.supervisor-agent-status.degraded {
+  color: var(--amber);
+  border-color: rgba(255, 208, 121, .24);
+}
+
+.supervisor-agent-status.offline {
+  color: var(--danger);
+  border-color: rgba(255, 125, 155, .24);
+}
+
+.supervisor-agent-meta {
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted-dark);
+  font-size: 7px;
+}
+
+.agent-supervisor-events-heading {
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid rgba(145, 201, 235, .08);
+}
+
+.agent-supervisor-events-heading strong {
+  color: var(--text-soft);
+  font-size: 8.5px;
+}
+
+.agent-supervisor-events-heading span {
+  color: var(--muted-dark);
+  font-size: 7px;
+}
+
+.supervisor-event-list {
+  margin-top: 9px;
+  display: grid;
+  gap: 6px;
+}
+
+.supervisor-event {
+  position: relative;
+  padding: 8px 9px 8px 12px;
+  overflow: hidden;
+  border: 1px solid rgba(145, 201, 235, .08);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .012);
+}
+
+.supervisor-event::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: var(--cyan);
+}
+
+.supervisor-event.warning::before { background: var(--amber); }
+.supervisor-event.error::before { background: var(--danger); }
+
+.supervisor-event-top strong {
+  color: var(--text-soft);
+  font-size: 7.5px;
+  text-transform: capitalize;
+}
+
+.supervisor-event-top span {
+  color: var(--muted-dark);
+  font-size: 6.5px;
+}
+
+.supervisor-event p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 7.5px;
+  line-height: 1.45;
+}
+
+.supervisor-event time {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted-dark);
+  font-size: 6.5px;
+}
+
+@media (max-width: 900px) {
+  .supervisor-agent-list {
+    grid-template-columns: 1fr;
+  }
+}
