@@ -1498,6 +1498,7 @@ async function executeDevelopmentPackageInstruction(utterance) {
 
   const archive = selectedArchive;
   const requestId = crypto.randomUUID();
+  chatTurnLocked = true;
   setBusy(true);
   addMessage("user", utterance);
   stopSpeaking();
@@ -1507,6 +1508,7 @@ async function executeDevelopmentPackageInstruction(utterance) {
   );
 
   try {
+    await ensurePersistentConversation();
     const response = await fetch("/v1/development-packages", {
       method: "POST",
       headers: developmentPackageApiHeaders(requestId, archive.name),
@@ -1518,17 +1520,9 @@ async function executeDevelopmentPackageInstruction(utterance) {
     }
     const task = await response.json();
     clearArchiveAttachment();
-    const receipt = await fetchReceipt(task.task_id);
-    renderTask(task, receipt);
-    addMessage(
-      "assistant",
-      "Nexuss verified the ZIP manifest and base hashes. Review the exact package in Action Control before isolated validation and live application.",
-      false,
-      { speak: true },
-    );
-    if (task.state === "awaiting_approval" && task.approval) {
-      await showApproval(task.approval);
-    }
+    setBusy(false);
+    await followCoreTaskLifecycle({ core_task_id: task.task_id }, activeConversationId);
+
   } catch (error) {
     addMessage(
       "assistant",
@@ -1536,6 +1530,7 @@ async function executeDevelopmentPackageInstruction(utterance) {
       true,
     );
   } finally {
+    chatTurnLocked = false;
     setBusy(false);
     elements.input.focus();
   }
@@ -1552,6 +1547,7 @@ async function executeArchiveInstruction(utterance) {
 
   const archive = selectedArchive;
   const requestId = crypto.randomUUID();
+  chatTurnLocked = true;
   setBusy(true);
   addMessage("user", utterance);
   stopSpeaking();
@@ -1561,6 +1557,7 @@ async function executeArchiveInstruction(utterance) {
   );
 
   try {
+    await ensurePersistentConversation();
     const response = await fetch("/v1/archive-imports", {
       method: "POST",
       headers: archiveApiHeaders(requestId, repositoryName, archive.name),
@@ -1572,12 +1569,9 @@ async function executeArchiveInstruction(utterance) {
     }
     const task = await response.json();
     clearArchiveAttachment();
-    const receipt = await fetchReceipt(task.task_id);
-    renderTask(task, receipt);
-    addMessage("assistant", summarizeTask(task), false, { speak: true });
-    if (task.state === "awaiting_approval" && task.approval) {
-      await showApproval(task.approval);
-    }
+    setBusy(false);
+    await followCoreTaskLifecycle({ core_task_id: task.task_id }, activeConversationId);
+
   } catch (error) {
     addMessage(
       "assistant",
@@ -1585,6 +1579,7 @@ async function executeArchiveInstruction(utterance) {
       true,
     );
   } finally {
+    chatTurnLocked = false;
     setBusy(false);
     elements.input.focus();
   }

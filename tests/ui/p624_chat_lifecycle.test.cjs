@@ -202,3 +202,20 @@ test('pending task rendering tolerates a missing final receipt',()=>{
   assert.equal(c.elements.receiptVerified.textContent,'Pending');
   assert.equal(c.elements.rollback.hidden,true);
 });
+
+for(const name of ['executeDevelopmentPackageInstruction','executeArchiveInstruction']) {
+  test(`${name} keeps its turn locked until its task finishes`,async()=>{
+    const {c}=harness();load(c,name);
+    c.chatTurnLocked=false;c.selectedArchive={name:'project.zip'};
+    c.crypto={randomUUID:()=> 'request'};
+    c.repositoryNameFromInstruction=()=> 'project';
+    c.developmentPackageApiHeaders=()=>({});c.archiveApiHeaders=()=>({});
+    c.clearArchiveAttachment=()=>{};c.ensurePersistentConversation=async()=>{};
+    c.fetch=async()=>response({task_id:'task',state:'awaiting_approval'});
+    let finish;c.followCoreTaskLifecycle=()=>new Promise(r=>finish=r);
+    const run=c[name]('apply this archive');await new Promise(setImmediate);
+    assert.equal(c.elements.input.disabled,true);
+    finish();await run;
+    assert.equal(c.elements.input.disabled,false);
+  });
+}
