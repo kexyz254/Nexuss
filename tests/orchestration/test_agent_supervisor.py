@@ -47,12 +47,13 @@ def test_supervisor_registers_builtin_agents_and_valid_chain(tmp_path) -> None:
     assert {agent.agent_id for agent in snapshot.agents} == {
         "core.orchestrator",
         "engineering.agent",
+        "intelligence.agent",
         "research.agent",
         "device.agent",
         "operations.agent",
         "collaboration.agent",
     }
-    assert snapshot.healthy_count == 6
+    assert snapshot.healthy_count == 7
     assert snapshot.busy_count == 0
     assert snapshot.event_chain_valid is True
     assert snapshot.external_execution_authorized is False

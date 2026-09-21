@@ -147,6 +147,15 @@ def _task_display_text(
             if candidate:
                 return candidate
 
+        for evidence in getattr(result, "evidence", ()) or ():
+            attributes = getattr(evidence, "attributes", None)
+            if not isinstance(attributes, dict):
+                continue
+            for key in ("display_text", "summary", "message"):
+                candidate = _first_text(attributes.get(key))
+                if candidate:
+                    return candidate
+
     state = _task_state(task)
 
     if state == "awaiting_approval":

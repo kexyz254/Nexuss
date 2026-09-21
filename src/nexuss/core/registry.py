@@ -626,6 +626,182 @@ _MANIFESTS = (
     ),
 )
 
+
+# P6.17 GENERAL INTELLIGENCE CAPABILITY PLANE
+_MANIFESTS = (
+    *_MANIFESTS,
+    CapabilityManifest(
+        capability_id="intelligence.analyze",
+        version="1.0.0",
+        title="Analyze",
+        description=(
+            "Perform structured reasoning and analysis over the user instruction."
+        ),
+        risk_tier=RiskTier.INFORMATIONAL,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="proposal_only_cognitive_provider",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="intelligence.compare",
+        version="1.0.0",
+        title="Compare",
+        description=(
+            "Compare alternatives, options, systems, or ideas and explain relevant tradeoffs."
+        ),
+        risk_tier=RiskTier.INFORMATIONAL,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="proposal_only_cognitive_provider",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="intelligence.plan",
+        version="1.0.0",
+        title="Plan",
+        description=(
+            "Produce a structured plan, dependencies, risks, and recommended next actions."
+        ),
+        risk_tier=RiskTier.INFORMATIONAL,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="proposal_only_cognitive_provider",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="intelligence.summarize",
+        version="1.0.0",
+        title="Summarize",
+        description=(
+            "Condense supplied material while preserving the important meaning and constraints."
+        ),
+        risk_tier=RiskTier.INFORMATIONAL,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="proposal_only_cognitive_provider",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="intelligence.review",
+        version="1.0.0",
+        title="Review",
+        description=(
+            "Review or critique supplied work and identify strengths, problems, and improvements."
+        ),
+        risk_tier=RiskTier.INFORMATIONAL,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="proposal_only_cognitive_provider",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="intelligence.write",
+        version="1.0.0",
+        title="Write",
+        description=(
+            "Draft professional text or structured content without executing external actions."
+        ),
+        risk_tier=RiskTier.INFORMATIONAL,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="proposal_only_cognitive_provider",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="intelligence.rewrite",
+        version="1.0.0",
+        title="Rewrite",
+        description=(
+            "Rewrite or polish supplied content while preserving requested meaning and constraints."
+        ),
+        risk_tier=RiskTier.INFORMATIONAL,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="proposal_only_cognitive_provider",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="intelligence.design",
+        version="1.0.0",
+        title="Design",
+        description=(
+            "Produce an architecture or design proposal without acquiring execution authority."
+        ),
+        risk_tier=RiskTier.INFORMATIONAL,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="proposal_only_cognitive_provider",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="intelligence.debug",
+        version="1.0.0",
+        title="Debug",
+        description=(
+            "Diagnose a technical problem and propose bounded debugging or repair steps."
+        ),
+        risk_tier=RiskTier.INFORMATIONAL,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="proposal_only_cognitive_provider",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="intelligence.code",
+        version="1.0.0",
+        title="Code",
+        description=(
+            "Generate code or implementation proposals without writing files or executing tools."
+        ),
+        risk_tier=RiskTier.INFORMATIONAL,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="proposal_only_cognitive_provider",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="intelligence.research_synthesis",
+        version="1.0.0",
+        title="Synthesize",
+        description=(
+            "Synthesize supplied findings into a coherent analysis or professional brief."
+        ),
+        risk_tier=RiskTier.INFORMATIONAL,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="proposal_only_cognitive_provider",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="intelligence.create",
+        version="1.0.0",
+        title="Ideate",
+        description=(
+            "Brainstorm and generate structured ideas or solution options."
+        ),
+        risk_tier=RiskTier.INFORMATIONAL,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="proposal_only_cognitive_provider",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="system.update.result",
+        version="1.0.0",
+        title="Last Nexuss update result",
+        description=(
+            "Read the retained post-restart result of the latest verified local "
+            "self-update, including rollback or recovery failure evidence."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="trusted_local_control_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+)
+
 _BY_ID = {manifest.capability_id: manifest for manifest in _MANIFESTS}
 
 

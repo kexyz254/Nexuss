@@ -134,6 +134,17 @@ def _direct_specs(intent: Intent) -> list[StepSpec] | None:
             )
         ]
 
+    if intent.kind is IntentKind.SYSTEM_UPDATE_RESULT:
+        return [
+            (
+                "system.update.result",
+                RiskTier.LOW,
+                ["local_update_result"],
+                {},
+                False,
+            )
+        ]
+
     if intent.kind is IntentKind.SYSTEM_UPDATE_APPLY:
         return [
             (
@@ -167,6 +178,40 @@ def _direct_specs(intent: Intent) -> list[StepSpec] | None:
                     ),
                 },
                 True,
+            )
+        ]
+
+    if intent.kind is IntentKind.GENERAL_INTELLIGENCE:
+        mode = intent.entities.get("mode", "analyze").strip()
+        supported = {
+            "analyze",
+            "compare",
+            "plan",
+            "summarize",
+            "review",
+            "write",
+            "rewrite",
+            "design",
+            "debug",
+            "code",
+            "research_synthesis",
+            "create",
+        }
+        if mode not in supported:
+            mode = "analyze"
+        return [
+            (
+                f"intelligence.{mode}",
+                RiskTier.INFORMATIONAL,
+                ["cognitive_proposal", "non_execution_receipt"],
+                {
+                    "instruction": intent.entities.get(
+                        "instruction",
+                        intent.normalized_text,
+                    ),
+                    "mode": mode,
+                },
+                False,
             )
         ]
 

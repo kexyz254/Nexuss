@@ -12,7 +12,9 @@ from pydantic import BaseModel, ConfigDict, Field
 class CognitiveMode(StrEnum):
     ANSWER = "answer"
     ANALYZE = "analyze"
+    COMPARE = "compare"
     PLAN = "plan"
+    SUMMARIZE = "summarize"
     WRITE = "write"
     REWRITE = "rewrite"
     DESIGN = "design"

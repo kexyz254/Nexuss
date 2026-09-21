@@ -1,0 +1,68 @@
+name: P6.17 Runtime + Intelligence Verification
+
+on:
+  push:
+    branches: [feature/p617-runtime-general-intelligence]
+  pull_request:
+    paths:
+      - 'src/nexuss/cognitive/**'
+      - 'src/nexuss/core/executor.py'
+      - 'src/nexuss/core/intents.py'
+      - 'src/nexuss/core/planner.py'
+      - 'src/nexuss/core/policy.py'
+      - 'src/nexuss/core/registry.py'
+      - 'src/nexuss/domain/models.py'
+      - 'src/nexuss/interactions/service.py'
+      - 'src/nexuss/local_control/**'
+      - 'src/nexuss/orchestration/autonomy.py'
+      - 'src/nexuss/orchestration/supervisor.py'
+      - 'src/nexuss/orchestration/supervisor_models.py'
+      - 'tests/intelligence/**'
+      - 'tests/local_control/**'
+      - 'tests/core/test_p617_update_result.py'
+      - 'tests/orchestration/test_agent_supervisor.py'
+      - '.github/workflows/p617-targeted.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-p617:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e '.[dev]'
+      - name: Targeted Ruff
+        run: |
+          ruff check \
+            src/nexuss/cognitive/models.py \
+            src/nexuss/cognitive/runtime.py \
+            src/nexuss/local_control \
+            tests/intelligence/test_general_capabilities.py \
+            tests/local_control/test_update_result.py \
+            tests/core/test_p617_update_result.py
+      - name: Targeted mypy
+        run: |
+          mypy \
+            src/nexuss/cognitive/models.py \
+            src/nexuss/cognitive/runtime.py \
+            src/nexuss/local_control
+      - name: P6.17 regression tests
+        run: |
+          pytest --noconftest --import-mode=importlib -q \
+            tests/intelligence/test_general_capabilities.py \
+            tests/local_control/test_update_result.py \
+            tests/core/test_p617_update_result.py \
+            tests/orchestration/test_agent_supervisor.py \
+            tests/orchestration/test_bounded_autonomy.py \
+            tests/ui/test_p616_agent_supervisor.py \
+            tests/ui/test_p615_multi_chat_layer.py
+      - name: Targeted Bandit
+        run: |
+          bandit -q \
+            src/nexuss/cognitive/runtime.py \
+            src/nexuss/local_control/*.py

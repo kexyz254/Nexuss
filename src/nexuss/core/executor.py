@@ -10,6 +10,9 @@ from datetime import UTC, datetime
 from typing import Protocol
 from uuid import UUID
 
+from nexuss.cognitive.models import CognitiveMode
+from nexuss.cognitive.runtime import create_cognitive_proposal
+from nexuss.cognitive.service import CognitiveProposalError
 from nexuss.connectors.errors import ConnectorError
 from nexuss.connectors.github.models import RepositoryCreateApproval
 from nexuss.connectors.github.runtime import get_github_connector
@@ -33,6 +36,7 @@ from nexuss.domain.models import (
     PlanStep,
     StepStatus,
 )
+from nexuss.engineering.errors import EngineeringError
 from nexuss.intelligence.context import ConversationContextStore
 from nexuss.intelligence.errors import IntelligenceError
 from nexuss.intelligence.knowledge import ExistingKnowledgeProviderAdapter
@@ -1176,6 +1180,38 @@ def _execute_update_inspect(
     )
 
 
+def _execute_update_result(
+    step: PlanStep,
+    timestamp: datetime,
+) -> CapabilityResult:
+    try:
+        result = HttpLocalControlClient.from_environment().update_result()
+    except (LocalControlError, ValueError) as exc:
+        return _failed(step, str(exc))
+
+    display = (
+        "Last Nexuss update: "
+        f"{result.status.replace('_', ' ')}. "
+        f"{result.detail}"
+    )
+    return CapabilityResult(
+        step_id=step.step_id,
+        capability_id=step.capability_id,
+        status=StepStatus.VERIFIED,
+        evidence=[
+            EvidenceRecord(
+                source="local:trusted_control",
+                observed_at=timestamp,
+                attributes={
+                    **result.model_dump(mode="json"),
+                    "display_text": display,
+                    "source_mode": "trusted_local_control_readonly",
+                },
+            )
+        ],
+    )
+
+
 def _execute_update_apply(
     step: PlanStep,
     timestamp: datetime,
@@ -1218,6 +1254,72 @@ def _execute_update_apply(
     )
 
 
+def _execute_cognitive_proposal(
+    step: PlanStep,
+    timestamp: datetime,
+    task_id: UUID | None,
+) -> CapabilityResult:
+    instruction = str(
+        step.parameters.get("instruction", "")
+    ).strip()
+    raw_mode = str(
+        step.parameters.get("mode", "analyze")
+    ).strip()
+
+    if not instruction:
+        return _failed(step, "COGNITIVE_INSTRUCTION_EMPTY")
+
+    try:
+        mode = CognitiveMode(raw_mode)
+    except ValueError:
+        return _failed(step, "COGNITIVE_MODE_INVALID")
+
+    try:
+        envelope = create_cognitive_proposal(
+            request_id=task_id or step.step_id,
+            instruction=instruction,
+            mode=mode,
+        )
+    except CognitiveProposalError as exc:
+        return _failed(step, exc.code)
+    except EngineeringError as exc:
+        return _failed(step, exc.code)
+
+    proposal = envelope.proposal
+    receipt = envelope.receipt
+    return CapabilityResult(
+        step_id=step.step_id,
+        capability_id=step.capability_id,
+        status=StepStatus.VERIFIED,
+        evidence=[
+            EvidenceRecord(
+                source="provider:cognitive",
+                observed_at=timestamp,
+                attributes={
+                    "display_text": proposal.response,
+                    "summary": proposal.summary,
+                    "mode": proposal.mode.value,
+                    "provider_id": proposal.provider_id,
+                    "model": proposal.model,
+                    "steps": list(proposal.steps),
+                    "assumptions": list(proposal.assumptions),
+                    "risks": list(proposal.risks),
+                    "recommended_actions": list(
+                        proposal.recommended_actions
+                    ),
+                    "receipt_id": str(receipt.receipt_id),
+                    "request_sha256": receipt.request_sha256,
+                    "response_sha256": receipt.response_sha256,
+                    "provider_generated_proposal_only": True,
+                    "execution_authorized": False,
+                    "external_writes": False,
+                    "credentials_exposed": False,
+                },
+            )
+        ],
+    )
+
+
 def execute_step(
     step: PlanStep,
     observed_at: datetime | None = None,
@@ -1240,6 +1342,9 @@ def execute_step(
 
     if step.capability_id == "system.update.inspect":
         return _execute_update_inspect(step, timestamp)
+
+    if step.capability_id == "system.update.result":
+        return _execute_update_result(step, timestamp)
 
     if step.capability_id == "system.update.apply":
         return _execute_update_apply(
@@ -1271,6 +1376,13 @@ def execute_step(
             timestamp,
             connector,
             approval,
+        )
+
+    if step.capability_id.startswith("intelligence."):
+        return _execute_cognitive_proposal(
+            step,
+            timestamp,
+            task_id,
         )
 
     if step.capability_id == "assistant.converse":

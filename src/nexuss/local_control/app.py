@@ -15,6 +15,7 @@ from nexuss.local_control.models import (
     LocalControlHealth,
     LocalControlOperation,
     LocalUpdateAccepted,
+    LocalUpdateResult,
     LocalUpdateStatus,
 )
 from nexuss.local_control.repository import (
@@ -22,7 +23,7 @@ from nexuss.local_control.repository import (
     LocalRepositoryError,
 )
 
-app = FastAPI(title="Nexuss Local Control Connector", version="0.6.16b")
+app = FastAPI(title="Nexuss Local Control Connector", version="0.6.17")
 repository = GitRepositoryManager()
 _seen_nonces: dict[str, datetime] = {}
 _nonce_lock = RLock()
@@ -79,6 +80,17 @@ def health_ready() -> LocalControlHealth:
         repository_root=str(repository.root),
         approved_branch=repository.approved_branch,
     )
+
+
+@app.get("/v1/update/result", response_model=LocalUpdateResult)
+def update_result() -> LocalUpdateResult:
+    try:
+        return repository.update_result()
+    except LocalRepositoryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from exc
 
 
 @app.post("/v1/update", response_model=LocalUpdateStatus | LocalUpdateAccepted)
