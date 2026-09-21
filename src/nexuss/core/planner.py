@@ -30,9 +30,12 @@ def _step_id(task_id: UUID, order: int, capability_id: str) -> UUID:
 def _assistant_response(intent: Intent) -> str:
     responses = {
         IntentKind.ASSISTANT_CAPABILITIES: (
-            "I can inspect this workspace, research bounded public sources, "
-            "discover and rank YouTube media, create verified notes, and use "
-            "governed device actions with approval only where policy requires it."
+            "I can reason over grounded evidence, decompose goals into bounded "
+            "workflows, inspect my own runtime and connectors, research public "
+            "sources, use durable memory, understand GitHub workspaces, coordinate "
+            "supervised agents, work with Google and trusted mobile signals, create "
+            "verified local artifacts, and execute governed device or self-update "
+            "actions only when policy and approval permit them."
         ),
         IntentKind.ASSISTANT_HELP: (
             "Try: ‘Research the fundamentals of forex’, ‘Play Silence by "
