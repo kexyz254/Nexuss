@@ -813,6 +813,30 @@ def classify_intent(utterance: str) -> Intent:
         confidence = 0.99
     elif _contains_any(
         normalized,
+        (
+            "update nexuss",
+            "upgrade nexuss",
+            "sync nexuss with github",
+            "pull latest nexuss",
+            "apply nexuss update",
+        ),
+    ):
+        kind = IntentKind.SYSTEM_UPDATE_APPLY
+        confidence = 0.99
+    elif _contains_any(
+        normalized,
+        (
+            "check for nexuss updates",
+            "check nexuss update",
+            "nexuss update status",
+            "is nexuss up to date",
+            "is nexuss updated",
+        ),
+    ):
+        kind = IntentKind.SYSTEM_UPDATE_STATUS
+        confidence = 0.99
+    elif _contains_any(
+        normalized,
         ("workspace", "repository", "repo", "computer"),
     ) and _contains_any(normalized, ("status", "check", "inspect", "system")):
         kind = IntentKind.LOCAL_WORKSPACE_STATUS
@@ -826,9 +850,24 @@ def classify_intent(utterance: str) -> Intent:
     elif "ats" in normalized:
         kind = IntentKind.ATS_READ
         confidence = 0.96
-    elif "health" in normalized:
+    elif (
+        "health" in normalized
+        or _contains_any(
+            normalized,
+            (
+                "system diagnostics",
+                "diagnose nexuss",
+                "audit nexuss",
+                "connector status",
+                "connector health",
+                "capability status",
+                "capability health",
+                "system intelligence",
+            ),
+        )
+    ):
         kind = IntentKind.SYSTEM_HEALTH
-        confidence = 0.95
+        confidence = 0.97
     elif "play" in normalized and _contains_any(
         normalized,
         ("media", "music", "song", "video"),
