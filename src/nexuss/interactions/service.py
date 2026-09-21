@@ -36,6 +36,21 @@ from nexuss.interactions.models import (
 from nexuss.interactions.store import SQLiteInteractionStore
 
 
+_LIFECYCLE_FOLLOWUP = re.compile(
+    r"^(?:so\s+)?(?:did\s+(?:it|that)\s+(?:work|succeed|finish)|"
+    r"is\s+(?:it|that)\s+(?:done|finished|complete|completed)|"
+    r"what\s+(?:happened|was\s+the\s+result)|"
+    r"how\s+did\s+(?:it|that)\s+go|"
+    r"(?:show|give\s+me)\s+(?:the\s+)?(?:result|status)|"
+    r"what(?:'s|\s+is)\s+(?:the\s+)?status)[?!.]*$",
+    re.IGNORECASE,
+)
+
+
+def _is_lifecycle_followup(text: str) -> bool:
+    return _LIFECYCLE_FOLLOWUP.match(text.strip()) is not None
+
+
 class UnifiedInteractionError(RuntimeError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
@@ -392,6 +407,28 @@ class UnifiedInteractionService:
             else None
         )
 
+        lifecycle_followup = None
+        if (
+            trading is None
+            and deterministic is None
+            and _is_lifecycle_followup(sanitized.value)
+        ):
+            lifecycle_followup = next(
+                (
+                    item
+                    for item in self._interactions.recent(
+                        request.conversation_id,
+                        limit=20,
+                    )
+                    if item.kind
+                    in {
+                        InteractionKind.ACTION,
+                        InteractionKind.WORKFLOW,
+                    }
+                ),
+                None,
+            )
+
         if trading is not None:
             classification = RouteClassification(
                 route=ConversationRoute.CHAT,
@@ -409,6 +446,32 @@ class UnifiedInteractionService:
                     "no TAS writes."
                 ),
             )
+        elif lifecycle_followup is not None:
+            prior = lifecycle_followup
+            prior_state = prior.state.value.replace("_", " ")
+            prior_display = prior.display_text
+            if prior.core_task_id is not None:
+                try:
+                    live_task = self._core.get_task(prior.core_task_id)
+                except Exception:
+                    live_task = None
+                if live_task is not None:
+                    prior_state = _task_state(live_task).replace("_", " ")
+                    prior_display = _task_display_text(
+                        live_task,
+                        fallback=prior.display_text,
+                    )
+            classification = RouteClassification(
+                route=ConversationRoute.CHAT,
+                response=(
+                    f"The most recent governed {prior.kind.value} is "
+                    f"{prior_state}. {prior_display}"
+                ),
+                confidence=1.0,
+            )
+            route_provider_id = "nexuss_lifecycle"
+            route_model = "initialize-follow-report-v1"
+            route_source = "governed_lifecycle_followup"
         elif deterministic is not None:
             classification = deterministic.classification
             route_provider_id = deterministic.provider_id
