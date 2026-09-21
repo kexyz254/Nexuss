@@ -152,19 +152,20 @@ class GitRepositoryManager:
                 "Only a clean fast-forward update is permitted.",
             )
 
-        self._git("merge", "--ff-only", f"origin/{branch}", timeout=60.0)
-        verified = self._git("rev-parse", "HEAD").stdout.strip()
-        if verified != expected_target_sha:
-            raise LocalRepositoryError(
-                "LOCAL_UPDATE_POST_MERGE_SHA_MISMATCH",
-                "The applied local revision did not match the approved target.",
-            )
-
         helper = self._root / "scripts" / "restart_after_verified_update.ps1"
         if not helper.is_file():
             raise LocalRepositoryError(
                 "LOCAL_UPDATE_RESTART_HELPER_MISSING",
                 "Verified restart helper is not installed.",
+            )
+
+        self._git("merge", "--ff-only", f"origin/{branch}", timeout=60.0)
+        verified = self._git("rev-parse", "HEAD").stdout.strip()
+        if verified != expected_target_sha:
+            self._git("reset", "--hard", expected_current_sha)
+            raise LocalRepositoryError(
+                "LOCAL_UPDATE_POST_MERGE_SHA_MISMATCH",
+                "The applied local revision did not match the approved target.",
             )
 
         command = [
