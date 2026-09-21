@@ -112,54 +112,6 @@ def register_conversation_routes(
             authenticated=authenticated,
         )
 
-        def tas_proposer():
-            profile = providers.select(
-                provider_id=body.provider_id,
-                mode=CognitiveMode.ANALYZE,
-            )
-            return AIProviderConnectionResolver().resolve(
-                profile=profile,
-                request_id=body.request_id,
-                instruction=sanitized.value,
-                external_processing_approved=(
-                    body.external_processing_approved
-                ),
-            ).proposer
-
-        trading = handle_trading_chat(
-            sanitized.value,
-            owner=f"{session_id}:{conversation_id}",
-            proposer_factory=tas_proposer,
-        )
-        if trading is not None:
-            response_text = trading.text
-            if sanitized.redactions:
-                response_text += (
-                    "\n\nNexuss removed credential-shaped content "
-                    "before persistence."
-                )
-            user_message, assistant_message, updated = store.append_turn(
-                conversation_id=conversation_id,
-                user_text=sanitized.value,
-                assistant_text=response_text,
-                route=ConversationRoute.CHAT,
-                provider_id="nexuss-tas",
-                model="verified-evidence-v1",
-                pending_action=None,
-                pending_capability_hint=None,
-                attachment_ids=body.attachment_ids,
-            )
-            return ConversationTurnResponse(
-                conversation=updated,
-                user_message=user_message,
-                assistant_message=assistant_message,
-                route=ConversationRoute.CHAT,
-                provider_id="nexuss-tas",
-                model="verified-evidence-v1",
-                tools_executed=trading.tools_executed,
-                attachments=(),
-            )
-
         try:
             profile = providers.select(
                 provider_id=body.provider_id,
@@ -504,6 +456,54 @@ def register_conversation_routes(
                     )
                     if record is not None
                 ),
+            )
+
+        def tas_proposer():
+            profile = providers.select(
+                provider_id=body.provider_id,
+                mode=CognitiveMode.ANALYZE,
+            )
+            return AIProviderConnectionResolver().resolve(
+                profile=profile,
+                request_id=body.request_id,
+                instruction=sanitized.value,
+                external_processing_approved=(
+                    body.external_processing_approved
+                ),
+            ).proposer
+
+        trading = handle_trading_chat(
+            sanitized.value,
+            owner=f"{session_id}:{conversation_id}",
+            proposer_factory=tas_proposer,
+        )
+        if trading is not None:
+            response_text = trading.text
+            if sanitized.redactions:
+                response_text += (
+                    "\n\nNexuss removed credential-shaped content "
+                    "before persistence."
+                )
+            user_message, assistant_message, updated = store.append_turn(
+                conversation_id=conversation_id,
+                user_text=sanitized.value,
+                assistant_text=response_text,
+                route=ConversationRoute.CHAT,
+                provider_id="nexuss-tas",
+                model="verified-evidence-v1",
+                pending_action=None,
+                pending_capability_hint=None,
+                attachment_ids=body.attachment_ids,
+            )
+            return ConversationTurnResponse(
+                conversation=updated,
+                user_message=user_message,
+                assistant_message=assistant_message,
+                route=ConversationRoute.CHAT,
+                provider_id="nexuss-tas",
+                model="verified-evidence-v1",
+                tools_executed=trading.tools_executed,
+                attachments=(),
             )
 
         try:
