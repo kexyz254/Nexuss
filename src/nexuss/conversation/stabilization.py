@@ -87,6 +87,26 @@ _CHROME_SEARCH = re.compile(
     r"(?:\s+(?:for|about))?\s+(?P<query>.+?)[.!?]*$",
     re.IGNORECASE,
 )
+# P6.20 DETERMINISTIC UPDATE LIFECYCLE ROUTING
+_UPDATE_CHECK = re.compile(
+    r"^(?:please\s+)?(?:check\s+(?:for\s+)?nexuss\s+updates?|"
+    r"check\s+nexuss\s+update|nexuss\s+update\s+status|"
+    r"is\s+nexuss\s+up\s+to\s+date|is\s+nexuss\s+updated)[?!.]*$",
+    re.IGNORECASE,
+)
+_UPDATE_RESULT = re.compile(
+    r"^(?:please\s+)?(?:did\s+(?:the\s+)?nexuss\s+update\s+succeed|"
+    r"last\s+nexuss\s+update\s+result|nexuss\s+update\s+result|"
+    r"was\s+nexuss\s+rolled\s+back|check\s+last\s+nexuss\s+update)[?!.]*$",
+    re.IGNORECASE,
+)
+_UPDATE_APPLY = re.compile(
+    r"^(?:please\s+)?(?:update|upgrade)\s+nexuss[?!.]*$|"
+    r"^(?:please\s+)?(?:sync\s+nexuss\s+with\s+github|"
+    r"pull\s+latest\s+nexuss|apply\s+nexuss\s+update)[?!.]*$",
+    re.IGNORECASE,
+)
+
 # P6.14.1 DETERMINISTIC ENGINEERING ACCEPTANCE ROUTING
 _ENGINEERING_ACCEPTANCE = re.compile(
     r"^(?:nexuss[,;:\-]?\s+)?(?:verify|validate|audit|check)\s+"
@@ -164,6 +184,57 @@ def deterministic_route_result(
 ) -> DeterministicRouteResult | None:
     text = user_text.strip()
     normalized = _normalize(text)
+
+    if _UPDATE_RESULT.match(text):
+        return DeterministicRouteResult(
+            classification=_classification(
+                route="action",
+                response=(
+                    "I will verify the retained post-restart update result "
+                    "from the trusted local-control connector."
+                ),
+                action_instruction="Did the Nexuss update succeed?",
+                capability_hint="system.update.result",
+                confidence=1.0,
+            ),
+            provider_id="nexuss_deterministic_router",
+            model="update-lifecycle-v1",
+            source="deterministic_update_result",
+        )
+
+    if _UPDATE_CHECK.match(text):
+        return DeterministicRouteResult(
+            classification=_classification(
+                route="action",
+                response=(
+                    "I will inspect the local Nexuss revision against the "
+                    "approved GitHub branch and report the verified result."
+                ),
+                action_instruction="Check for Nexuss updates.",
+                capability_hint="system.update.inspect",
+                confidence=1.0,
+            ),
+            provider_id="nexuss_deterministic_router",
+            model="update-lifecycle-v1",
+            source="deterministic_update_check",
+        )
+
+    if _UPDATE_APPLY.match(text):
+        return DeterministicRouteResult(
+            classification=_classification(
+                route="action",
+                response=(
+                    "I will prepare the exact verified fast-forward update. "
+                    "Execution remains approval-gated."
+                ),
+                action_instruction="Update Nexuss.",
+                capability_hint="system.update.apply",
+                confidence=1.0,
+            ),
+            provider_id="nexuss_deterministic_router",
+            model="update-lifecycle-v1",
+            source="deterministic_update_apply",
+        )
 
     engineering_repair = _ENGINEERING_REPAIR.match(text)
     if engineering_repair:

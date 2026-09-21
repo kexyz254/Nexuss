@@ -2086,6 +2086,7 @@ async function executeCognitiveInstruction(utterance, channel) {
       true,
     );
   } finally {
+    stopProgress(completedInteraction);
     setBusy(false);
   }
 }
@@ -2191,6 +2192,7 @@ async function decideApproval(decisionKind) {
   } catch (error) {
     addMessage("assistant", error instanceof Error ? error.message : "Approval failed", true);
   } finally {
+    stopProgress(completedInteraction);
     setBusy(false);
   }
 }
@@ -3033,7 +3035,7 @@ function renderConversationList() {
     const rename = document.createElement("button");
     rename.type = "button";
     rename.className = "chat-list-action";
-    rename.textContent = "âœŽ";
+    rename.textContent = "✎";
     rename.title = "Rename chat";
     rename.setAttribute(
       "aria-label",
@@ -3047,7 +3049,7 @@ function renderConversationList() {
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "chat-list-action is-danger";
-    remove.textContent = "Ã—";
+    remove.textContent = "×";
     remove.title = "Delete chat";
     remove.setAttribute(
       "aria-label",
@@ -4866,6 +4868,148 @@ function observeInteractionProgress(requestId, conversationId) {
   };
 }
 
+function coreTaskDisplayText(task) {
+  for (const result of task?.results || []) {
+    for (const evidence of result.evidence || []) {
+      const attributes = evidence?.attributes || {};
+      for (const key of ["display_text", "summary", "message"]) {
+        const value = String(attributes[key] || "").trim();
+        if (value) return value;
+      }
+    }
+  }
+
+  const state = String(task?.state || "unknown").replaceAll("_", " ");
+  if (state === "completed") {
+    return "Nexuss completed the governed action and verified its evidence.";
+  }
+  if (state === "failed") {
+    return "The governed action failed its verification contract.";
+  }
+  if (state === "denied") {
+    return "The governed action was denied by policy.";
+  }
+  if (state === "rolled back") {
+    return "The governed action was rolled back.";
+  }
+  return `The governed action is ${state}.`;
+}
+
+async function followCoreTaskLifecycle(interaction, conversationId) {
+  if (!interaction?.core_task_id) return;
+
+  const initialState = String(interaction.core_task_state || "");
+  const terminal = new Set([
+    "completed",
+    "failed",
+    "denied",
+    "rolled_back",
+  ]);
+  if (terminal.has(initialState) || initialState === "awaiting_approval") {
+    return;
+  }
+
+  const panel = document.createElement("details");
+  panel.className = "message assistant-message workflow-progress";
+  panel.open = true;
+
+  const title = document.createElement("summary");
+  title.textContent = "Following governed task";
+
+  const events = document.createElement("ol");
+  events.setAttribute("aria-live", "polite");
+  panel.append(title, events);
+  elements.timeline.append(panel);
+
+  let lastSequence = 0;
+
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    if (activeConversationId !== conversationId) return;
+
+    try {
+      const response = await fetch(
+        `/v1/tasks/${encodeURIComponent(interaction.core_task_id)}`,
+        {
+          headers: apiHeaders(),
+          cache: "no-store",
+        },
+      );
+      if (!response.ok) {
+        title.textContent = "Task follow-up unavailable";
+        return;
+      }
+
+      const task = await response.json();
+      for (const event of task.events || []) {
+        if (Number(event.sequence || 0) <= lastSequence) continue;
+        lastSequence = Number(event.sequence || lastSequence);
+        const item = document.createElement("li");
+        item.textContent = (
+          `${titleCase(event.state || "working")}: `
+          + String(event.detail || event.event_type || "Task event")
+        );
+        events.append(item);
+      }
+
+      if (typeof renderTask === "function") {
+        renderTask(task, null);
+      }
+
+      if (terminal.has(String(task.state || ""))) {
+        let refreshed = null;
+        try {
+          const refreshResponse = await fetch(
+            `/v1/interactions/${encodeURIComponent(interaction.interaction_id)}/refresh`,
+            {
+              method: "POST",
+              headers: apiHeaders(),
+            },
+          );
+          if (refreshResponse.ok) {
+            refreshed = await refreshResponse.json();
+            rememberUnifiedInteraction(refreshed);
+            renderUnifiedInteraction(refreshed);
+          }
+        } catch {
+          refreshed = null;
+        }
+
+        let receipt = null;
+        try {
+          receipt = await fetchReceipt(task.task_id);
+        } catch {
+          receipt = null;
+        }
+
+        if (typeof renderTask === "function") {
+          renderTask(task, receipt);
+        }
+
+        const report = refreshed?.display_text || coreTaskDisplayText(task);
+        title.textContent = task.state === "completed"
+          ? "Governed task completed"
+          : "Governed task finished";
+        panel.open = task.state !== "completed";
+
+        addMessage(
+          "assistant",
+          report,
+          task.state !== "completed",
+          { rich: false },
+        );
+        void refreshConversationList();
+        return;
+      }
+    } catch {
+      title.textContent = "Task progress connection interrupted";
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  title.textContent = "Task still running — status remains available in Action Control";
+}
+
 async function executeUnifiedInteraction(
   utterance,
   channel,
@@ -4958,6 +5102,23 @@ async function executeUnifiedInteraction(
         rich: interaction.kind === "chat" || interaction.kind === "workflow",
       },
     );
+
+    if (
+      interaction.kind === "action"
+      && interaction.core_task_id
+      && !new Set([
+        "completed",
+        "failed",
+        "denied",
+        "rolled_back",
+        "awaiting_approval",
+      ]).has(String(interaction.core_task_state || ""))
+    ) {
+      void followCoreTaskLifecycle(
+        interaction,
+        submittedConversation,
+      );
+    }
   } catch (error) {
     addMessage(
       "assistant",

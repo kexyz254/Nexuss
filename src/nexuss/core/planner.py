@@ -533,31 +533,13 @@ def _fallback_specs(intent: Intent) -> list[StepSpec]:
     capability_specs: dict[IntentKind, list[StepSpec]] = {
         IntentKind.DAILY_BRIEFING: [
             (
-                "calendar.read_summary",
+                "commitments.prepare_day",
                 RiskTier.LOW,
-                ["calendar_snapshot"],
-                {},
-                False,
-            ),
-            (
-                "email.read_summary",
-                RiskTier.LOW,
-                ["email_snapshot"],
-                {},
-                False,
-            ),
-            (
-                "github.read_summary",
-                RiskTier.LOW,
-                ["repository_snapshot"],
-                {},
-                False,
-            ),
-            (
-                "ats.read_health",
-                RiskTier.LOW,
-                ["ats_health_snapshot"],
-                {},
+                ["workday_brief"],
+                {
+                    "timezone": "Africa/Nairobi",
+                    "include_mobile": True,
+                },
                 False,
             ),
         ],

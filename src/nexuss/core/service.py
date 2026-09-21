@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from threading import RLock, Thread
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+from nexuss.commitments.service import CommitmentIntelligenceService
 from nexuss.connectors.contracts import ConnectorStatus
 from nexuss.connectors.errors import ConnectorError
 from nexuss.connectors.github.runtime import get_github_connector
@@ -111,6 +112,7 @@ class CoreSimulatorService:
         youtube_provider: YouTubeProvider | None = None,
         pairing_gateway: PhonePairingGateway | None = None,
         memory_store: MemoryStore | None = None,
+        commitment_service: CommitmentIntelligenceService | None = None,
     ) -> None:
         self._tasks: dict[UUID, TaskView] = {}
         self._request_index: dict[UUID, UUID] = {}
@@ -121,7 +123,16 @@ class CoreSimulatorService:
         self._youtube_provider = youtube_provider or YouTubeDataProvider()
         self._pairing_gateway = pairing_gateway
         self._memory_store = memory_store
+        self._commitment_service = commitment_service
         self._lock = RLock()
+
+    def set_commitment_service(
+        self,
+        service: CommitmentIntelligenceService,
+    ) -> None:
+        """Attach the single application commitment runtime after connectors start."""
+        with self._lock:
+            self._commitment_service = service
 
     @staticmethod
     def _validate_session(session: IdentitySession, expected_session_id: UUID) -> None:
@@ -534,6 +545,7 @@ class CoreSimulatorService:
                         session_id=session_id,
                         pairing_gateway=self._pairing_gateway,
                         memory_store=self._memory_store,
+                        commitment_service=self._commitment_service,
                         approval=approval,
                     )
                 )

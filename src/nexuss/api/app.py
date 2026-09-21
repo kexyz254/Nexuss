@@ -828,6 +828,7 @@ commitment_service = CommitmentIntelligenceService(
     google_workspace=google_workspace,
     mobile_fabric=mobile_fabric,
 )
+service.set_commitment_service(commitment_service)
 register_commitment_routes(
     app,
     _require_local_control,

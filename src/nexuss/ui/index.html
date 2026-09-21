@@ -8,11 +8,14 @@
   <meta name="theme-color" content="#07111d">
   <title>Nexuss · Personal Cognitive Control Plane</title>
   <link rel="stylesheet" href="/assets/styles.css">
-  <link rel="stylesheet" href="/assets/workspace.css">\n  <link rel="stylesheet" href="/assets/file_workspace.css">
+  <link rel="stylesheet" href="/assets/workspace.css">
+  <link rel="stylesheet" href="/assets/file_workspace.css">
   <script src="https://www.youtube.com/iframe_api"></script>
   <script src="/assets/app.js" defer></script>
   <script src="/assets/p5.js" defer></script>
-  <script src="/assets/workspace.js" defer></script>\n  <script src="/assets/file_workspace.js" defer></script>\n  <script src="/assets/proactive.js" defer></script>
+  <script src="/assets/workspace.js" defer></script>
+  <script src="/assets/file_workspace.js" defer></script>
+  <script src="/assets/proactive.js" defer></script>
   <link rel="stylesheet" href="/assets/nexuss_ui_platform.css?v=1.0.0">
 </head>
 <body>
@@ -139,13 +142,13 @@
         </button>
         <button class="nav-item" data-prompt="Give me my daily briefing.">
           <span class="nav-icon">◇</span>
-          <span><strong>Daily briefing</strong><small>Clearly labelled simulation</small></span>
-          <span class="nav-state simulated">SIM</span>
+          <span><strong>Daily briefing</strong><small>Live operational awareness</small></span>
+          <span class="nav-state live">LIVE</span>
         </button>
         <button class="nav-item" data-prompt="Check ATS intelligence.">
           <span class="nav-icon">↗</span>
-          <span><strong>ATS intelligence</strong><small>Protected simulation</small></span>
-          <span class="nav-state simulated">SIM</span>
+          <span><strong>ATS intelligence</strong><small>Verified read-only TAS evidence</small></span>
+          <span class="nav-state live">LIVE</span>
         </button>
       </nav>
 
@@ -180,7 +183,7 @@
           <p id="conversation-subtitle">Start a fresh Nexuss conversation or reopen a saved chat from the sidebar.</p>
         </div>
         <div class="mode-stack">
-          <span class="mode-pill"><span></span>P6.16B · Supervised local intelligence</span>
+          <span class="mode-pill"><span></span>P6.20 · Intent lifecycle awareness</span>
           <span class="mode-note">Agents · local control · research · trusted actions</span>
         </div>
       </header>
@@ -239,10 +242,11 @@
             >
             <button
               type="button"
-              class="archive-attach-button"
+              class="archive-attach-button legacy-archive-control"
               id="archive-attach-button"
-              aria-label="Attach a ZIP archive"
-              title="Attach a ZIP archive"
+              aria-label="Attach a governed development package"
+              title="Governed development package"
+              hidden
             >ZIP</button>
             <input
               type="file"
