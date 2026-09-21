@@ -18,7 +18,10 @@ from nexuss.ai.registry import (
 )
 from nexuss.chat_files.store import ChatFileError, WorkspaceFileStore
 from nexuss.cognitive.models import CognitiveMode
-from nexuss.cognitive.runtime import create_cognitive_proposal
+from nexuss.cognitive.runtime import (
+    bound_cognitive_instruction,
+    create_cognitive_proposal,
+)
 from nexuss.cognitive.service import CognitiveProposalError
 from nexuss.conversation.models import (
     ConversationHistoryResponse,
@@ -405,11 +408,18 @@ def register_conversation_routes(
         if safe_attachment_context:
             provider_input += "\n\n" + safe_attachment_context
 
+        bounded_provider_input = bound_cognitive_instruction(
+            provider_input
+        )
+        evidence_window_truncated = (
+            bounded_provider_input != provider_input
+        )
+
         if body.attachment_ids:
             try:
                 envelope = create_cognitive_proposal(
                     request_id=body.request_id,
-                    instruction=provider_input,
+                    instruction=bounded_provider_input,
                     mode=_file_cognitive_mode(sanitized.value),
                 )
             except (CognitiveProposalError, EngineeringError) as exc:
@@ -424,6 +434,12 @@ def register_conversation_routes(
                 ) from exc
 
             response_text = envelope.proposal.response
+            if evidence_window_truncated:
+                response_text += (
+                    "\n\nNexuss analyzed a bounded evidence window from "
+                    "the attachment. The original local file remains "
+                    "unchanged and available for targeted follow-up reads."
+                )
             if sanitized.redactions:
                 response_text += (
                     "\n\nNexuss removed credential-shaped content "
