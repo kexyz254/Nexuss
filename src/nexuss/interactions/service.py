@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from typing import Protocol
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from nexuss.ai.connections import AIProviderConnectionResolver
@@ -18,7 +20,15 @@ from nexuss.conversation.security import sanitize_text
 from nexuss.conversation.stabilization import deterministic_route_result
 from nexuss.conversation.store import SQLiteConversationStore
 from nexuss.conversation.trading import handle_trading_chat
-from nexuss.domain.models import Channel, IdentitySession, TaskRequest
+from nexuss.domain.models import (
+    ActionReceipt,
+    Channel,
+    IdentitySession,
+    TaskRequest,
+    TaskView,
+)
+from nexuss.engineering.models import ModelProposal
+from nexuss.engineering.providers.base import ProviderRequest
 from nexuss.interactions.journal import build_session_markdown
 from nexuss.interactions.models import (
     InteractionEvent,
@@ -45,6 +55,18 @@ _LIFECYCLE_FOLLOWUP = re.compile(
 
 def _is_lifecycle_followup(text: str) -> bool:
     return _LIFECYCLE_FOLLOWUP.match(text.strip()) is not None
+
+
+class CoreInteractionRuntime(Protocol):
+    def create_task(
+        self,
+        request: TaskRequest,
+        session: IdentitySession,
+    ) -> TaskView: ...
+
+    def get_task(self, task_id: UUID) -> TaskView: ...
+
+    def get_receipt(self, task_id: UUID) -> ActionReceipt: ...
 
 
 class UnifiedInteractionError(RuntimeError):
@@ -276,7 +298,7 @@ class UnifiedInteractionService:
         resolver: AIProviderConnectionResolver,
         conversation_store: SQLiteConversationStore,
         interaction_store: SQLiteInteractionStore,
-        core_service: object,
+        core_service: CoreInteractionRuntime,
     ) -> None:
         self._providers = providers
         self._resolver = resolver
@@ -358,7 +380,7 @@ class UnifiedInteractionService:
         if continuation is not None:
             routing_text = continuation
 
-        def tas_proposer():
+        def tas_proposer() -> Callable[[ProviderRequest], ModelProposal]:
             profile = self._providers.select(
                 provider_id=request.provider_id,
                 mode=CognitiveMode.ANALYZE,
