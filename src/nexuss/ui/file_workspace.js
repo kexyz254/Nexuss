@@ -159,6 +159,11 @@
 
   async function submitFileTurn(event) {
     if (!selected.length) return;
+    if (chatTurnInProgress()) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
 
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -171,6 +176,9 @@
     commandInput.style.height = "auto";
     setBusy(true);
     stopSpeaking();
+    let activity = null;
+    let phase = null;
+    let finished = false;
 
     try {
       await ensurePersistentConversation();
@@ -188,9 +196,20 @@
         { attachments: placeholderAttachments },
       );
 
+      activity = document.createElement("details");
+      activity.className = "message assistant-message workflow-progress";
+      activity.dataset.state = "running";
+      activity.open = true;
+      phase = document.createElement("summary");
+      phase.setAttribute("aria-live", "polite");
+      phase.textContent = `Uploading ${originalFiles.length} file(s)…`;
+      activity.append(phase);
+      elements.timeline.append(activity);
       const records = await uploadFiles();
+      phase.textContent = "Files received — preparing the requested analysis";
 
       if (requestedPackage(utterance)) {
+        phase.textContent = "Packaging the selected files…";
         const artifact = await packageAttachments(records, utterance);
         addMessage(
           "assistant",
@@ -198,6 +217,7 @@
           false,
           { artifact },
         );
+        finished = true;
         selected = [];
         renderSelection();
         setBusy(false);
@@ -261,6 +281,7 @@
         { rich: true },
       );
 
+      finished = true;
       selected = [];
       renderSelection();
     } catch (error) {
@@ -272,6 +293,11 @@
         true,
       );
     } finally {
+      if (activity) {
+        activity.dataset.state = "finished";
+        activity.open = !finished;
+        phase.textContent = finished ? "File processing completed" : "File processing interrupted";
+      }
       setBusy(false);
       commandInput.focus();
     }

@@ -7,5 +7,6 @@ def test_development_package_attachment_route_exists():
     assert 'fetch("/v1/development-packages"' in source
     assert "isDevelopmentPackageInstruction" in source
     assert "No LLM/API call is required" in source
-    assert "P6.13 ASYNC PACKAGE APPROVAL POLLING" in source
-    assert "developmentPackageTask" in source
+    # All approved actions now share the awaited lifecycle follower.
+    assert "await followCoreTaskLifecycle({ core_task_id: taskId }" in source
+    assert "if (String(followedChatTaskId) !== String(taskId))" in source

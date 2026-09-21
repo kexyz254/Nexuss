@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
-APP_MARKER = "P6.10G CONVERSATION INITIALIZATION SINGLE-FLIGHT"
 STORE_MARKER = "P6.10G ATOMIC CONVERSATION CREATE OR REBIND"
 API_CODE = "CONVERSATION_CONTINUATION_TOKEN_INVALID"
 
@@ -13,19 +11,18 @@ def test_frontend_uses_single_flight_initialization() -> None:
         encoding="utf-8-sig"
     )
 
-    assert APP_MARKER in app
     assert "persistentConversationInitializationKey" in app
     assert "persistentConversationInitializationPromise" in app
     assert "resetPersistentConversationInitialization" in app
 
     start = app.index("async function ensurePersistentConversation()")
     end = app.index(
-        "async function restorePersistentConversation()",
+        "async function executeConversationTurn(",
         start,
     )
     initializer = app[start:end]
 
-    assert initializer.count('fetch("/v1/conversations"') == 1
+    assert initializer.count('"/v1/conversations"') == 1
     assert "return persistentConversationInitializationPromise" in initializer
     compact = " ".join(initializer.split())
     assert (
@@ -39,7 +36,7 @@ def test_new_conversation_invalidates_cached_initialization() -> None:
         encoding="utf-8-sig"
     )
 
-    start = app.index("function startNewPersistentConversation()")
+    start = app.index("function startNewPersistentConversation(options = {})")
     end = app.index(
         "async function ensurePersistentConversation()",
         start,

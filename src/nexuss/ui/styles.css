@@ -2868,3 +2868,21 @@ body[data-focus-mode="inspector"] .inspector {
     margin-top: 12px;
   }
 }
+
+/* P6.24 LIVE CHAT ACTIVITY */
+.workflow-progress[data-state="running"] > summary::before {
+  content: "";
+  display: inline-block;
+  width: .65rem;
+  height: .65rem;
+  margin-right: .6rem;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: chat-activity-spin 1s linear infinite;
+}
+@keyframes chat-activity-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .workflow-progress[data-state="running"] > summary::before { animation: none; }
+}
+#command-form[aria-busy="true"] #command-input { cursor: progress; }

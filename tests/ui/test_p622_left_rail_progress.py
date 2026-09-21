@@ -10,8 +10,8 @@ def test_desktop_left_rail_reserves_chat_history_space() -> None:
     assert ".chat-list" in css
     assert "overflow-y: auto;" in css
     assert ".nav-list" in css
-    assert "P6.22" in html
-    assert "?v=p622" in html
+    assert "P6.24" in html
+    assert "?v=p624" in html
 
 
 def test_missing_progress_registration_cannot_poll_forever() -> None:

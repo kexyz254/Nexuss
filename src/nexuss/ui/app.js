@@ -105,6 +105,35 @@ let toastTimer = null;
 let pairingChallenge = null;
 let taskPollTimer = null;
 let selectedArchive = null;
+// A turn owns the composer through approval, execution, and verification.
+let chatTurnLocked = false;
+let followedChatTaskId = null;
+let approvalRequestPending = false;
+const terminalChatTaskStates = new Set([
+  "completed", "partially_completed", "failed", "denied", "rolled_back", "cancelled", "expired",
+]);
+
+function chatTurnInProgress() {
+  return chatTurnLocked || elements.input.disabled;
+}
+
+function retainChatFollow(interaction, conversationId) {
+  try {
+    sessionStorage.setItem("nexuss-active-chat-task", JSON.stringify({
+      sessionId, conversationId,
+      interaction: {
+        interaction_id: interaction.interaction_id,
+        core_task_id: interaction.core_task_id,
+        core_task_state: interaction.core_task_state,
+      },
+    }));
+  } catch { /* Following in this tab still works if storage is unavailable. */ }
+}
+
+function clearChatFollow() {
+  try { sessionStorage.removeItem("nexuss-active-chat-task"); } catch { /* unavailable */ }
+}
+
 
 function apiHeaders() {
   return {
@@ -173,13 +202,21 @@ void refreshRuntimeBuildIdentity();
 window.setInterval(refreshRuntimeBuildIdentity, 60_000);
 
 function setBusy(busy) {
-  elements.send.disabled = busy;
-  elements.input.disabled = busy;
-  elements.approve.disabled = busy;
-  elements.reject.disabled = busy;
-  elements.rollback.disabled = busy;
-  elements.archiveAttach.disabled = busy;
-  elements.archiveRemove.disabled = busy;
+  const composerLocked = busy || chatTurnLocked;
+  for (const control of [elements.send, elements.input, elements.voice,
+    elements.archiveAttach, elements.archiveRemove, elements.newChat,
+    document.querySelector("#file-attach-button")]) {
+    if (control) control.disabled = composerLocked;
+  }
+  elements.approve.disabled = busy || approvalRequestPending;
+  elements.reject.disabled = busy || approvalRequestPending;
+  elements.rollback.disabled = composerLocked;
+  elements.form.setAttribute("aria-busy", String(composerLocked));
+  if (composerLocked) {
+    elements.note.textContent = "Nexuss is working. Live activity appears above; approval controls remain available when needed.";
+  } else {
+    elements.note.textContent = "Ready for your next message.";
+  }
 }
 
 
@@ -1100,6 +1137,16 @@ function renderEvents(events) {
 
 function renderReceipt(receipt) {
   currentReceipt = receipt;
+  if (!receipt) {
+    elements.receiptId.textContent = "Pending";
+    elements.receiptVersion.textContent = "—";
+    elements.receiptVerified.textContent = "Pending";
+    elements.receiptReversible.textContent = "Pending";
+    elements.receiptTitle.textContent = "Awaiting final receipt";
+    elements.copyPath.hidden = true;
+    elements.rollback.hidden = true;
+    return;
+  }
   elements.receiptId.textContent = receipt.receipt_id;
   elements.receiptVersion.textContent = String(receipt.receipt_version);
   elements.receiptVerified.textContent = receipt.verified ? "Yes" : "No";
@@ -1125,11 +1172,11 @@ function renderTask(task, receipt) {
   } else if (task.state === "rolled_back") {
     elements.verificationBadge.classList.add("rolled-back");
     elements.verificationBadge.textContent = "ROLLED BACK";
-  } else if (receipt.verified) {
+  } else if (receipt?.verified) {
     elements.verificationBadge.classList.add("verified");
     elements.verificationBadge.textContent = "VERIFIED";
   } else {
-    elements.verificationBadge.classList.add("failed");
+    elements.verificationBadge.classList.add(terminalChatTaskStates.has(task.state) ? "failed" : "pending");
     elements.verificationBadge.textContent = titleCase(task.state).toUpperCase();
   }
 
@@ -1181,7 +1228,9 @@ function renderTask(task, receipt) {
     elements.evidenceList.className = "detail-list empty-state";
     elements.evidenceList.textContent = task.state === "awaiting_approval"
       ? "Execution is paused. No write occurred before approval."
-      : "Execution was not authorized, so no evidence was produced.";
+      : terminalChatTaskStates.has(task.state)
+        ? "No evidence was returned for this task."
+        : "Execution is in progress. Evidence will appear as it becomes available.";
   }
   elements.evidenceSummary.textContent = `${evidenceCount} record${evidenceCount === 1 ? "" : "s"}`;
   elements.reviewApproval.hidden = task.state !== "awaiting_approval" || !task.approval;
@@ -1422,7 +1471,9 @@ async function showApproval(approval) {
       } else {
         await createPhonePairing();
       }
-      void pollTaskUntilResolved(approval.task_id);
+      if (String(followedChatTaskId) !== String(approval.task_id)) {
+        void pollTaskUntilResolved(approval.task_id);
+      }
     } catch (error) {
       elements.phoneApprovalStatus.textContent = error instanceof Error ? error.message : "Phone pairing unavailable";
     }
@@ -1447,6 +1498,7 @@ async function executeDevelopmentPackageInstruction(utterance) {
 
   const archive = selectedArchive;
   const requestId = crypto.randomUUID();
+  chatTurnLocked = true;
   setBusy(true);
   addMessage("user", utterance);
   stopSpeaking();
@@ -1456,6 +1508,7 @@ async function executeDevelopmentPackageInstruction(utterance) {
   );
 
   try {
+    await ensurePersistentConversation();
     const response = await fetch("/v1/development-packages", {
       method: "POST",
       headers: developmentPackageApiHeaders(requestId, archive.name),
@@ -1467,17 +1520,9 @@ async function executeDevelopmentPackageInstruction(utterance) {
     }
     const task = await response.json();
     clearArchiveAttachment();
-    const receipt = await fetchReceipt(task.task_id);
-    renderTask(task, receipt);
-    addMessage(
-      "assistant",
-      "Nexuss verified the ZIP manifest and base hashes. Review the exact package in Action Control before isolated validation and live application.",
-      false,
-      { speak: true },
-    );
-    if (task.state === "awaiting_approval" && task.approval) {
-      await showApproval(task.approval);
-    }
+    setBusy(false);
+    await followCoreTaskLifecycle({ core_task_id: task.task_id }, activeConversationId);
+
   } catch (error) {
     addMessage(
       "assistant",
@@ -1485,6 +1530,7 @@ async function executeDevelopmentPackageInstruction(utterance) {
       true,
     );
   } finally {
+    chatTurnLocked = false;
     setBusy(false);
     elements.input.focus();
   }
@@ -1501,6 +1547,7 @@ async function executeArchiveInstruction(utterance) {
 
   const archive = selectedArchive;
   const requestId = crypto.randomUUID();
+  chatTurnLocked = true;
   setBusy(true);
   addMessage("user", utterance);
   stopSpeaking();
@@ -1510,6 +1557,7 @@ async function executeArchiveInstruction(utterance) {
   );
 
   try {
+    await ensurePersistentConversation();
     const response = await fetch("/v1/archive-imports", {
       method: "POST",
       headers: archiveApiHeaders(requestId, repositoryName, archive.name),
@@ -1521,12 +1569,9 @@ async function executeArchiveInstruction(utterance) {
     }
     const task = await response.json();
     clearArchiveAttachment();
-    const receipt = await fetchReceipt(task.task_id);
-    renderTask(task, receipt);
-    addMessage("assistant", summarizeTask(task), false, { speak: true });
-    if (task.state === "awaiting_approval" && task.approval) {
-      await showApproval(task.approval);
-    }
+    setBusy(false);
+    await followCoreTaskLifecycle({ core_task_id: task.task_id }, activeConversationId);
+
   } catch (error) {
     addMessage(
       "assistant",
@@ -1534,6 +1579,7 @@ async function executeArchiveInstruction(utterance) {
       true,
     );
   } finally {
+    chatTurnLocked = false;
     setBusy(false);
     elements.input.focus();
   }
@@ -1940,7 +1986,6 @@ async function executeAutonomousInstruction(utterance, channel) {
   } catch (error) {
     addMessage("assistant", error instanceof Error ? error.message : "Bounded autonomy failed closed.", true);
   } finally {
-    stopProgress(completedInteraction);
     setBusy(false);
   }
 }
@@ -2146,7 +2191,6 @@ async function executeCognitiveInstruction(utterance, channel) {
       true,
     );
   } finally {
-    stopProgress(completedInteraction);
     setBusy(false);
   }
 }
@@ -2216,10 +2260,13 @@ async function executeLegacyInstruction(
 
 async function decideApproval(decisionKind) {
   const approval = currentTask?.approval;
-  if (!currentTask || !approval || !approval.approval_token) return;
+  if (!currentTask || !approval?.approval_token || approvalRequestPending) return;
+  const taskId = currentTask.task_id;
+  let ownsFollow = false;
+  approvalRequestPending = true;
   setBusy(true);
   try {
-    const response = await fetch(`/v1/tasks/${currentTask.task_id}/approval`, {
+    const response = await fetch(`/v1/tasks/${taskId}/approval`, {
       method: "POST",
       headers: apiHeaders(),
       body: JSON.stringify({
@@ -2231,28 +2278,21 @@ async function decideApproval(decisionKind) {
     });
     if (!response.ok) throw new Error(`Approval failed (${response.status}): ${await response.text()}`);
     const task = await response.json();
-    const receipt = await fetchReceipt(task.task_id);
     hideApproval();
-    renderTask(task, receipt);
-    addMessage("assistant", summarizeTask(task), false, { speak: true });
-    // P6.13 ASYNC PACKAGE APPROVAL POLLING
-    const developmentPackageTask = task.plan?.steps?.some(
-      (step) => step.capability_id === "engineering.package.apply",
-    );
-    if (
-      decisionKind === "approve" &&
-      developmentPackageTask &&
-      ["approved", "executing", "verifying"].includes(task.state)
-    ) {
-      void pollTaskUntilResolved(task.task_id);
-      showToast("Development package approved. Isolated validation is running.");
-    } else {
-      showToast(decisionKind === "approve" ? "Exact action approved and verified." : "Action cancelled. No write occurred.");
+    renderTask(task, null);
+    // The owning turn reports the final result. Approval acceptance is not completion.
+    if (String(followedChatTaskId) !== String(taskId)) {
+      ownsFollow = true;
+      stopTaskPolling();
+      chatTurnLocked = true;
+      await followCoreTaskLifecycle({ core_task_id: taskId }, activeConversationId);
     }
+    showToast(decisionKind === "approve" ? "Approval received. Following execution and verification." : "Decision received.");
   } catch (error) {
-    addMessage("assistant", error instanceof Error ? error.message : "Approval failed", true);
+    showToast(error instanceof Error ? error.message : "Approval response unavailable; checking task status.");
   } finally {
-    stopProgress(completedInteraction);
+    approvalRequestPending = false;
+    if (ownsFollow) chatTurnLocked = false;
     setBusy(false);
   }
 }
@@ -2312,7 +2352,7 @@ async function submitUnifiedUserTurn(
     return;
   }
 
-  if (nexussUnifiedTurnPromise) {
+  if (nexussUnifiedTurnPromise || chatTurnInProgress()) {
     showToast(
       "Nexuss is already processing this turn. "
       + "No duplicate interaction was created.",
@@ -2320,6 +2360,7 @@ async function submitUnifiedUserTurn(
     return nexussUnifiedTurnPromise;
   }
 
+  chatTurnLocked = true;
   setBusy(true);
   stopSpeaking();
   addMessage("user", originalUserText);
@@ -2330,6 +2371,8 @@ async function submitUnifiedUserTurn(
   const trackedPromise = turnPromise.finally(() => {
     if (nexussUnifiedTurnPromise === trackedPromise) {
       nexussUnifiedTurnPromise = null;
+      chatTurnLocked = false;
+      setBusy(false);
     }
     elements.input.focus();
   });
@@ -2340,6 +2383,7 @@ async function submitUnifiedUserTurn(
 
 elements.form.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (chatTurnInProgress()) return;
   const utterance = elements.input.value.trim();
   if (!utterance) return;
   const channel = lastInputChannel;
@@ -3160,6 +3204,7 @@ async function refreshConversationList() {
 }
 
 function startNewPersistentConversation(options = {}) {
+  if (chatTurnInProgress()) return;
   createConversationIdentifiers();
   activeConversationRecord = null;
   activeConversationPersisted = false;
@@ -3217,6 +3262,10 @@ function renderStoredConversation(history) {
 async function selectPersistentConversation(
   conversationId,
 ) {
+  if (chatTurnInProgress()) {
+    showToast("Finish the current turn before switching chats.");
+    return;
+  }
   try {
     const response = await fetch(
       `/v1/conversations/${encodeURIComponent(
@@ -3321,6 +3370,7 @@ async function renamePersistentConversation(
 async function deletePersistentConversation(
   conversation,
 ) {
+  if (chatTurnInProgress()) return;
   const confirmed = window.confirm(
     `Delete "${conversation.title}"? `
     + "This removes its saved messages.",
@@ -3667,6 +3717,7 @@ setTimeout(
     });
 
     void refreshConversationList();
+    void resumeRetainedChatTask();
   },
   0,
 );
@@ -4559,6 +4610,7 @@ async function p610DPresentCoreTask(interaction, presentation) {
   if (
     task.state === "awaiting_approval"
     && task.approval
+    && String(followedChatTaskId) !== String(task.task_id)
     && typeof showApproval === "function"
   ) {
     await showApproval(task.approval);
@@ -4819,10 +4871,11 @@ function observeInteractionProgress(requestId, conversationId) {
   const panel = document.createElement("details");
   panel.className = "message assistant-message workflow-progress";
   panel.open = true;
-  panel.hidden = true;
+  panel.dataset.state = "running";
+  panel.hidden = false;
 
   const title = document.createElement("summary");
-  title.textContent = "Workflow in progress";
+  title.textContent = "Nexuss is working…";
 
   const entries = document.createElement("ol");
   entries.setAttribute("aria-live", "polite");
@@ -4871,7 +4924,6 @@ function observeInteractionProgress(requestId, conversationId) {
         for (const event of progress.events || []) {
           if (event.sequence <= sequence) continue;
           sequence = event.sequence;
-          if (!event.event_type.startsWith("workflow_")) continue;
 
           isWorkflow = true;
           panel.hidden = false;
@@ -4904,13 +4956,13 @@ function observeInteractionProgress(requestId, conversationId) {
 
   return (interaction) => {
     stopped = true;
+    panel.dataset.state = "finished";
     clearTimeout(timer);
     controller.abort();
 
     for (const event of interaction?.events || []) {
       if (
         event.sequence <= sequence
-        || !event.event_type.startsWith("workflow_")
       ) {
         continue;
       }
@@ -4931,7 +4983,7 @@ function observeInteractionProgress(requestId, conversationId) {
     title.textContent = interaction?.state === "blocked"
       ? "Workflow blocked — action needed"
       : interaction
-        ? "Workflow activity — finished"
+        ? "Request activity"
         : "Request interrupted — verify status before retrying";
     panel.open = interaction?.state === "blocked";
   };
@@ -4964,24 +5016,67 @@ function coreTaskDisplayText(task) {
   return `The governed action is ${state}.`;
 }
 
+async function followUpdateRestart(targetSha, title, detail) {
+  // Check the retained result AND the running process, not the checkout alone.
+  for (let attempt = 0; attempt < 160; attempt += 1) {
+    try {
+      const response = await fetch("/v1/runtime/update-result", {
+        headers: apiHeaders(), cache: "no-store", signal: AbortSignal.timeout(5000),
+      });
+      if (response.ok) {
+        const result = await response.json();
+        if (result.target_sha === targetSha) {
+          if (result.status === "completed" && result.active_sha === targetSha
+            && result.running_sha === targetSha) {
+            return { ok: true, text: `Nexuss updated successfully. The restarted runtime is running ${targetSha.slice(0, 12)}; the retained update result is verified.` };
+          }
+          if (["rolled_back", "recovery_failed"].includes(result.status)) {
+            return { ok: false, text: `Nexuss update ${result.status.replaceAll("_", " ")}. ${result.detail}` };
+          }
+        }
+      }
+      detail.textContent = "Waiting for the approved version and its retained restart result.";
+    } catch {
+      title.textContent = "Runtime restarting — reconnecting";
+      detail.textContent = "The update has not been resubmitted. Waiting for restart verification.";
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+  return { ok: false, unresolved: true, text: "The update was accepted, but I could not verify the restarted runtime. Reload this chat to resume verification before starting another update." };
+}
+
+async function resumeRetainedChatTask() {
+  let retained;
+  try { retained = JSON.parse(sessionStorage.getItem("nexuss-active-chat-task") || "null"); }
+  catch { return; }
+  if (!retained || retained.sessionId !== sessionId || !retained.interaction?.core_task_id) return;
+  await selectPersistentConversation(retained.conversationId);
+  if (activeConversationId !== retained.conversationId || chatTurnInProgress()) return;
+  chatTurnLocked = true;
+  setBusy(false);
+  try {
+    await followCoreTaskLifecycle(retained.interaction, retained.conversationId);
+  } finally {
+    chatTurnLocked = false;
+    setBusy(false);
+  }
+}
+
 async function followCoreTaskLifecycle(interaction, conversationId) {
   if (!interaction?.core_task_id) return;
 
   const taskId = String(interaction.core_task_id);
-  const initialState = String(interaction.core_task_state || "");
-  const terminal = new Set([
-    "completed",
-    "failed",
-    "denied",
-    "rolled_back",
-  ]);
-  if (terminal.has(initialState) || initialState === "awaiting_approval") {
-    return;
-  }
-
+  followedChatTaskId = taskId;
+  retainChatFollow(interaction, conversationId);
+  const terminal = terminalChatTaskStates;
+  let shownApprovalId = null;
+  let updateTarget = null;
+  let failures = 0;
+  let settled = false;
   const panel = document.createElement("details");
   panel.className = "message assistant-message workflow-progress";
   panel.open = true;
+  panel.dataset.state = "running";
 
   const title = document.createElement("summary");
   title.textContent = "Following governed task";
@@ -4990,7 +5085,7 @@ async function followCoreTaskLifecycle(interaction, conversationId) {
   meter.className = "workflow-progress-meter";
   const meterBar = document.createElement("progress");
   meterBar.max = 100;
-  meterBar.value = 0;
+  meterBar.removeAttribute("value");
   const meterMeta = document.createElement("div");
   meterMeta.className = "workflow-progress-meta";
   meterMeta.textContent = "Initializing task telemetry…";
@@ -5013,174 +5108,213 @@ async function followCoreTaskLifecycle(interaction, conversationId) {
     panel.scrollIntoView({ block: "nearest" });
   }
 
-  for (let attempt = 0; attempt < 800; attempt += 1) {
-    if (activeConversationId !== conversationId) return;
-
-    try {
-      const [taskResponse, statusResponse] = await Promise.all([
-        fetch(
-          `/v1/tasks/${encodeURIComponent(taskId)}`,
-          {
-            headers: apiHeaders(),
-            cache: "no-store",
-          },
-        ),
-        fetch(
-          `/v1/tasks/${encodeURIComponent(taskId)}/status`,
-          {
-            headers: apiHeaders(),
-            cache: "no-store",
-          },
-        ),
-      ]);
-
-      if (!taskResponse.ok) {
-        title.textContent = "Task follow-up unavailable";
-        return;
-      }
-
-      const task = await taskResponse.json();
-      let progressSnapshot = null;
-      if (statusResponse.ok) {
-        progressSnapshot = await statusResponse.json();
-        const percent = Number(progressSnapshot.progress_percent || 0);
-        meterBar.value = Math.max(0, Math.min(100, percent));
-        meterMeta.textContent = [
-          titleCase(progressSnapshot.phase || "working"),
-          `${percent}%`,
-          progressSnapshot.last_event_type
-            ? titleCase(progressSnapshot.last_event_type)
-            : null,
-        ].filter(Boolean).join(" · ");
-      }
-
-      for (const event of task.events || []) {
-        if (Number(event.sequence || 0) <= lastSequence) continue;
-        lastSequence = Number(event.sequence || lastSequence);
-        appendEvent(
-          titleCase(event.state || "working"),
-          String(event.detail || event.event_type || "Task event"),
-        );
-      }
+  try {
+    while (true) {
+      if (activeConversationId !== conversationId) throw new Error("The active task conversation changed.");
 
       try {
-        const engineeringResponse = await fetch(
-          "/v1/engineering/prompt-build/progress",
-          {
-            headers: apiHeaders(),
-            cache: "no-store",
-          },
-        );
-        if (engineeringResponse.ok) {
-          const engineering = await engineeringResponse.json();
-          if (String(engineering.core_task_id || "") === taskId) {
-            const actor = String(engineering.actor || "Nexuss");
-            const phase = String(engineering.phase || "working");
-            const round = Number(engineering.round || 0);
-            const changedFiles = Number(
-              engineering.changed_file_count || 0,
-            );
-
-            title.textContent = `${actor} · ${titleCase(phase)}`;
-            const coarse = progressSnapshot
-              ? `${Number(progressSnapshot.progress_percent || 0)}%`
-              : null;
-            meterMeta.textContent = [
-              titleCase(phase),
-              coarse,
-              round ? `round ${round}` : null,
-              changedFiles
-                ? `${changedFiles} changed file${changedFiles === 1 ? "" : "s"}`
-                : null,
-            ].filter(Boolean).join(" · ");
-
-            for (const event of engineering.events || []) {
-              const key = [
-                event.at,
-                event.actor,
-                event.phase,
-                event.message,
-              ].join("|");
-              if (engineeringSeen.has(key)) continue;
-              engineeringSeen.add(key);
-              appendEvent(
-                `${event.actor || "Nexuss"} · ${titleCase(event.phase || "working")}`,
-                String(event.message || "Engineering progress"),
-              );
-            }
-          }
-        }
-      } catch {
-        // Core task polling remains authoritative if engineering telemetry
-        // is temporarily unavailable.
-      }
-
-      if (typeof renderTask === "function") {
-        renderTask(task, null);
-      }
-
-      if (terminal.has(String(task.state || ""))) {
-        meterBar.value = 100;
-
-        let refreshed = null;
-        try {
-          const refreshResponse = await fetch(
-            `/v1/interactions/${encodeURIComponent(interaction.interaction_id)}/refresh`,
+        const [taskResponse, statusResponse] = await Promise.all([
+          fetch(
+            `/v1/tasks/${encodeURIComponent(taskId)}`,
             {
-              method: "POST",
               headers: apiHeaders(),
+              cache: "no-store",
+              signal: AbortSignal.timeout(5000),
+            },
+          ),
+          fetch(
+            `/v1/tasks/${encodeURIComponent(taskId)}/status`,
+            {
+              headers: apiHeaders(),
+              cache: "no-store",
+              signal: AbortSignal.timeout(5000),
+            },
+          ).catch(() => null),
+        ]);
+
+        if (!taskResponse.ok) {
+          throw new Error(`Task status unavailable (${taskResponse.status})`);
+        }
+
+        const task = await taskResponse.json();
+        failures = 0;
+        updateTarget = updateTarget || (task.plan?.steps || []).find(
+          (step) => step.capability_id === "system.update.apply",
+        )?.parameters?.expected_target_sha;
+        const awaitingApproval = task.state === "awaiting_approval";
+        if (awaitingApproval && task.approval) {
+          title.textContent = "Approval needed — review the exact action";
+          setBusy(false);
+          if (shownApprovalId !== task.approval.approval_id) {
+            shownApprovalId = task.approval.approval_id;
+            renderTask(task, null);
+            await showApproval(task.approval);
+          }
+        } else {
+          if (shownApprovalId) hideApproval();
+          shownApprovalId = null;
+          title.textContent = `Nexuss · ${titleCase(task.state || "working")}`;
+        }
+        let progressSnapshot = null;
+        if (statusResponse?.ok) {
+          progressSnapshot = await statusResponse.json();
+          const percent = Number(progressSnapshot.progress_percent || 0);
+          meterBar.value = Math.max(0, Math.min(100, percent));
+          meterMeta.textContent = [
+            titleCase(progressSnapshot.phase || "working"),
+            `${percent}%`,
+            progressSnapshot.last_event_type
+              ? titleCase(progressSnapshot.last_event_type)
+              : null,
+          ].filter(Boolean).join(" · ");
+        }
+
+        for (const event of task.events || []) {
+          if (Number(event.sequence || 0) <= lastSequence) continue;
+          lastSequence = Number(event.sequence || lastSequence);
+          appendEvent(
+            titleCase(event.state || "working"),
+            String(event.detail || event.event_type || "Task event"),
+          );
+        }
+
+        try {
+          const engineeringResponse = await fetch(
+            "/v1/engineering/prompt-build/progress",
+            {
+              headers: apiHeaders(),
+              cache: "no-store",
+              signal: AbortSignal.timeout(5000),
             },
           );
-          if (refreshResponse.ok) {
-            refreshed = await refreshResponse.json();
-            rememberUnifiedInteraction(refreshed);
-            renderUnifiedInteraction(refreshed);
+          if (engineeringResponse.ok) {
+            const engineering = await engineeringResponse.json();
+            if (String(engineering.core_task_id || "") === taskId) {
+              const actor = String(engineering.actor || "Nexuss");
+              const phase = String(engineering.phase || "working");
+              const round = Number(engineering.round || 0);
+              const changedFiles = Number(
+                engineering.changed_file_count || 0,
+              );
+
+              title.textContent = `${actor} · ${titleCase(phase)}`;
+              const coarse = progressSnapshot
+                ? `${Number(progressSnapshot.progress_percent || 0)}%`
+                : null;
+              meterMeta.textContent = [
+                titleCase(phase),
+                coarse,
+                round ? `round ${round}` : null,
+                changedFiles
+                  ? `${changedFiles} changed file${changedFiles === 1 ? "" : "s"}`
+                  : null,
+              ].filter(Boolean).join(" · ");
+
+              for (const event of engineering.events || []) {
+                const key = [
+                  event.at,
+                  event.actor,
+                  event.phase,
+                  event.message,
+                ].join("|");
+                if (engineeringSeen.has(key)) continue;
+                engineeringSeen.add(key);
+                appendEvent(
+                  `${event.actor || "Nexuss"} · ${titleCase(event.phase || "working")}`,
+                  String(event.message || "Engineering progress"),
+                );
+              }
+            }
           }
         } catch {
-          refreshed = null;
-        }
-
-        let receipt = null;
-        try {
-          receipt = await fetchReceipt(task.task_id);
-        } catch {
-          receipt = null;
+          // Core task polling remains authoritative if engineering telemetry
+          // is temporarily unavailable.
         }
 
         if (typeof renderTask === "function") {
-          renderTask(task, receipt);
+          renderTask(task, null);
         }
 
-        const report = refreshed?.display_text || coreTaskDisplayText(task);
-        title.textContent = task.state === "completed"
-          ? "Governed task completed"
-          : "Governed task finished";
-        meterMeta.textContent = [
-          titleCase(task.state || "finished"),
-          "100%",
-          receipt?.verified ? "verified receipt" : null,
-        ].filter(Boolean).join(" · ");
-        panel.open = task.state !== "completed";
+        if (terminal.has(String(task.state || ""))) {
+          let updateReport = null;
+          if (task.state === "completed" && updateTarget) {
+            title.textContent = "Update accepted — verifying restart and running version";
+            meterBar.removeAttribute("value");
+            updateReport = await followUpdateRestart(updateTarget, title, meterMeta);
+          }
+          hideApproval();
+          if (task.state === "completed" && updateReport?.ok !== false) meterBar.value = 100;
+          else meterBar.removeAttribute("value");
 
-        addMessage(
-          "assistant",
-          report,
-          task.state !== "completed",
-          { rich: false },
-        );
-        void refreshConversationList();
-        void refreshRuntimeBuildIdentity();
-        return;
+          let refreshed = null;
+          try {
+            const refreshResponse = interaction.interaction_id ? await fetch(
+              `/v1/interactions/${encodeURIComponent(interaction.interaction_id)}/refresh`,
+              {
+                method: "POST",
+                headers: apiHeaders(),
+              },
+            ) : null;
+            if (refreshResponse?.ok) {
+              refreshed = await refreshResponse.json();
+              rememberUnifiedInteraction(refreshed);
+              renderUnifiedInteraction(refreshed);
+            }
+          } catch {
+            refreshed = null;
+          }
+
+          let receipt = null;
+          try {
+            receipt = await fetchReceipt(task.task_id);
+          } catch {
+            receipt = null;
+          }
+
+          if (typeof renderTask === "function") {
+            renderTask(task, receipt);
+          }
+
+          const report = updateReport?.text || refreshed?.display_text || coreTaskDisplayText(task);
+          title.textContent = updateReport?.ok === false ? "Update needs attention" : task.state === "completed"
+            ? "Governed task completed"
+            : "Governed task finished";
+          meterMeta.textContent = [
+            titleCase(task.state || "finished"),
+            task.state === "completed" && updateReport?.ok !== false ? "finished" : "attention needed",
+            receipt?.verified ? "verified receipt" : null,
+          ].filter(Boolean).join(" · ");
+          panel.open = task.state !== "completed";
+
+          addMessage(
+            "assistant",
+            report,
+            task.state !== "completed" || updateReport?.ok === false,
+            { rich: false },
+          );
+          settled = !updateReport?.unresolved;
+          void refreshConversationList();
+          void refreshRuntimeBuildIdentity();
+          return;
+        }
+      } catch {
+        failures += 1;
+        title.textContent = "Connection interrupted — reconnecting to the same task";
+        meterMeta.textContent = `Status unavailable (attempt ${failures}). No new action has been submitted.`;
+        if (failures >= 40) {
+          addMessage("assistant", "I cannot verify the task result because the connection is unavailable. The task may still be running. Reload this chat to reconnect before retrying the action.", true);
+          return;
+        }
       }
-    } catch {
-      title.textContent = "Task progress connection interrupted";
+
+      await new Promise((resolve) => setTimeout(resolve, 750));
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 750));
+  } finally {
+    panel.dataset.state = "finished";
+    followedChatTaskId = null;
+    if (settled) clearChatFollow();
   }
-
-  title.textContent =
-    "Task still running — live status remains available in Action Control";
 }
 
 async function executeUnifiedInteraction(
@@ -5251,6 +5385,11 @@ async function executeUnifiedInteraction(
     rememberUnifiedInteraction(interaction);
     renderUnifiedInteraction(interaction);
 
+    const followTask = interaction.kind === "action" && interaction.core_task_id;
+    if (followTask) {
+      followedChatTaskId = String(interaction.core_task_id);
+      retainChatFollow(interaction, submittedConversation);
+    }
     let displayText = interaction.display_text;
     let presentationResult = null;
 
@@ -5266,32 +5405,18 @@ async function executeUnifiedInteraction(
       }
     }
 
-    addMessage(
-      "assistant",
-      displayText,
-      !presentationResult?.presented && interaction.kind === "action",
-      {
+    stopProgress(completedInteraction);
+    stopProgress = () => {};
+    if (followTask) {
+      setBusy(false); // Only approval controls unlock; the turn still owns the composer.
+      await followCoreTaskLifecycle(interaction, submittedConversation);
+    } else {
+      addMessage("assistant", displayText, false, {
         speak: channel === "voice",
         rich: interaction.kind === "chat" || interaction.kind === "workflow",
-      },
-    );
-
-    if (
-      interaction.kind === "action"
-      && interaction.core_task_id
-      && !new Set([
-        "completed",
-        "failed",
-        "denied",
-        "rolled_back",
-        "awaiting_approval",
-      ]).has(String(interaction.core_task_state || ""))
-    ) {
-      void followCoreTaskLifecycle(
-        interaction,
-        submittedConversation,
-      );
+      });
     }
+
   } catch (error) {
     addMessage(
       "assistant",

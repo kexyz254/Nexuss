@@ -68,8 +68,16 @@ jobs:
           node --check src/nexuss/ui/file_workspace.js
       - name: P6.22 UI contract
         run: |
-          grep -q 'P6.22' src/nexuss/ui/index.html
-          grep -q 'app.js?v=p622' src/nexuss/ui/index.html
+          python - <<'PYCODE'
+          import re
+          from pathlib import Path
+          html = Path("src/nexuss/ui/index.html").read_text()
+          version = re.search(r'class="version-pill">P([0-9.]+)<', html)
+          assert version, "Missing UI version label"
+          token = "p" + version.group(1).replace(".", "")
+          assert f"app.js?v={token}" in html, "App cache version must match UI label"
+          assert f"file_workspace.js?v={token}" in html, "File UI cache version must match"
+          PYCODE
           grep -q 'minmax(190px, 38vh)' src/nexuss/ui/styles.css
       - name: Bandit
         run: |
