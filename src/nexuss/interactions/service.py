@@ -32,7 +32,6 @@ from nexuss.interactions.models import (
 from nexuss.interactions.progress import emit, recording
 from nexuss.interactions.store import SQLiteInteractionStore
 
-
 _LIFECYCLE_FOLLOWUP = re.compile(
     r"^(?:so\s+)?(?:did\s+(?:it|that)\s+(?:work|succeed|finish)|"
     r"is\s+(?:it|that)\s+(?:done|finished|complete|completed)|"
