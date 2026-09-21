@@ -2733,3 +2733,31 @@ body[data-focus-mode="inspector"] .inspector {
     grid-template-columns: 1fr;
   }
 }
+
+/* Live workflow operations, rendered as evidence rather than model reasoning. */
+.message.workflow-progress {
+  display: block;
+  padding: 14px 18px;
+  border: 1px solid #64748b;
+  border-radius: 12px;
+  margin: 12px 0;
+}
+
+.workflow-progress[hidden] {
+  display: none;
+}
+
+.workflow-progress summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.workflow-progress ol {
+  padding-left: 22px;
+  margin-top: 12px;
+}
+
+.workflow-progress li {
+  margin: 8px 0;
+  line-height: 1.5;
+}
