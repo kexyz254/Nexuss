@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from nexuss.chat_files.models import AttachmentRecord
+
 
 class ConversationRoute(StrEnum):
     CHAT = "chat"
@@ -103,9 +105,6 @@ class RouteClassification(BaseModel):
         max_length=160,
     )
     confidence: float = Field(ge=0.0, le=1.0)
-
-
-from nexuss.chat_files.models import AttachmentRecord
 
 
 class ConversationTurnResponse(BaseModel):
