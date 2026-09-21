@@ -17,6 +17,40 @@ _TEXT_SUFFIXES = {
     ".ts", ".tsx", ".jsx", ".html", ".css", ".sql", ".sh", ".ps1",
     ".java", ".c", ".cc", ".cpp", ".h", ".hpp", ".rs", ".go", ".xml",
 }
+_ARCHIVE_PRIORITY_NAMES = {
+    "readme",
+    "readme.md",
+    "readme.txt",
+    "task.toml",
+    "pyproject.toml",
+    "package.json",
+    "requirements.txt",
+    "instruction.md",
+    "instructions.md",
+    "manifest.json",
+    "docker-compose.yml",
+    "compose.yml",
+    "main.py",
+    "app.py",
+    "solution.py",
+    "verifier.py",
+}
+
+
+def _archive_text_priority(name: str) -> tuple[int, str]:
+    normalized = name.replace("\\", "/").casefold()
+    leaf = normalized.rsplit("/", 1)[-1]
+    suffix = Path(leaf).suffix
+    if leaf in _ARCHIVE_PRIORITY_NAMES or leaf.startswith("readme"):
+        return (0, normalized)
+    if suffix in {".toml", ".yaml", ".yml", ".json", ".md"}:
+        return (1, normalized)
+    if any(
+        part in {"src", "app", "tests", "test", "docs"}
+        for part in normalized.split("/")[:-1]
+    ):
+        return (2, normalized)
+    return (3, normalized)
 
 
 def _bound(value: str) -> str:
@@ -67,7 +101,11 @@ def _zip_text(data: bytes) -> str:
             )
 
         output.append("\n[TEXT CONTENT]")
-        for item in members:
+        text_members = sorted(
+            members,
+            key=lambda item: _archive_text_priority(item.filename),
+        )
+        for item in text_members:
             suffix = Path(item.filename).suffix.casefold()
             if suffix not in _TEXT_SUFFIXES:
                 continue
