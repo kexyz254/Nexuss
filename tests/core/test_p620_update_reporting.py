@@ -75,7 +75,7 @@ def test_update_check_reports_actionable_fast_forward(
         lambda: _FakeLocalControl(status),
     )
 
-    result = _execute_update_inspect(_step(), None)
+    result = _execute_update_inspect(_step(), datetime.now(UTC))
     display = result.evidence[0].attributes["display_text"]
 
     assert "update is available" in display
