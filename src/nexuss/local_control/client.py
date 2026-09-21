@@ -7,7 +7,7 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 from urllib.parse import urlparse
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import httpx
 
