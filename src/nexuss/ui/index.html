@@ -269,6 +269,36 @@
         <span class="verification-badge idle" id="verification-badge">STANDBY</span>
       </header>
 
+
+      <section class="agent-supervisor-card" id="agent-supervisor-card">
+        <div class="agent-supervisor-heading">
+          <div>
+            <span class="section-label">AGENT SUPERVISOR</span>
+            <h3>Runtime control plane</h3>
+          </div>
+          <span
+            class="supervisor-state-badge"
+            id="supervisor-state-badge"
+            data-state="loading"
+          >LOADING</span>
+        </div>
+        <p class="agent-supervisor-summary" id="supervisor-summary">
+          Loading registered agents and task activity…
+        </p>
+        <div
+          class="supervisor-agent-list empty-state"
+          id="supervisor-agent-list"
+        >Loading agents…</div>
+        <div class="agent-supervisor-events-heading">
+          <strong>Recent supervisor events</strong>
+          <span>hash-chained audit stream</span>
+        </div>
+        <div
+          class="supervisor-event-list empty-state"
+          id="supervisor-event-list"
+        >Loading events…</div>
+      </section>
+
       <div class="inspector-tabs" role="tablist" aria-label="Action details">
         <button class="tab active" data-tab="lifecycle" role="tab">Lifecycle</button>
         <button class="tab" data-tab="evidence" role="tab">Evidence</button>

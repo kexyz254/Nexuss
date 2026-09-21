@@ -13,6 +13,8 @@ from nexuss.collaboration.api import register_collaboration_routes
 
 from nexuss.orchestration.api import register_orchestration_routes
 
+from nexuss.orchestration.supervisor_api import register_supervisor_routes
+
 import ipaddress
 import os
 from collections import defaultdict, deque
@@ -395,6 +397,11 @@ register_cognitive_routes(
 )
 
 register_orchestration_routes(
+    app,
+    require_local_control=_require_local_control,
+    core_service=service,
+)
+register_supervisor_routes(
     app,
     require_local_control=_require_local_control,
     core_service=service,
