@@ -39,9 +39,14 @@ from nexuss.conversation.security import sanitize_text
 from nexuss.conversation.store import SQLiteConversationStore
 from nexuss.conversation.trading import handle_trading_chat
 from nexuss.engineering.errors import EngineeringError
-from nexuss.proactive.service import ProactiveCommandService
+from nexuss.engineering.models import ModelProposal
+from nexuss.engineering.providers.base import ProviderRequest
+from nexuss.proactive.service import (
+    LocalProactiveResponse,
+    ProactiveCommandService,
+)
 from nexuss.proactive.store import ProactiveStoreError
-from nexuss.work.service import WorkCommandService
+from nexuss.work.service import LocalWorkResponse, WorkCommandService
 from nexuss.work.store import WorkStoreError
 
 
@@ -340,7 +345,9 @@ def register_conversation_routes(
         sanitized = sanitize_text(body.text)
 
         try:
-            local_response = work_commands.handle(
+            local_response: (
+                LocalWorkResponse | LocalProactiveResponse | None
+            ) = work_commands.handle(
                 sanitized.value,
                 conversation_id=conversation_id,
                 user_session_id=session_id,
@@ -474,7 +481,7 @@ def register_conversation_routes(
                 ),
             )
 
-        def tas_proposer():
+        def tas_proposer() -> Callable[[ProviderRequest], ModelProposal]:
             profile = providers.select(
                 provider_id=body.provider_id,
                 mode=CognitiveMode.ANALYZE,
