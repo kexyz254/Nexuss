@@ -28,6 +28,8 @@ class IntentKind(StrEnum):
     ASSISTANT_HELP = "assistant_help"
     DAILY_BRIEFING = "daily_briefing"
     SYSTEM_HEALTH = "system_health"
+    SYSTEM_UPDATE_STATUS = "system_update_status"
+    SYSTEM_UPDATE_APPLY = "system_update_apply"
     LOCAL_WORKSPACE_STATUS = "local_workspace_status"
     CREATE_NOTE = "create_note"
     LAUNCH_NOTEPAD = "launch_notepad"
