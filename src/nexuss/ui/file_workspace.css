@@ -1,0 +1,146 @@
+/* P6.18 CHAT FILE WORKSPACE */
+
+.file-attach-button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(145, 201, 235, .16);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .025);
+  color: var(--text-soft);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.file-attach-button:hover,
+.file-attach-button:focus-visible {
+  border-color: rgba(111, 227, 255, .38);
+  background: rgba(111, 227, 255, .07);
+  color: var(--cyan);
+}
+
+.file-attachment-tray {
+  display: flex;
+  gap: 8px;
+  padding: 0 4px 10px;
+  overflow-x: auto;
+}
+
+.file-selection-chip,
+.message-attachment-chip {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border: 1px solid rgba(145, 201, 235, .12);
+  border-radius: 11px;
+  background: rgba(8, 24, 38, .74);
+}
+
+.file-selection-chip {
+  flex: 0 0 min(260px, 78vw);
+}
+
+.file-selection-icon,
+.message-attachment-icon {
+  flex: 0 0 auto;
+  min-width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: rgba(111, 227, 255, .08);
+  color: var(--cyan);
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: .06em;
+}
+
+.file-selection-chip > span:nth-child(2),
+.message-attachment-chip > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.file-selection-chip strong,
+.message-attachment-chip strong,
+.message-artifact-card strong {
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-selection-chip small,
+.message-attachment-chip small,
+.message-artifact-card small {
+  color: var(--muted-dark);
+  font-size: 7px;
+}
+
+.file-selection-chip button {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.message-attachment-list {
+  margin-top: 10px;
+  display: grid;
+  gap: 7px;
+}
+
+.message-attachment-chip {
+  max-width: 430px;
+}
+
+.message-artifact-card {
+  margin-top: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid rgba(111, 227, 255, .18);
+  border-radius: 12px;
+  background: linear-gradient(
+    145deg,
+    rgba(15, 39, 56, .86),
+    rgba(8, 21, 34, .92)
+  );
+}
+
+.message-artifact-card > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.message-artifact-card button {
+  flex: 0 0 auto;
+  border: 1px solid rgba(111, 227, 255, .24);
+  border-radius: 8px;
+  padding: 7px 10px;
+  background: rgba(111, 227, 255, .07);
+  color: var(--cyan);
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+@media (max-width: 720px) {
+  .message-artifact-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .message-artifact-card button {
+    width: 100%;
+  }
+}
