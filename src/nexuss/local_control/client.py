@@ -17,6 +17,7 @@ from nexuss.local_control.models import (
     LocalControlHealth,
     LocalControlOperation,
     LocalUpdateAccepted,
+    LocalUpdateResult,
     LocalUpdateStatus,
 )
 
@@ -32,6 +33,8 @@ class LocalControlClient(Protocol):
 
     def inspect_update(self) -> LocalUpdateStatus: ...
 
+    def update_result(self) -> LocalUpdateResult: ...
+
     def apply_update(
         self,
         *,
@@ -45,6 +48,9 @@ class DisabledLocalControlClient:
         raise LocalControlError("LOCAL_CONTROL_NOT_CONFIGURED")
 
     def inspect_update(self) -> LocalUpdateStatus:
+        raise LocalControlError("LOCAL_CONTROL_NOT_CONFIGURED")
+
+    def update_result(self) -> LocalUpdateResult:
         raise LocalControlError("LOCAL_CONTROL_NOT_CONFIGURED")
 
     def apply_update(
@@ -107,6 +113,24 @@ class HttpLocalControlClient:
             )
 
         return LocalControlHealth.model_validate(response.json())
+
+    def update_result(self) -> LocalUpdateResult:
+        try:
+            with httpx.Client(
+                timeout=min(self._timeout_seconds, 3.0),
+                trust_env=False,
+            ) as client:
+                response = client.get(
+                    f"{self._base_url}/v1/update/result",
+                )
+        except httpx.HTTPError as exc:
+            raise LocalControlError("LOCAL_CONTROL_UNREACHABLE") from exc
+
+        if response.status_code != 200:
+            raise LocalControlError(
+                f"LOCAL_CONTROL_REJECTED_{response.status_code}"
+            )
+        return LocalUpdateResult.model_validate(response.json())
 
     def _post(
         self,
