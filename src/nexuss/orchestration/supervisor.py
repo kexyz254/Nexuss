@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Protocol
-from uuid import UUID
 
+from nexuss.domain.models import TaskView
 from nexuss.orchestration.supervisor_models import (
     AgentKind,
     AgentStatus,
@@ -19,7 +19,7 @@ from nexuss.orchestration.supervisor_store import SQLiteSupervisorStore
 
 
 class CoreTaskSource(Protocol):
-    def list_tasks(self) -> tuple[object, ...]:
+    def list_tasks(self) -> tuple[TaskView, ...]:
         ...
 
 
@@ -187,22 +187,20 @@ class AgentSupervisorService:
 
         return tuple(assigned)
 
-    def _project_task(self, task: object) -> SupervisorTaskProjection:
-        plan = getattr(task, "plan", None)
-        steps = getattr(plan, "steps", ()) or ()
+    def _project_task(self, task: TaskView) -> SupervisorTaskProjection:
         capability_ids = tuple(
-            str(getattr(step, "capability_id", "unknown"))
-            for step in steps
+            str(step.capability_id)
+            for step in task.plan.steps
         )
-        state = _state_value(getattr(task, "state", "unknown"))
+        state = _state_value(task.state)
         return SupervisorTaskProjection(
-            task_id=getattr(task, "task_id"),
+            task_id=task.task_id,
             state=state,
             capability_ids=capability_ids,
             assigned_agents=self._assigned_agents(capability_ids),
             approval_required=(state == "awaiting_approval"),
-            created_at=getattr(task, "created_at"),
-            updated_at=getattr(task, "updated_at"),
+            created_at=task.created_at,
+            updated_at=task.updated_at,
         )
 
     def reconcile_tasks(self) -> tuple[SupervisorTaskProjection, ...]:
