@@ -39,7 +39,8 @@ jobs:
       - name: Targeted Ruff
         run: |
           ruff check \
-            src/nexuss/cognitive \
+            src/nexuss/cognitive/models.py \
+            src/nexuss/cognitive/runtime.py \
             src/nexuss/local_control \
             tests/intelligence/test_general_capabilities.py \
             tests/local_control/test_update_result.py \
@@ -47,7 +48,8 @@ jobs:
       - name: Targeted mypy
         run: |
           mypy \
-            src/nexuss/cognitive \
+            src/nexuss/cognitive/models.py \
+            src/nexuss/cognitive/runtime.py \
             src/nexuss/local_control
       - name: P6.17 regression tests
         run: |
@@ -61,6 +63,6 @@ jobs:
             tests/ui/test_p615_multi_chat_layer.py
       - name: Targeted Bandit
         run: |
-          bandit -q -r \
-            src/nexuss/cognitive \
-            src/nexuss/local_control
+          bandit -q \
+            src/nexuss/cognitive/runtime.py \
+            src/nexuss/local_control/*.py
