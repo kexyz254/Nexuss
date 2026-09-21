@@ -13,6 +13,7 @@ on:
       - 'tests/local_control/**'
       - 'tests/core/test_p616b_local_control.py'
       - 'tests/integration/test_p616b_local_control_startup.py'
+      - 'tests/ui/test_p616b_system_intelligence.py'
       - '.github/workflows/p616b-targeted.yml'
 
 permissions:
