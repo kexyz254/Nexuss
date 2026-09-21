@@ -1,15 +1,24 @@
 """Bounded, session-scoped live progress. Durable receipts remain in interaction storage."""
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from threading import RLock
 import time
 
-_sink = ContextVar("nexuss_progress_sink", default=None)
-_recorder = ContextVar("nexuss_progress_recorder", default=None)
+ProgressSink = Callable[[str, str, str], None]
+
+_sink: ContextVar[ProgressSink | None] = ContextVar(
+    "nexuss_progress_sink",
+    default=None,
+)
+_recorder: ContextVar[ProgressSink | None] = ContextVar(
+    "nexuss_progress_recorder",
+    default=None,
+)
 
 
-def emit(event_type, state, detail):
+def emit(event_type: str, state: str, detail: str) -> None:
     sink = _sink.get()
     if sink:
         sink(event_type, state, detail)
@@ -19,7 +28,7 @@ def emit(event_type, state, detail):
 
 
 @contextmanager
-def recording(recorder):
+def recording(recorder: ProgressSink) -> Iterator[None]:
     token = _recorder.set(recorder)
     try:
         yield
@@ -28,7 +37,7 @@ def recording(recorder):
 
 
 @contextmanager
-def reporting(sink):
+def reporting(sink: ProgressSink) -> Iterator[None]:
     token = _sink.set(sink)
     try:
         yield
