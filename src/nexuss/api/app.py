@@ -153,6 +153,8 @@ async def add_security_headers(
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Permissions-Policy"] = "microphone=(self), camera=()"
+    if request.url.path.startswith("/assets/"):
+        response.headers["Cache-Control"] = "no-store"
     return response
 
 
@@ -262,6 +264,9 @@ def health_ready() -> dict[str, str]:
         "status": "ready",
         "mode": "p68a_unified_commitment_intelligence",
         "phone_approval": "enabled",
+        "build_sha": os.getenv("NEXUSS_BUILD_SHA", "unknown"),
+        "build_branch": os.getenv("NEXUSS_BUILD_BRANCH", "unknown"),
+        "ui_contract": "p621_runtime_truth_progress",
     }
 
 
