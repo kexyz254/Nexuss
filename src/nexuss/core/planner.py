@@ -157,6 +157,14 @@ def _direct_specs(intent: Intent) -> list[StepSpec] | None:
                         "target_sha",
                         "",
                     ),
+                    "clean_worktree": intent.entities.get(
+                        "clean_worktree",
+                        "false",
+                    ),
+                    "fast_forward_available": intent.entities.get(
+                        "fast_forward_available",
+                        "false",
+                    ),
                 },
                 True,
             )
