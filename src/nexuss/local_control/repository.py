@@ -153,9 +153,9 @@ class GitRepositoryManager:
                 result_file.read_text(encoding="utf-8-sig")
             )
             if not isinstance(payload, dict):
-                raise ValueError("update result is not an object")
+                raise TypeError("update result is not an object")
             return LocalUpdateResult.model_validate(payload)
-        except (OSError, ValueError) as exc:
+        except (OSError, TypeError, ValueError) as exc:
             raise LocalRepositoryError(
                 "LOCAL_UPDATE_RESULT_INVALID",
                 "The retained update result could not be validated.",
