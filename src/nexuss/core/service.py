@@ -619,23 +619,34 @@ class CoreSimulatorService:
                     update_status = None
 
                 if update_status is not None:
-                    entities.update(
-                        {
-                            "branch": update_status.branch,
-                            "current_sha": update_status.current_sha,
-                            "target_sha": update_status.remote_sha,
-                            "clean_worktree": str(
-                                update_status.clean_worktree
-                            ).lower(),
-                            "fast_forward_available": str(
-                                update_status.fast_forward_available
-                            ).lower(),
-                        }
+                    if not update_status.update_available:
+                        intent = intent.model_copy(
+                            update={
+                                "kind": IntentKind.SYSTEM_UPDATE_STATUS,
+                                "entities": {},
+                            }
+                        )
+                    else:
+                        entities.update(
+                            {
+                                "branch": update_status.branch,
+                                "current_sha": update_status.current_sha,
+                                "target_sha": update_status.remote_sha,
+                                "clean_worktree": str(
+                                    update_status.clean_worktree
+                                ).lower(),
+                                "fast_forward_available": str(
+                                    update_status.fast_forward_available
+                                ).lower(),
+                            }
+                        )
+                        intent = intent.model_copy(
+                            update={"entities": entities}
+                        )
+                else:
+                    intent = intent.model_copy(
+                        update={"entities": entities}
                     )
-
-                intent = intent.model_copy(
-                    update={"entities": entities}
-                )
 
             events: list[ActionEvent] = []
             self._append_event(
