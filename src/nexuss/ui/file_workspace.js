@@ -119,7 +119,14 @@
   }
 
   function requestedPackage(text) {
-    return /\b(?:package|bundle|zip)\b/i.test(text);
+    const normalized = String(text || "").trim();
+    return (
+      /^(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:package|bundle|zip)\b/i
+        .test(normalized)
+      || /\bcreate\s+(?:a\s+)?zip\b/i.test(normalized)
+      || /\b(?:package|bundle)\s+(?:the\s+)?(?:attached\s+)?files\b/i
+        .test(normalized)
+    );
   }
 
   function packageName(text) {
