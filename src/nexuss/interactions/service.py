@@ -19,6 +19,8 @@ from nexuss.conversation.stabilization import (
     deterministic_route_result,
 )
 from nexuss.conversation.store import SQLiteConversationStore
+from nexuss.conversation.trading import handle_trading_chat
+from nexuss.conversation.models import RouteClassification
 from nexuss.domain.models import Channel, IdentitySession, TaskRequest
 from nexuss.interactions.journal import build_session_markdown
 from nexuss.interactions.models import (
@@ -325,11 +327,20 @@ class UnifiedInteractionService:
         if continuation is not None:
             routing_text = continuation
 
+        trading = handle_trading_chat(sanitized.value)
         deterministic = deterministic_route_result(
             routing_text
-        )
+        ) if trading is None else None
 
-        if deterministic is not None:
+        if trading is not None:
+            classification = RouteClassification(
+                route=ConversationRoute.CHAT, response=trading.text, confidence=1.0,
+            )
+            route_provider_id = "nexuss-tas"
+            route_model = "verified-evidence-v1"
+            route_source = "authenticated_tas_evidence"
+            event("tas_evidence", "observed", f"Completed {trading.tools_executed} read operations; no TAS writes.")
+        elif deterministic is not None:
             classification = deterministic.classification
             route_provider_id = deterministic.provider_id
             route_model = deterministic.model

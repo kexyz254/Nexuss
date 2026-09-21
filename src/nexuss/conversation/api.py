@@ -32,6 +32,7 @@ from nexuss.conversation.router import (
 )
 from nexuss.conversation.security import sanitize_text
 from nexuss.conversation.store import SQLiteConversationStore
+from nexuss.conversation.trading import handle_trading_chat
 
 
 def register_conversation_routes(
@@ -300,6 +301,28 @@ def register_conversation_routes(
         )
 
         sanitized = sanitize_text(body.text)
+
+        trading = handle_trading_chat(sanitized.value)
+        if trading is not None:
+            response_text = trading.text
+            if sanitized.redactions:
+                response_text += "\n\nNexuss removed credential-shaped content before persistence."
+            user_message, assistant_message, updated = store.append_turn(
+                conversation_id=conversation_id,
+                user_text=sanitized.value,
+                assistant_text=response_text,
+                route=ConversationRoute.CHAT,
+                provider_id="nexuss-tas",
+                model="verified-evidence-v1",
+                pending_action=None,
+                pending_capability_hint=None,
+            )
+            return ConversationTurnResponse(
+                conversation=updated, user_message=user_message,
+                assistant_message=assistant_message, route=ConversationRoute.CHAT,
+                provider_id="nexuss-tas", model="verified-evidence-v1",
+                tools_executed=trading.tools_executed,
+            )
 
         try:
             profile = providers.select(
