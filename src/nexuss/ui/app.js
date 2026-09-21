@@ -3033,7 +3033,7 @@ function renderConversationList() {
     const rename = document.createElement("button");
     rename.type = "button";
     rename.className = "chat-list-action";
-    rename.textContent = "âœŽ";
+    rename.textContent = "✎";
     rename.title = "Rename chat";
     rename.setAttribute(
       "aria-label",
@@ -3047,7 +3047,7 @@ function renderConversationList() {
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "chat-list-action is-danger";
-    remove.textContent = "Ã—";
+    remove.textContent = "×";
     remove.title = "Delete chat";
     remove.setAttribute(
       "aria-label",
