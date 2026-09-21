@@ -32,7 +32,7 @@ if ((git branch --show-current).Trim() -ne "feature/p5-knowledge-media-mobile") 
 
 $OccupiedPorts = @(
     Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
-        Where-Object { $_.LocalPort -in @(8100, 8200) }
+        Where-Object { $_.LocalPort -in @(8100, 8200, 8300) }
 )
 
 if ($OccupiedPorts.Count -gt 0) {
@@ -40,7 +40,7 @@ if ($OccupiedPorts.Count -gt 0) {
         Select-Object LocalAddress, LocalPort, OwningProcess |
         Format-Table -AutoSize
     throw (
-        "STOP: Port 8100 or 8200 is already in use. " +
+        "STOP: Port 8100, 8200, or 8300 is already in use. " +
         "Run scripts\stop_p5.ps1 first."
     )
 }
@@ -82,9 +82,26 @@ finally {
 }
 
 $DeviceSecret = [Convert]::ToBase64String($SecretBytes)
+
+$LocalSecretBytes = New-Object byte[] 48
+$LocalRandomGenerator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+try {
+    $LocalRandomGenerator.GetBytes($LocalSecretBytes)
+}
+finally {
+    $LocalRandomGenerator.Dispose()
+}
+$LocalControlSecret = [Convert]::ToBase64String($LocalSecretBytes)
 $MobileUrl = "http://${LanAddress}:8100/mobile"
 $EscapedRepository = $Repository.Replace("'", "''")
 $EscapedPython = $PythonExecutable.Replace("'", "''")
+
+$LocalControlCommand = @"
+Set-Location '$EscapedRepository'
+`$env:PYTHONPATH = '$EscapedRepository\src'
+`$env:PYTHONDONTWRITEBYTECODE = '1'
+& '$EscapedPython' -m uvicorn nexuss.local_control.app:app --host 127.0.0.1 --port 8300
+"@
 
 $NodeCommand = @"
 Set-Location '$EscapedRepository'
@@ -107,6 +124,9 @@ $PreviousMobileUrl = $env:NEXUSS_MOBILE_PUBLIC_URL
 $PreviousYouTubeApiKey = $env:NEXUSS_YOUTUBE_API_KEY
 $PreviousDeviceStore = $env:NEXUSS_MOBILE_DEVICE_STORE
 $PreviousMemoryStore = $env:NEXUSS_MEMORY_STORE
+$PreviousLocalControlSecret = $env:NEXUSS_LOCAL_CONTROL_SECRET
+$PreviousLocalControlUrl = $env:NEXUSS_LOCAL_CONTROL_URL
+$PreviousRepositoryRoot = $env:NEXUSS_REPOSITORY_ROOT
 
 # Paired phones survive restarts from here. The runtime directory is already
 # excluded from version control, so no device record reaches a commit.
@@ -122,9 +142,20 @@ try {
     $env:NEXUSS_MOBILE_PUBLIC_URL = $MobileUrl
     $env:NEXUSS_MOBILE_DEVICE_STORE = $DeviceStorePath
     $env:NEXUSS_MEMORY_STORE = $MemoryStorePath
+    $env:NEXUSS_LOCAL_CONTROL_SECRET = $LocalControlSecret
+    $env:NEXUSS_LOCAL_CONTROL_URL = "http://127.0.0.1:8300"
+    $env:NEXUSS_REPOSITORY_ROOT = $Repository
 
     # The trusted Windows node never receives external-provider credentials.
     Remove-Item Env:\NEXUSS_YOUTUBE_API_KEY -ErrorAction SilentlyContinue
+
+    $LocalControlProcess = Start-Process powershell.exe -PassThru -ArgumentList @(
+        "-NoExit",
+        "-Command",
+        $LocalControlCommand
+    )
+
+    Start-Sleep -Seconds 1
 
     $NodeProcess = Start-Process powershell.exe -PassThru -ArgumentList @(
         "-NoExit",
@@ -151,6 +182,9 @@ finally {
     $env:NEXUSS_MOBILE_PUBLIC_URL = $PreviousMobileUrl
     $env:NEXUSS_MOBILE_DEVICE_STORE = $PreviousDeviceStore
     $env:NEXUSS_MEMORY_STORE = $PreviousMemoryStore
+    $env:NEXUSS_LOCAL_CONTROL_SECRET = $PreviousLocalControlSecret
+    $env:NEXUSS_LOCAL_CONTROL_URL = $PreviousLocalControlUrl
+    $env:NEXUSS_REPOSITORY_ROOT = $PreviousRepositoryRoot
 
     if ([string]::IsNullOrWhiteSpace($PreviousYouTubeApiKey)) {
         Remove-Item Env:\NEXUSS_YOUTUBE_API_KEY -ErrorAction SilentlyContinue
@@ -167,12 +201,13 @@ finally {
 $HealthDeadline = (Get-Date).AddSeconds(60)
 $NodeHealth = $null
 $CoreHealth = $null
+$LocalControlHealth = $null
 $LastHealthError = "no probe was attempted"
 
 while ((Get-Date) -lt $HealthDeadline) {
     Start-Sleep -Seconds 1
 
-    foreach ($Child in @($NodeProcess, $CoreProcess)) {
+    foreach ($Child in @($LocalControlProcess, $NodeProcess, $CoreProcess)) {
         if ($Child.HasExited) {
             throw (
                 "STOP: A P5 service exited during startup (PID $($Child.Id), " +
@@ -189,17 +224,21 @@ while ((Get-Date) -lt $HealthDeadline) {
         $CoreHealth = Invoke-RestMethod `
             -Uri "http://127.0.0.1:8100/health/ready" `
             -TimeoutSec 5
+        $LocalControlHealth = Invoke-RestMethod `
+            -Uri "http://127.0.0.1:8300/health/ready" `
+            -TimeoutSec 5
         break
     }
     catch {
         $LastHealthError = $_.Exception.Message
         $NodeHealth = $null
         $CoreHealth = $null
+        $LocalControlHealth = $null
     }
 }
 
-if ($null -eq $NodeHealth -or $null -eq $CoreHealth) {
-    foreach ($ProcessId in @($NodeProcess.Id, $CoreProcess.Id)) {
+if ($null -eq $NodeHealth -or $null -eq $CoreHealth -or $null -eq $LocalControlHealth) {
+    foreach ($ProcessId in @($LocalControlProcess.Id, $NodeProcess.Id, $CoreProcess.Id)) {
         & taskkill.exe /PID $ProcessId /T /F 2>$null | Out-Null
     }
     throw (
@@ -213,7 +252,7 @@ if (
     $NodeHealth.mode -ne "p5_trusted_windows_node" -or
     $NodeHealth.node_id -ne "windows-primary"
 ) {
-    foreach ($ProcessId in @($NodeProcess.Id, $CoreProcess.Id)) {
+    foreach ($ProcessId in @($LocalControlProcess.Id, $NodeProcess.Id, $CoreProcess.Id)) {
         & taskkill.exe /PID $ProcessId /T /F 2>$null | Out-Null
     }
     throw "P5 trusted Windows node health contract was not satisfied."
@@ -223,14 +262,25 @@ if (
     $CoreHealth.status -ne "ready" -or
     $CoreHealth.mode -ne "p68a_unified_commitment_intelligence"
 ) {
-    foreach ($ProcessId in @($NodeProcess.Id, $CoreProcess.Id)) {
+    foreach ($ProcessId in @($LocalControlProcess.Id, $NodeProcess.Id, $CoreProcess.Id)) {
         & taskkill.exe /PID $ProcessId /T /F 2>$null | Out-Null
     }
     throw "P5 Core health contract was not satisfied."
 }
 
+if (
+    $LocalControlHealth.status -ne "ready" -or
+    $LocalControlHealth.mode -ne "p616b_trusted_local_control"
+) {
+    foreach ($ProcessId in @($LocalControlProcess.Id, $NodeProcess.Id, $CoreProcess.Id)) {
+        & taskkill.exe /PID $ProcessId /T /F 2>$null | Out-Null
+    }
+    throw "P6.16B local-control health contract was not satisfied."
+}
+
 New-Item -ItemType Directory -Path $RuntimeDirectory -Force | Out-Null
 @{
+    local_control_process_id = $LocalControlProcess.Id
     node_process_id = $NodeProcess.Id
     core_process_id = $CoreProcess.Id
     desktop_url = "http://127.0.0.1:8100/"
@@ -247,6 +297,7 @@ Write-Host "Nexuss P5 is ready." -ForegroundColor Green
 Write-Host "Desktop: http://127.0.0.1:8100/"
 Write-Host "Phone:   $MobileUrl"
 Write-Host "Node:    $($NodeHealth.node_id) | $($NodeHealth.mode)"
+Write-Host "Local:   $($LocalControlHealth.mode)"
 Write-Host "Core:    $($CoreHealth.mode)"
 Write-Host "Python:  $PythonExecutable"
 Write-Host (
