@@ -8,12 +8,15 @@ on:
       - 'src/nexuss/conversation/stabilization.py'
       - 'src/nexuss/interactions/service.py'
       - 'src/nexuss/core/executor.py'
+      - 'src/nexuss/core/planner.py'
+      - 'src/nexuss/core/service.py'
       - 'src/nexuss/chat_files/extract.py'
       - 'src/nexuss/ui/app.js'
       - 'src/nexuss/ui/file_workspace.js'
       - 'src/nexuss/ui/index.html'
       - 'tests/conversation/test_p620_update_lifecycle.py'
       - 'tests/core/test_p620_update_reporting.py'
+      - 'tests/core/test_p620_daily_briefing.py'
       - 'tests/chat_files/test_p620_zip_intelligence.py'
       - 'tests/ui/test_p620_intent_lifecycle.py'
       - '.github/workflows/p620-targeted.yml'
@@ -37,9 +40,11 @@ jobs:
             src/nexuss/conversation/stabilization.py \
             src/nexuss/interactions/service.py \
             src/nexuss/core/executor.py \
+            src/nexuss/core/planner.py \
             src/nexuss/chat_files/extract.py \
             tests/conversation/test_p620_update_lifecycle.py \
             tests/core/test_p620_update_reporting.py \
+            tests/core/test_p620_daily_briefing.py \
             tests/chat_files/test_p620_zip_intelligence.py \
             tests/ui/test_p620_intent_lifecycle.py
       - name: Targeted mypy
@@ -52,6 +57,7 @@ jobs:
           pytest --noconftest --import-mode=importlib -q \
             tests/conversation/test_p620_update_lifecycle.py \
             tests/core/test_p620_update_reporting.py \
+            tests/core/test_p620_daily_briefing.py \
             tests/chat_files/test_p620_zip_intelligence.py \
             tests/ui/test_p620_intent_lifecycle.py \
             tests/conversation/test_p611_stabilization.py \
