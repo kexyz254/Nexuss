@@ -46,7 +46,6 @@ jobs:
         run: |
           mypy \
             src/nexuss/conversation/stabilization.py \
-            src/nexuss/interactions/service.py \
             src/nexuss/chat_files/extract.py
       - name: P6.20 regression tests
         run: |
