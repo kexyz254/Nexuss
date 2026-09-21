@@ -11,7 +11,7 @@ from fastapi import FastAPI, Header, HTTPException, Request, status
 from nexuss.conversation.store import SQLiteConversationStore
 from nexuss.proactive.models import AlertRecord, CreateScheduleRequest, ScheduleRecord
 from nexuss.proactive.scheduler import ProactiveScheduler
-from nexuss.proactive.store import SQLiteProactiveStore, ProactiveStoreError
+from nexuss.proactive.store import ProactiveStoreError, SQLiteProactiveStore
 from nexuss.work.store import SQLiteWorkStore
 
 
