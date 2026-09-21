@@ -54,6 +54,7 @@ class PackageAttachmentsRequest(BaseModel):
 
     attachment_ids: tuple[UUID, ...] = Field(min_length=1, max_length=10)
     name: str = Field(default="nexuss-files.zip", min_length=1, max_length=120)
+    instruction: str | None = Field(default=None, max_length=20_000)
 
 
 class CreateTextArtifactRequest(BaseModel):
