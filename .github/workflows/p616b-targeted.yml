@@ -39,7 +39,7 @@ jobs:
           mypy             src/nexuss/local_control             src/nexuss/intelligence/system.py
       - name: P6.16B regression tests
         run: |
-          pytest --import-mode=importlib -q             tests/local_control             tests/core/test_p616b_local_control.py             tests/integration/test_p616b_local_control_startup.py             tests/orchestration/test_agent_supervisor.py             tests/ui/test_p616_agent_supervisor.py             tests/ui/test_p615_multi_chat_layer.py
+          pytest --noconftest --import-mode=importlib -q             tests/local_control             tests/core/test_p616b_local_control.py             tests/integration/test_p616b_local_control_startup.py             tests/ui/test_p616b_system_intelligence.py             tests/orchestration/test_agent_supervisor.py             tests/ui/test_p616_agent_supervisor.py             tests/ui/test_p615_multi_chat_layer.py
       - name: PowerShell parse
         shell: pwsh
         run: |
