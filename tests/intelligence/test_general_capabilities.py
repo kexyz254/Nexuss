@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 
 from nexuss.core.intents import classify_intent
@@ -7,7 +9,6 @@ from nexuss.core.planner import build_plan
 from nexuss.core.policy import evaluate_step
 from nexuss.core.registry import get_capability
 from nexuss.domain.models import IntentKind, PolicyOutcome
-from uuid import uuid4
 
 
 @pytest.mark.parametrize(
