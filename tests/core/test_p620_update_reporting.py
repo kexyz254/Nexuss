@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -48,7 +49,7 @@ def test_update_check_reports_up_to_date_status(
         lambda: _FakeLocalControl(status),
     )
 
-    result = _execute_update_inspect(_step(), None)
+    result = _execute_update_inspect(_step(), datetime.now(UTC))
     display = result.evidence[0].attributes["display_text"]
 
     assert "up to date" in display
