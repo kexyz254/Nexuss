@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 from nexuss.core.intents import classify_intent
 from nexuss.core.planner import build_plan
 from nexuss.core.registry import get_capability
 from nexuss.domain.models import IntentKind
-from uuid import uuid4
 
 
 def test_update_result_is_first_class_read_capability() -> None:
