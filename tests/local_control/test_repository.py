@@ -102,7 +102,7 @@ def test_apply_is_exact_fast_forward_and_schedules_restart(
         pass
 
     def fake_popen(command, **kwargs):
-        if list(command)[0] == "powershell.exe":
+        if next(iter(command)) == "powershell.exe":
             calls.append(list(command))
             return FakeProcess()
         return real_popen(command, **kwargs)
