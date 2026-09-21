@@ -12,7 +12,10 @@ from nexuss.cognitive.receipt import (
     CognitiveProposalEnvelope,
     build_cognitive_receipt,
 )
-from nexuss.cognitive.service import CognitiveProposalError, CognitiveProposalService
+from nexuss.cognitive.service import (
+    CognitiveProposalError,
+    CognitiveProposalService,
+)
 from nexuss.connectors.vault import DpapiSecretVault
 from nexuss.engineering.models import (
     EngineeringTaskSpec,
