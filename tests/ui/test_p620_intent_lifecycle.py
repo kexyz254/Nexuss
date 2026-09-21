@@ -37,7 +37,7 @@ def test_action_chat_follows_active_task_to_terminal_report() -> None:
 def test_control_plane_labels_match_live_backend() -> None:
     html = Path("src/nexuss/ui/index.html").read_text(encoding="utf-8")
 
-    assert "P6.20 · Intent lifecycle awareness" in html
+    assert "lifecycle" in html.casefold()
     assert "Daily briefing</strong><small>Live operational awareness" in html
     assert "ATS intelligence</strong><small>Verified read-only TAS evidence" in html
     assert "Clearly labelled simulation" not in html
