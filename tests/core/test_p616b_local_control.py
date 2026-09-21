@@ -35,6 +35,8 @@ def test_update_apply_is_bound_to_exact_shas_and_requires_approval() -> None:
             "branch": "feature/p5-knowledge-media-mobile",
             "current_sha": current,
             "target_sha": target,
+            "clean_worktree": "true",
+            "fast_forward_available": "true",
         },
     )
 
@@ -57,6 +59,8 @@ def test_update_contract_denies_moving_or_missing_target() -> None:
             "branch": "feature/p5-knowledge-media-mobile",
             "current_sha": current,
             "target_sha": current,
+            "clean_worktree": "true",
+            "fast_forward_available": "true",
         },
     )
     decision = evaluate_step(build_plan(uuid4(), intent).steps[0])
