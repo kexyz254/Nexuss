@@ -375,6 +375,73 @@ class SQLiteConversationStore:
         return message
 
 
+    def update_message_text(
+        self,
+        *,
+        conversation_id: UUID,
+        message_id: UUID,
+        text: str,
+    ) -> StoredConversationMessage:
+        normalized = text.strip()
+        if not normalized:
+            raise ValueError("Message text cannot be empty.")
+
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    message_id,
+                    conversation_id,
+                    role,
+                    text,
+                    route,
+                    provider_id,
+                    model,
+                    attachment_ids,
+                    created_at
+                FROM conversation_messages
+                WHERE conversation_id = ? AND message_id = ?
+                """,
+                (str(conversation_id), str(message_id)),
+            ).fetchone()
+            if row is None:
+                raise LookupError("Conversation message was not found.")
+
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                """
+                UPDATE conversation_messages
+                SET text = ?
+                WHERE conversation_id = ? AND message_id = ?
+                """,
+                (
+                    normalized,
+                    str(conversation_id),
+                    str(message_id),
+                ),
+            )
+            connection.execute("COMMIT")
+
+        return StoredConversationMessage(
+            message_id=UUID(row[0]),
+            conversation_id=UUID(row[1]),
+            role=MessageRole(row[2]),
+            text=normalized,
+            route=(
+                ConversationRoute(row[4])
+                if row[4]
+                else None
+            ),
+            provider_id=row[5],
+            model=row[6],
+            attachment_ids=tuple(
+                UUID(str(item))
+                for item in json.loads(row[7] or "[]")
+            ),
+            created_at=datetime.fromisoformat(row[8]),
+        )
+
+
     def append_turn(
         self,
         *,
