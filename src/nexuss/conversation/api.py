@@ -20,7 +20,6 @@ from nexuss.chat_files.store import ChatFileError, WorkspaceFileStore
 from nexuss.cognitive.models import CognitiveMode
 from nexuss.cognitive.runtime import create_cognitive_proposal
 from nexuss.cognitive.service import CognitiveProposalError
-from nexuss.engineering.errors import EngineeringError
 from nexuss.conversation.models import (
     ConversationHistoryResponse,
     ConversationRoute,
@@ -35,6 +34,7 @@ from nexuss.conversation.router import (
 )
 from nexuss.conversation.security import sanitize_text
 from nexuss.conversation.store import SQLiteConversationStore
+from nexuss.engineering.errors import EngineeringError
 
 
 def _file_cognitive_mode(text: str) -> CognitiveMode:
