@@ -1163,6 +1163,30 @@ def _execute_update_inspect(
     except (LocalControlError, ValueError) as exc:
         return _failed(step, str(exc))
 
+    current = status.current_sha[:12]
+    remote = status.remote_sha[:12]
+    if not status.update_available:
+        display = (
+            f"Nexuss is up to date on {status.branch} at {current}. "
+            "The local worktree is clean and no update is required."
+        )
+    elif status.clean_worktree and status.fast_forward_available:
+        display = (
+            f"A Nexuss update is available on {status.branch}: "
+            f"{current} → {remote}. The local worktree is clean and the "
+            "update can be fast-forwarded safely. Say “Update Nexuss” "
+            "to prepare the exact approval."
+        )
+    else:
+        display = (
+            f"GitHub differs from the local Nexuss revision "
+            f"({current} → {remote}), but a safe automatic fast-forward "
+            f"is not currently available. clean_worktree="
+            f"{status.clean_worktree}; fast_forward_available="
+            f"{status.fast_forward_available}; ahead={status.ahead_by}; "
+            f"behind={status.behind_by}."
+        )
+
     return CapabilityResult(
         step_id=step.step_id,
         capability_id=step.capability_id,
@@ -1173,6 +1197,7 @@ def _execute_update_inspect(
                 observed_at=timestamp,
                 attributes={
                     **status.model_dump(mode="json"),
+                    "display_text": display,
                     "source_mode": "trusted_local_control_readonly",
                 },
             )
@@ -1235,6 +1260,13 @@ def _execute_update_apply(
     except (LocalControlError, ValueError) as exc:
         return _failed(step, str(exc))
 
+    display = (
+        f"Nexuss accepted the verified update "
+        f"{accepted.previous_sha[:12]} → {accepted.target_sha[:12]}. "
+        "A restart is scheduled and failed startup health will trigger "
+        "automatic rollback. After the runtime returns, Nexuss will verify "
+        "the retained update result."
+    )
     return CapabilityResult(
         step_id=step.step_id,
         capability_id=step.capability_id,
@@ -1245,6 +1277,7 @@ def _execute_update_apply(
                 observed_at=timestamp,
                 attributes={
                     **accepted.model_dump(mode="json"),
+                    "display_text": display,
                     "approval_id": str(approval.approval_id),
                     "source_mode": "trusted_local_control_verified_update",
                     "arbitrary_shell_enabled": False,
