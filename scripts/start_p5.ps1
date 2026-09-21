@@ -135,18 +135,17 @@ $MemoryStorePath = Join-Path $RuntimeDirectory "memory.db"
 New-Item -ItemType Directory -Path $RuntimeDirectory -Force | Out-Null
 
 try {
-    # Child processes inherit these values without exposing secrets in arguments.
-    $env:NEXUSS_DEVICE_NODE_SECRET = $DeviceSecret
-    $env:NEXUSS_DEVICE_NODE_URL = "http://127.0.0.1:8200"
-    $env:NEXUSS_WINDOWS_NODE_ID = "windows-primary"
-    $env:NEXUSS_MOBILE_PUBLIC_URL = $MobileUrl
-    $env:NEXUSS_MOBILE_DEVICE_STORE = $DeviceStorePath
-    $env:NEXUSS_MEMORY_STORE = $MemoryStorePath
+    # Local control receives only its own bounded update authority.
     $env:NEXUSS_LOCAL_CONTROL_SECRET = $LocalControlSecret
     $env:NEXUSS_LOCAL_CONTROL_URL = "http://127.0.0.1:8300"
     $env:NEXUSS_REPOSITORY_ROOT = $Repository
 
-    # The trusted Windows node never receives external-provider credentials.
+    Remove-Item Env:\NEXUSS_DEVICE_NODE_SECRET -ErrorAction SilentlyContinue
+    Remove-Item Env:\NEXUSS_DEVICE_NODE_URL -ErrorAction SilentlyContinue
+    Remove-Item Env:\NEXUSS_WINDOWS_NODE_ID -ErrorAction SilentlyContinue
+    Remove-Item Env:\NEXUSS_MOBILE_PUBLIC_URL -ErrorAction SilentlyContinue
+    Remove-Item Env:\NEXUSS_MOBILE_DEVICE_STORE -ErrorAction SilentlyContinue
+    Remove-Item Env:\NEXUSS_MEMORY_STORE -ErrorAction SilentlyContinue
     Remove-Item Env:\NEXUSS_YOUTUBE_API_KEY -ErrorAction SilentlyContinue
 
     $LocalControlProcess = Start-Process powershell.exe -PassThru -ArgumentList @(
@@ -156,6 +155,14 @@ try {
     )
 
     Start-Sleep -Seconds 1
+
+    # The trusted node receives its device secret but no provider credentials.
+    $env:NEXUSS_DEVICE_NODE_SECRET = $DeviceSecret
+    $env:NEXUSS_DEVICE_NODE_URL = "http://127.0.0.1:8200"
+    $env:NEXUSS_WINDOWS_NODE_ID = "windows-primary"
+    $env:NEXUSS_MOBILE_PUBLIC_URL = $MobileUrl
+    $env:NEXUSS_MOBILE_DEVICE_STORE = $DeviceStorePath
+    $env:NEXUSS_MEMORY_STORE = $MemoryStorePath
 
     $NodeProcess = Start-Process powershell.exe -PassThru -ArgumentList @(
         "-NoExit",
