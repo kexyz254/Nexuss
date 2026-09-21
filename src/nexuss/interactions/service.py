@@ -572,20 +572,23 @@ class UnifiedInteractionService:
                 "completed",
                 "The direct chat response was saved to the local journal.",
             )
+            response_state = InteractionState.RESPONDED
+            if (
+                kind is InteractionKind.WORKFLOW
+                and trading is not None
+            ):
+                response_state = (
+                    InteractionState.BLOCKED
+                    if trading.blocked
+                    else InteractionState.COMPLETED
+                )
+
             response = InteractionResponse(
                 interaction_id=interaction_id,
                 request_id=request.request_id,
                 conversation_id=request.conversation_id,
                 kind=kind,
-                state=(
-                    (
-                        InteractionState.BLOCKED
-                        if trading.blocked
-                        else InteractionState.COMPLETED
-                    )
-                    if kind is InteractionKind.WORKFLOW
-                    else InteractionState.RESPONDED
-                ),
+                state=response_state,
                 display_text=display,
                 provider_id=route_provider_id,
                 model=route_model,
