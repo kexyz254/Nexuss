@@ -7,12 +7,18 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Protocol
 from uuid import UUID
 
 from nexuss.cognitive.models import CognitiveMode
 from nexuss.cognitive.runtime import create_cognitive_proposal
 from nexuss.cognitive.service import CognitiveProposalError
+from nexuss.commitments.models import PrepareDayRequest, WorkdayBrief
+from nexuss.commitments.service import (
+    CommitmentIntelligenceError,
+    CommitmentIntelligenceService,
+)
 from nexuss.connectors.errors import ConnectorError
 from nexuss.connectors.github.models import RepositoryCreateApproval
 from nexuss.connectors.github.runtime import get_github_connector
@@ -1154,6 +1160,132 @@ def _execute_system_intelligence(
     )
 
 
+def _workday_brief_display(brief: WorkdayBrief) -> str:
+    lines = [
+        (
+            f"Operational brief for {brief.planning_date.isoformat()}: "
+            f"{len(brief.commitments)} commitments, "
+            f"{brief.urgent_count} urgent, {brief.overdue_count} overdue, "
+            f"{brief.responses_needed} responses needed."
+        ),
+        (
+            f"Calendar: {len(brief.calendar_events)} events, "
+            f"{len(brief.conflicts)} conflicts, "
+            f"{len(brief.focus_blocks)} suggested focus blocks."
+        ),
+    ]
+
+    if brief.commitments:
+        lines.append("Top commitments:")
+        for item in brief.commitments[:5]:
+            due = (
+                item.due_at.isoformat(timespec="minutes")
+                if item.due_at is not None
+                else "no fixed due time"
+            )
+            counterparty = (
+                f" · {item.counterparty}"
+                if item.counterparty
+                else ""
+            )
+            lines.append(
+                f"- {item.priority.value.upper()}: {item.summary}"
+                f"{counterparty} · {due}"
+            )
+
+    if brief.conflicts:
+        lines.append("Calendar conflicts:")
+        for conflict in brief.conflicts[:3]:
+            lines.append(
+                f"- {conflict.first_title} ↔ {conflict.second_title} "
+                f"({conflict.minutes} min overlap)"
+            )
+
+    if brief.focus_blocks:
+        lines.append("Suggested focus blocks:")
+        for block in brief.focus_blocks[:4]:
+            lines.append(
+                f"- {block.start.strftime('%H:%M')}–"
+                f"{block.end.strftime('%H:%M')}: {block.title}"
+            )
+
+    unavailable = [
+        name
+        for name, available in brief.source_status.items()
+        if not available
+    ]
+    if unavailable:
+        lines.append(
+            "Unavailable sources: " + ", ".join(sorted(unavailable)) + "."
+        )
+
+    lines.append(
+        "Read-only brief: no email, calendar, contact, mobile, or external "
+        "write was performed."
+    )
+    return "\n".join(lines)
+
+
+def _execute_prepare_day(
+    step: PlanStep,
+    timestamp: datetime,
+    commitment_service: CommitmentIntelligenceService | None,
+) -> CapabilityResult:
+    if commitment_service is None:
+        return _failed(step, "COMMITMENT_INTELLIGENCE_NOT_CONFIGURED")
+
+    timezone_name = str(
+        step.parameters.get("timezone", "Africa/Nairobi")
+    ).strip() or "Africa/Nairobi"
+    include_mobile = bool(
+        step.parameters.get("include_mobile", True)
+    )
+
+    try:
+        zone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        return _failed(step, "COMMITMENT_TIMEZONE_INVALID")
+
+    try:
+        brief = commitment_service.prepare_day(
+            PrepareDayRequest(
+                planning_date=timestamp.astimezone(zone).date(),
+                timezone=timezone_name,
+                include_mobile=include_mobile,
+            ),
+            now=timestamp,
+        )
+    except CommitmentIntelligenceError as exc:
+        return _failed(step, exc.code)
+
+    return CapabilityResult(
+        step_id=step.step_id,
+        capability_id=step.capability_id,
+        status=StepStatus.VERIFIED,
+        evidence=[
+            EvidenceRecord(
+                source="local:commitment_intelligence",
+                observed_at=timestamp,
+                attributes={
+                    "display_text": _workday_brief_display(brief),
+                    "workday_brief": brief.model_dump(mode="json"),
+                    "source_status": brief.source_status,
+                    "external_write_performed": (
+                        brief.external_write_performed
+                    ),
+                    "phone_approval_requested": (
+                        brief.phone_approval_requested
+                    ),
+                    "credentials_exposed": brief.credentials_exposed,
+                    "source_mode": (
+                        "cross_channel_readonly_intelligence"
+                    ),
+                },
+            )
+        ],
+    )
+
+
 def _execute_update_inspect(
     step: PlanStep,
     timestamp: datetime,
@@ -1365,6 +1497,7 @@ def execute_step(
     session_id: UUID | None = None,
     pairing_gateway: PhonePairingGateway | None = None,
     memory_store: MemoryStore | None = None,
+    commitment_service: CommitmentIntelligenceService | None = None,
     github_connector: GitHubConnectorService | None = None,
     approval: ApprovalRequest | None = None,
 ) -> CapabilityResult:
@@ -1372,6 +1505,13 @@ def execute_step(
 
     if step.capability_id == "system.runtime.inspect":
         return _execute_system_intelligence(step, timestamp)
+
+    if step.capability_id == "commitments.prepare_day":
+        return _execute_prepare_day(
+            step,
+            timestamp,
+            commitment_service,
+        )
 
     if step.capability_id == "system.update.inspect":
         return _execute_update_inspect(step, timestamp)
