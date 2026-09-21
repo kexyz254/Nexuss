@@ -26,7 +26,6 @@ from nexuss.engineering.provider_connections import (
     EngineeringProviderConnectionService,
 )
 
-
 _COGNITIVE_INSTRUCTION_LIMIT = 19_000
 _COGNITIVE_TRUNCATION_MARKER = (
     "\n\n[Provider evidence window truncated by Nexuss. "
