@@ -30,6 +30,7 @@ def test_action_chat_follows_active_task_to_terminal_report() -> None:
     assert "/v1/tasks/" in script
     assert "coreTaskDisplayText(task)" in script
     assert "Governed task completed" in script
+    assert "/refresh`" in script
     assert "stopProgress(completedInteraction);" in script
 
 
