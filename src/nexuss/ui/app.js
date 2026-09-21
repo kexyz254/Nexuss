@@ -1880,6 +1880,7 @@ async function executeAutonomousInstruction(utterance, channel) {
   } catch (error) {
     addMessage("assistant", error instanceof Error ? error.message : "Bounded autonomy failed closed.", true);
   } finally {
+    stopProgress(completedInteraction);
     setBusy(false);
   }
 }
@@ -4223,6 +4224,7 @@ function interactionStateLabel(interaction) {
   const labels = {
     responded: "Answered",
     completed: "Completed",
+    blocked: "Blocked",
     awaiting_approval: "Approval",
     failed: "Failed",
     denied: "Denied",
@@ -4310,14 +4312,16 @@ function renderUnifiedInteraction(interaction) {
     elements.metricIntent.textContent = (
       interaction.kind === "chat"
         ? "Assistant Conversation"
-        : interaction.kind === "clarification"
-          ? "Target Clarification"
-          : "Governed Action"
+        : interaction.kind === "workflow"
+          ? "Investigation Workflow"
+          : interaction.kind === "clarification"
+            ? "Target Clarification"
+            : "Governed Action"
     );
   }
 
   if (elements?.metricConfidence) {
-    elements.metricConfidence.textContent = "Verified";
+    elements.metricConfidence.textContent = interaction.kind === "workflow" ? "See evidence" : "Recorded";
   }
 
   if (elements?.metricRisk) {
@@ -4382,7 +4386,7 @@ function renderUnifiedInteraction(interaction) {
             ? "Protected action · approval required"
             : "Nexuss Core governed the action"
         )
-        : "No capability execution required"
+        : interaction.kind === "workflow" ? "Workflow evidence and progress retained; no live TAS mutation adapter" : "No capability execution required"
     );
   }
 
@@ -4749,6 +4753,119 @@ async function saveCurrentConversationAsNote() {
 
 /* P6.11 REMOVED OBSOLETE P6.10C PRESENTATION BRIDGE */
 
+function observeInteractionProgress(requestId, conversationId) {
+  const panel = document.createElement("details");
+  panel.className = "message assistant-message workflow-progress";
+  panel.open = true;
+  panel.hidden = true;
+
+  const title = document.createElement("summary");
+  title.textContent = "Workflow in progress";
+
+  const entries = document.createElement("ol");
+  entries.setAttribute("aria-live", "polite");
+  panel.append(title, entries);
+  elements.timeline.append(panel);
+
+  let stopped = false;
+  let sequence = 0;
+  let timer = null;
+  let isWorkflow = false;
+  const controller = new AbortController();
+  const labels = {
+    planned: "Plan",
+    running: "Working",
+    completed: "Completed",
+    blocked: "Blocked",
+    reused: "Reused",
+  };
+
+  async function poll() {
+    if (stopped || activeConversationId !== conversationId) return;
+
+    try {
+      const response = await fetch(
+        `/v1/interactions/progress/${requestId}`,
+        {
+          headers: apiHeaders(),
+          cache: "no-store",
+          signal: controller.signal,
+        },
+      );
+
+      if (response.ok) {
+        const progress = await response.json();
+        if (stopped || activeConversationId !== conversationId) return;
+
+        for (const event of progress.events || []) {
+          if (event.sequence <= sequence) continue;
+          sequence = event.sequence;
+          if (!event.event_type.startsWith("workflow_")) continue;
+
+          isWorkflow = true;
+          panel.hidden = false;
+
+          const item = document.createElement("li");
+          item.textContent =
+            `${labels[event.state] || event.state}: ${event.detail}`;
+          entries.append(item);
+        }
+
+        if (progress.state !== "running") {
+          title.textContent = progress.state === "blocked"
+            ? "Workflow blocked — action needed"
+            : "Workflow activity";
+        }
+      }
+    } catch {
+      if (!stopped && isWorkflow) {
+        title.textContent =
+          "Progress connection interrupted; awaiting the result";
+      }
+    }
+
+    if (!stopped && activeConversationId === conversationId) {
+      timer = setTimeout(poll, 750);
+    }
+  }
+
+  void poll();
+
+  return (interaction) => {
+    stopped = true;
+    clearTimeout(timer);
+    controller.abort();
+
+    for (const event of interaction?.events || []) {
+      if (
+        event.sequence <= sequence
+        || !event.event_type.startsWith("workflow_")
+      ) {
+        continue;
+      }
+
+      const item = document.createElement("li");
+      item.textContent =
+        `${labels[event.state] || event.state}: ${event.detail}`;
+      entries.append(item);
+      isWorkflow = true;
+    }
+
+    if (!isWorkflow) {
+      panel.remove();
+      return;
+    }
+
+    panel.hidden = false;
+    title.textContent = interaction?.state === "blocked"
+      ? "Workflow blocked — action needed"
+      : interaction
+        ? "Workflow activity — finished"
+        : "Request interrupted — verify status before retrying";
+    panel.open = interaction?.state === "blocked";
+  };
+}
+
 async function executeUnifiedInteraction(
   utterance,
   channel,
@@ -4767,14 +4884,24 @@ async function executeUnifiedInteraction(
     return;
   }
 
+  let stopProgress = () => {};
+  let completedInteraction = null;
+
   try {
     await ensurePersistentConversation();
+
+    const requestId = crypto.randomUUID();
+    const submittedConversation = activeConversationId;
+    stopProgress = observeInteractionProgress(
+      requestId,
+      submittedConversation,
+    );
 
     const response = await fetch("/v1/interactions", {
       method: "POST",
       headers: apiHeaders(),
       body: JSON.stringify({
-        request_id: crypto.randomUUID(),
+        request_id: requestId,
         conversation_id: activeConversationId,
         user_session_id: sessionId,
         text: utterance,
@@ -4798,6 +4925,8 @@ async function executeUnifiedInteraction(
     }
 
     const interaction = await response.json();
+    completedInteraction = interaction;
+    if (activeConversationId !== submittedConversation) return;
     activeConversationRecord = interaction.conversation;
     activeConversationPersisted = true;
     updateConversationHeader(activeConversationRecord);
@@ -4826,7 +4955,7 @@ async function executeUnifiedInteraction(
       !presentationResult?.presented && interaction.kind === "action",
       {
         speak: channel === "voice",
-        rich: interaction.kind === "chat",
+        rich: interaction.kind === "chat" || interaction.kind === "workflow",
       },
     );
   } catch (error) {
