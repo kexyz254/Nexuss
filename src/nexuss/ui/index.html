@@ -8,11 +8,11 @@
   <meta name="theme-color" content="#07111d">
   <title>Nexuss · Personal Cognitive Control Plane</title>
   <link rel="stylesheet" href="/assets/styles.css">
-  <link rel="stylesheet" href="/assets/workspace.css">
+  <link rel="stylesheet" href="/assets/workspace.css">\n  <link rel="stylesheet" href="/assets/file_workspace.css">
   <script src="https://www.youtube.com/iframe_api"></script>
   <script src="/assets/app.js" defer></script>
   <script src="/assets/p5.js" defer></script>
-  <script src="/assets/workspace.js" defer></script>
+  <script src="/assets/workspace.js" defer></script>\n  <script src="/assets/file_workspace.js" defer></script>
   <link rel="stylesheet" href="/assets/nexuss_ui_platform.css?v=1.0.0">
 </head>
 <body>
@@ -216,6 +216,19 @@
           <div class="composer-actions">
             <button
               type="button"
+              class="file-attach-button"
+              id="file-attach-button"
+              aria-label="Add files"
+              title="Add files"
+            >+</button>
+            <input
+              type="file"
+              id="file-input"
+              multiple
+              hidden
+            >
+            <button
+              type="button"
               class="archive-attach-button"
               id="archive-attach-button"
               aria-label="Attach a ZIP archive"
@@ -234,6 +247,12 @@
             </button>
           </div>
         </form>
+        <div
+          class="file-attachment-tray"
+          id="file-attachment-tray"
+          hidden
+          aria-label="Selected chat files"
+        ></div>
         <div class="archive-attachment" id="archive-attachment" hidden>
           <span class="archive-attachment-icon">ZIP</span>
           <div>
