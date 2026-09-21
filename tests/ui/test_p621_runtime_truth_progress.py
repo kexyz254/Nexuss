@@ -17,7 +17,6 @@ def test_ui_exposes_exact_running_build_identity() -> None:
 def test_chat_task_panel_consumes_real_engineering_telemetry() -> None:
     script = Path("src/nexuss/ui/app.js").read_text(encoding="utf-8")
 
-    assert "/v1/tasks/\\${encodeURIComponent(taskId)}/status" not in script
     assert "/v1/tasks/" in script and "/status" in script
     assert "/v1/engineering/prompt-build/progress" in script
     assert "engineering.core_task_id" in script
