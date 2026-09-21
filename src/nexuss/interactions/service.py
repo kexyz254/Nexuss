@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
 import re
+from datetime import UTC, datetime, timedelta
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from nexuss.ai.connections import AIProviderConnectionResolver
@@ -22,7 +22,6 @@ from nexuss.conversation.store import SQLiteConversationStore
 from nexuss.conversation.trading import handle_trading_chat
 from nexuss.domain.models import Channel, IdentitySession, TaskRequest
 from nexuss.interactions.journal import build_session_markdown
-from nexuss.interactions.progress import emit, recording
 from nexuss.interactions.models import (
     InteractionEvent,
     InteractionKind,
@@ -32,6 +31,7 @@ from nexuss.interactions.models import (
     InteractionState,
     SaveConversationResponse,
 )
+from nexuss.interactions.progress import emit, recording
 from nexuss.interactions.store import SQLiteInteractionStore
 
 
@@ -667,7 +667,7 @@ class UnifiedInteractionService:
         )
         try:
             task = self._core.create_task(task_request, identity)
-        except Exception as exc:  # noqa: BLE001 - Core boundary normalization
+        except Exception as exc:
             raise UnifiedInteractionError(
                 "INTERACTION_CORE_DISPATCH_FAILED",
                 (
@@ -870,7 +870,7 @@ class UnifiedInteractionService:
                 ),
                 identity,
             )
-        except Exception as exc:  # noqa: BLE001 - Core boundary normalization
+        except Exception as exc:
             raise UnifiedInteractionError(
                 "SESSION_NOTE_PREPARATION_FAILED",
                 (
