@@ -800,7 +800,7 @@ class UnifiedInteractionService:
         receipt = None
         try:
             receipt = self._core.get_receipt(stored.core_task_id)
-        except Exception:
+        except (LookupError, RuntimeError):
             receipt = None
 
         state_text = _task_state(task)
