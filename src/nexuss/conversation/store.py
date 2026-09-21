@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import sqlite3
 from datetime import UTC, datetime
@@ -79,6 +80,7 @@ class SQLiteConversationStore:
                     route TEXT,
                     provider_id TEXT,
                     model TEXT,
+                    attachment_ids TEXT NOT NULL DEFAULT '[]',
                     created_at TEXT NOT NULL,
                     FOREIGN KEY(conversation_id)
                         REFERENCES conversations(conversation_id)
@@ -93,6 +95,17 @@ class SQLiteConversationStore:
                 );
                 """
             )
+            columns = {
+                str(row[1])
+                for row in connection.execute(
+                    "PRAGMA table_info(conversation_messages)"
+                ).fetchall()
+            }
+            if "attachment_ids" not in columns:
+                connection.execute(
+                    "ALTER TABLE conversation_messages "
+                    "ADD COLUMN attachment_ids TEXT NOT NULL DEFAULT '[]'"
+                )
 
     def create(
         self,
@@ -299,6 +312,7 @@ class SQLiteConversationStore:
         route: ConversationRoute | None = None,
         provider_id: str | None = None,
         model: str | None = None,
+        attachment_ids: tuple[UUID, ...] = (),
     ) -> StoredConversationMessage:
         now = datetime.now(UTC)
         message = StoredConversationMessage(
@@ -309,6 +323,7 @@ class SQLiteConversationStore:
             route=route,
             provider_id=provider_id,
             model=model,
+            attachment_ids=attachment_ids,
             created_at=now,
         )
 
@@ -324,8 +339,9 @@ class SQLiteConversationStore:
                     route,
                     provider_id,
                     model,
+                    attachment_ids,
                     created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(message.message_id),
@@ -339,6 +355,10 @@ class SQLiteConversationStore:
                     ),
                     message.provider_id,
                     message.model,
+                    json.dumps([
+                        str(item)
+                        for item in message.attachment_ids
+                    ]),
                     message.created_at.isoformat(),
                 ),
             )
@@ -366,6 +386,7 @@ class SQLiteConversationStore:
         model: str,
         pending_action: str | None,
         pending_capability_hint: str | None,
+        attachment_ids: tuple[UUID, ...] = (),
     ) -> tuple[
         StoredConversationMessage,
         StoredConversationMessage,
@@ -379,6 +400,7 @@ class SQLiteConversationStore:
             conversation_id=conversation_id,
             role=MessageRole.USER,
             text=user_text,
+            attachment_ids=attachment_ids,
             created_at=now,
         )
         assistant_message = StoredConversationMessage(
@@ -406,8 +428,9 @@ class SQLiteConversationStore:
                         route,
                         provider_id,
                         model,
+                        attachment_ids,
                         created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         str(message.message_id),
@@ -421,6 +444,10 @@ class SQLiteConversationStore:
                         ),
                         message.provider_id,
                         message.model,
+                        json.dumps([
+                            str(item)
+                            for item in message.attachment_ids
+                        ]),
                         message.created_at.isoformat(),
                     ),
                 )
@@ -489,6 +516,7 @@ class SQLiteConversationStore:
                     route,
                     provider_id,
                     model,
+                    attachment_ids,
                     created_at
                 FROM conversation_messages
                 WHERE conversation_id = ?
@@ -511,7 +539,11 @@ class SQLiteConversationStore:
                 ),
                 provider_id=row[5],
                 model=row[6],
-                created_at=datetime.fromisoformat(row[7]),
+                attachment_ids=tuple(
+                    UUID(str(item))
+                    for item in json.loads(row[7] or "[]")
+                ),
+                created_at=datetime.fromisoformat(row[8]),
             )
             for row in rows
         )
