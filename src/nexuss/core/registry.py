@@ -576,6 +576,56 @@ _MANIFESTS = (
     ),
 )
 
+
+# P6.16B LOCAL CONTROL + SYSTEM INTELLIGENCE
+_MANIFESTS = (
+    *_MANIFESTS,
+    CapabilityManifest(
+        capability_id="system.runtime.inspect",
+        version="1.0.0",
+        title="System intelligence",
+        description=(
+            "Inspect the Nexuss runtime, registered capabilities, trusted local "
+            "services, and connector health without exposing credentials."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="live_local_system_intelligence",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="system.update.inspect",
+        version="1.0.0",
+        title="Check Nexuss update status",
+        description=(
+            "Compare the clean local Nexuss revision with the approved GitHub "
+            "development branch through the signed loopback local-control connector."
+        ),
+        risk_tier=RiskTier.LOW,
+        approval_policy=ApprovalPolicy.NONE,
+        reversible=False,
+        execution_mode="trusted_local_control_readonly",
+        status=CapabilityStatus.ACTIVE,
+    ),
+    CapabilityManifest(
+        capability_id="system.update.apply",
+        version="1.0.0",
+        title="Apply verified Nexuss update",
+        description=(
+            "Fast-forward the clean local Nexuss repository to the exact approved "
+            "GitHub SHA, restart the local runtime, health-check it, and automatically "
+            "roll back if the new revision fails startup."
+        ),
+        risk_tier=RiskTier.HIGH,
+        approval_policy=ApprovalPolicy.EXPLICIT,
+        reversible=True,
+        execution_mode="trusted_local_control_verified_update",
+        status=CapabilityStatus.ACTIVE,
+        approval_channel=ApprovalChannel.DESKTOP,
+    ),
+)
+
 _BY_ID = {manifest.capability_id: manifest for manifest in _MANIFESTS}
 
 
