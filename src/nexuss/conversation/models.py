@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from nexuss.chat_files.models import AttachmentRecord
+
 
 class ConversationRoute(StrEnum):
     CHAT = "chat"
@@ -30,6 +32,7 @@ class StoredConversationMessage(BaseModel):
     route: ConversationRoute | None = None
     provider_id: str | None = None
     model: str | None = None
+    attachment_ids: tuple[UUID, ...] = ()
     created_at: datetime
 
 
@@ -78,6 +81,10 @@ class ConversationTurnRequest(BaseModel):
     text: str = Field(min_length=1, max_length=20_000)
     provider_id: str = Field(default="auto", min_length=1, max_length=80)
     external_processing_approved: bool = True
+    attachment_ids: tuple[UUID, ...] = Field(
+        default=(),
+        max_length=10,
+    )
 
 
 class RouteClassification(BaseModel):
@@ -115,6 +122,7 @@ class ConversationTurnResponse(BaseModel):
     persisted: bool = True
     menu_required: bool = False
     tools_executed: int = 0
+    attachments: tuple[AttachmentRecord, ...] = ()
     nexuss_retains_final_authority: bool = True
 
 
@@ -123,3 +131,4 @@ class ConversationHistoryResponse(BaseModel):
 
     conversation: ConversationRecord
     messages: tuple[StoredConversationMessage, ...]
+    attachments: tuple[AttachmentRecord, ...] = ()

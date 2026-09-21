@@ -542,6 +542,91 @@ function addMessage(role, text, isError = false, options = {}) {
     bubble.append(paragraph);
   }
 
+  if (
+    Array.isArray(options.attachments)
+    && options.attachments.length
+  ) {
+    const list = document.createElement("div");
+    list.className = "message-attachment-list";
+
+    for (const attachment of options.attachments) {
+      const chip = document.createElement("div");
+      chip.className = "message-attachment-chip";
+
+      const icon = document.createElement("span");
+      icon.className = "message-attachment-icon";
+      icon.textContent = "FILE";
+
+      const label = document.createElement("span");
+      const name = document.createElement("strong");
+      name.textContent = attachment.name || "Attached file";
+      const meta = document.createElement("small");
+      const size = Number(attachment.size_bytes || 0);
+      meta.textContent = [
+        attachment.media_type || "file",
+        size ? `${Math.max(1, Math.round(size / 1024))} KB` : null,
+        attachment.extraction_status || null,
+      ].filter(Boolean).join(" · ");
+      label.append(name, meta);
+      chip.append(icon, label);
+      list.append(chip);
+    }
+
+    bubble.append(list);
+  }
+
+  if (options.artifact) {
+    const artifact = options.artifact;
+    const card = document.createElement("div");
+    card.className = "message-artifact-card";
+
+    const copy = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = artifact.name || "Nexuss artifact";
+    const meta = document.createElement("small");
+    meta.textContent = [
+      artifact.media_type || "file",
+      artifact.size_bytes
+        ? `${Math.max(1, Math.round(Number(artifact.size_bytes) / 1024))} KB`
+        : null,
+      artifact.kind || null,
+    ].filter(Boolean).join(" · ");
+    copy.append(title, meta);
+
+    const download = document.createElement("button");
+    download.type = "button";
+    download.textContent = "Download";
+    download.addEventListener("click", async () => {
+      try {
+        const response = await fetch(
+          `/v1/artifacts/${encodeURIComponent(artifact.artifact_id)}/download`,
+          { headers: apiHeaders() },
+        );
+        if (!response.ok) {
+          throw new Error(`Artifact download failed (${response.status}).`);
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = artifact.name || "nexuss-artifact";
+        document.body.append(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        showToast(
+          error instanceof Error
+            ? error.message
+            : "Artifact download failed.",
+        );
+      }
+    });
+
+    card.append(copy, download);
+    bubble.append(card);
+  }
+
   for (const block of answer.blocks || []) {
     const rendered = renderAnswerBlock(block);
     if (rendered) bubble.append(rendered);
@@ -3034,6 +3119,11 @@ function startNewPersistentConversation(options = {}) {
 
 function renderStoredConversation(history) {
   const messages = history.messages || [];
+  const attachmentMap = new Map(
+    (history.attachments || []).map(
+      (item) => [item.attachment_id, item],
+    ),
+  );
   elements.timeline.replaceChildren();
 
   if (!messages.length) {
@@ -3053,6 +3143,9 @@ function renderStoredConversation(history) {
         speak: false,
         rich: false,
         createdAt: message.created_at,
+        attachments: (message.attachment_ids || [])
+          .map((id) => attachmentMap.get(id))
+          .filter(Boolean),
       },
     );
   }

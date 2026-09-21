@@ -16,22 +16,46 @@ from nexuss.ai.registry import (
     AIProviderRegistryError,
     default_provider_registry,
 )
+from nexuss.chat_files.store import ChatFileError, WorkspaceFileStore
 from nexuss.cognitive.models import CognitiveMode
-from nexuss.engineering.errors import EngineeringError
+from nexuss.cognitive.runtime import create_cognitive_proposal
+from nexuss.cognitive.service import CognitiveProposalError
 from nexuss.conversation.models import (
     ConversationHistoryResponse,
     ConversationRoute,
     ConversationTurnRequest,
     ConversationTurnResponse,
     CreateConversationRequest,
-    MessageRole,
-    RenameConversationRequest,)
+    RenameConversationRequest,
+)
 from nexuss.conversation.router import (
     ConversationRouterService,
     ConversationRoutingError,
 )
 from nexuss.conversation.security import sanitize_text
 from nexuss.conversation.store import SQLiteConversationStore
+from nexuss.engineering.errors import EngineeringError
+
+
+def _file_cognitive_mode(text: str) -> CognitiveMode:
+    normalized = text.strip().casefold()
+    mapping = (
+        (("summarize", "summarise", "condense"), CognitiveMode.SUMMARIZE),
+        (("compare", "contrast"), CognitiveMode.COMPARE),
+        (("plan",), CognitiveMode.PLAN),
+        (("review", "critique", "assess"), CognitiveMode.REVIEW),
+        (("rewrite", "rephrase", "polish"), CognitiveMode.REWRITE),
+        (("write", "draft", "compose"), CognitiveMode.WRITE),
+        (("design", "architect"), CognitiveMode.DESIGN),
+        (("debug", "troubleshoot"), CognitiveMode.DEBUG),
+        (("code", "implement"), CognitiveMode.CODE),
+        (("synthesize", "synthesise"), CognitiveMode.RESEARCH_SYNTHESIS),
+        (("brainstorm", "generate ideas"), CognitiveMode.CREATE),
+    )
+    for prefixes, mode in mapping:
+        if normalized.startswith(prefixes):
+            return mode
+    return CognitiveMode.ANALYZE
 
 
 def register_conversation_routes(
@@ -40,6 +64,7 @@ def register_conversation_routes(
     require_local_control: Callable[[Request], None],
 ) -> None:
     store = SQLiteConversationStore()
+    files = WorkspaceFileStore()
     providers = default_provider_registry()
 
     def validate_session(
@@ -117,6 +142,7 @@ def register_conversation_routes(
         return ConversationHistoryResponse(
             conversation=record,
             messages=store.messages(record.conversation_id),
+            attachments=files.list_attachments(record.conversation_id),
         )
 
     @app.get(
@@ -152,6 +178,7 @@ def register_conversation_routes(
         return ConversationHistoryResponse(
             conversation=record,
             messages=store.messages(conversation_id),
+            attachments=files.list_attachments(conversation_id),
         )
 
     @app.get("/v1/conversations")
@@ -227,6 +254,7 @@ def register_conversation_routes(
         return ConversationHistoryResponse(
             conversation=renamed,
             messages=store.messages(conversation_id),
+            attachments=files.list_attachments(conversation_id),
         )
 
     @app.delete(
@@ -300,6 +328,79 @@ def register_conversation_routes(
         )
 
         sanitized = sanitize_text(body.text)
+        try:
+            attachment_context = files.context_for(
+                attachment_ids=body.attachment_ids,
+                conversation_id=conversation_id,
+                user_session_id=session_id,
+            )
+        except ChatFileError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": exc.code, "message": str(exc)},
+            ) from exc
+
+        safe_attachment_context = (
+            sanitize_text(attachment_context).value
+            if attachment_context
+            else ""
+        )
+        provider_input = sanitized.value
+        if safe_attachment_context:
+            provider_input += "\n\n" + safe_attachment_context
+
+        if body.attachment_ids:
+            try:
+                envelope = create_cognitive_proposal(
+                    request_id=body.request_id,
+                    instruction=provider_input,
+                    mode=_file_cognitive_mode(sanitized.value),
+                )
+            except (CognitiveProposalError, EngineeringError) as exc:
+                code = getattr(
+                    exc,
+                    "code",
+                    "CHAT_FILE_INTELLIGENCE_FAILED",
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={"code": code, "message": str(exc)},
+                ) from exc
+
+            response_text = envelope.proposal.response
+            if sanitized.redactions:
+                response_text += (
+                    "\n\nNexuss removed credential-shaped content "
+                    "from extracted file context before external processing."
+                )
+
+            user_message, assistant_message, updated = store.append_turn(
+                conversation_id=conversation_id,
+                user_text=sanitized.value,
+                assistant_text=response_text,
+                route=ConversationRoute.CHAT,
+                provider_id=envelope.proposal.provider_id,
+                model=envelope.proposal.model,
+                pending_action=None,
+                pending_capability_hint=None,
+                attachment_ids=body.attachment_ids,
+            )
+            return ConversationTurnResponse(
+                conversation=updated,
+                user_message=user_message,
+                assistant_message=assistant_message,
+                route=ConversationRoute.CHAT,
+                provider_id=envelope.proposal.provider_id,
+                model=envelope.proposal.model,
+                attachments=tuple(
+                    record
+                    for record in (
+                        files.get_attachment(item)
+                        for item in body.attachment_ids
+                    )
+                    if record is not None
+                ),
+            )
 
         try:
             profile = providers.select(
@@ -309,7 +410,7 @@ def register_conversation_routes(
             resolved = AIProviderConnectionResolver().resolve(
                 profile=profile,
                 request_id=body.request_id,
-                instruction=sanitized.value,
+                instruction=provider_input,
                 external_processing_approved=(
                     body.external_processing_approved
                 ),
@@ -320,7 +421,7 @@ def register_conversation_routes(
                 proposer=resolved.proposer,
             )
             classification = router.route(
-                user_text=sanitized.value,
+                user_text=provider_input,
                 conversation_context=store.recent_context(
                     conversation_id
                 ),
@@ -376,6 +477,7 @@ def register_conversation_routes(
                 pending_capability_hint=(
                     pending_capability_hint
                 ),
+                attachment_ids=body.attachment_ids,
             )
         )
 
@@ -391,4 +493,12 @@ def register_conversation_routes(
             capability_hint=classification.capability_hint,
             provider_id=profile.provider_id,
             model=resolved.model,
+            attachments=tuple(
+                record
+                for record in (
+                    files.get_attachment(item)
+                    for item in body.attachment_ids
+                )
+                if record is not None
+            ),
         )
