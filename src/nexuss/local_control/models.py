@@ -72,3 +72,26 @@ class LocalUpdateAccepted(BaseModel):
     restart_scheduled: bool
     rollback_on_failed_health: bool
     credentials_exposed: bool = False
+
+
+class LocalUpdateResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: str = Field(
+        pattern=r"^(completed|rolled_back|recovery_failed|unknown)$"
+    )
+    previous_sha: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{40}$",
+    )
+    target_sha: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{40}$",
+    )
+    active_sha: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{40}$",
+    )
+    detail: str
+    completed_at: datetime | None = None
+    credentials_exposed: bool = False
