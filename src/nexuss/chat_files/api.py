@@ -17,6 +17,7 @@ from nexuss.chat_files.models import (
     PackageAttachmentsRequest,
 )
 from nexuss.chat_files.store import ChatFileError, WorkspaceFileStore
+from nexuss.conversation.models import ConversationRoute
 from nexuss.conversation.store import SQLiteConversationStore
 
 _MAX_UPLOAD_BYTES = 25 * 1024 * 1024
@@ -167,12 +168,30 @@ def register_chat_file_routes(
             authenticated=authenticated,
         )
         try:
-            return files.create_package(
+            artifact = files.create_package(
                 conversation_id=conversation_id,
                 user_session_id=session_id,
                 attachment_ids=body.attachment_ids,
                 name=body.name,
             )
+            conversations.append_turn(
+                conversation_id=conversation_id,
+                user_text=(
+                    body.instruction
+                    or "Package the attached files."
+                ),
+                assistant_text=(
+                    f"Packaged {len(body.attachment_ids)} attached "
+                    f"file(s) into {artifact.name}."
+                ),
+                route=ConversationRoute.CHAT,
+                provider_id="nexuss",
+                model="local-artifact-packager",
+                pending_action=None,
+                pending_capability_hint=None,
+                attachment_ids=body.attachment_ids,
+            )
+            return artifact
         except ChatFileError as exc:
             raise translate(exc) from exc
 
