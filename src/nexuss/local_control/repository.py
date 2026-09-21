@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess  # nosec B404 - bounded argv only; shell execution is disabled
@@ -10,6 +11,7 @@ from uuid import uuid4
 
 from nexuss.local_control.models import (
     LocalUpdateAccepted,
+    LocalUpdateResult,
     LocalUpdateStatus,
 )
 
@@ -133,6 +135,31 @@ class GitRepositoryManager:
             behind_by=behind_by,
             restart_required=current_sha != remote_sha,
         )
+
+    def update_result(self) -> LocalUpdateResult:
+        result_file = (
+            self._root
+            / ".nexuss-runtime"
+            / "update-result.json"
+        )
+        if not result_file.is_file():
+            return LocalUpdateResult(
+                status="unknown",
+                detail="No completed self-update result is available yet.",
+            )
+
+        try:
+            payload = json.loads(
+                result_file.read_text(encoding="utf-8-sig")
+            )
+            if not isinstance(payload, dict):
+                raise ValueError("update result is not an object")
+            return LocalUpdateResult.model_validate(payload)
+        except (OSError, ValueError) as exc:
+            raise LocalRepositoryError(
+                "LOCAL_UPDATE_RESULT_INVALID",
+                "The retained update result could not be validated.",
+            ) from exc
 
     def apply_fast_forward(
         self,
