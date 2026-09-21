@@ -11,7 +11,6 @@ from nexuss.ai.registry import AIProviderRegistry
 from nexuss.cognitive.models import CognitiveMode
 from nexuss.conversation.models import (
     ConversationRoute,
-    MessageRole,
     RouteClassification,
 )
 from nexuss.conversation.router import ConversationRouterService
@@ -453,7 +452,7 @@ class UnifiedInteractionService:
             if prior.core_task_id is not None:
                 try:
                     live_task = self._core.get_task(prior.core_task_id)
-                except Exception:
+                except (LookupError, RuntimeError):
                     live_task = None
                 if live_task is not None:
                     prior_state = _task_state(live_task).replace("_", " ")
@@ -668,7 +667,7 @@ class UnifiedInteractionService:
         )
         try:
             task = self._core.create_task(task_request, identity)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - Core boundary normalization
             raise UnifiedInteractionError(
                 "INTERACTION_CORE_DISPATCH_FAILED",
                 (
@@ -683,7 +682,7 @@ class UnifiedInteractionService:
 
         try:
             receipt = self._core.get_receipt(task.task_id)
-        except Exception:
+        except (LookupError, RuntimeError):
             receipt = None
 
         state = _interaction_state_for_core_task(state_text)
@@ -795,7 +794,7 @@ class UnifiedInteractionService:
 
         try:
             task = self._core.get_task(stored.core_task_id)
-        except Exception as exc:
+        except (LookupError, RuntimeError) as exc:
             raise UnifiedInteractionError(
                 "INTERACTION_TASK_NOT_FOUND",
                 "The governed Core task could not be reloaded.",
@@ -804,7 +803,7 @@ class UnifiedInteractionService:
         receipt = None
         try:
             receipt = self._core.get_receipt(stored.core_task_id)
-        except Exception:
+        except (LookupError, RuntimeError):
             receipt = None
 
         return InteractionPresentation(task=task, receipt=receipt)
@@ -871,7 +870,7 @@ class UnifiedInteractionService:
                 ),
                 identity,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - Core boundary normalization
             raise UnifiedInteractionError(
                 "SESSION_NOTE_PREPARATION_FAILED",
                 (
@@ -886,7 +885,7 @@ class UnifiedInteractionService:
 
         try:
             receipt = self._core.get_receipt(task.task_id)
-        except Exception:
+        except (LookupError, RuntimeError):
             receipt = None
 
         return SaveConversationResponse(
