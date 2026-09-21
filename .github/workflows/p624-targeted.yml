@@ -1,0 +1,46 @@
+name: P6.24 Live Chat Lifecycle
+on:
+  push:
+    branches: [feature/p624-live-chat-lifecycle]
+  pull_request:
+    paths:
+      - 'src/nexuss/ui/**'
+      - 'src/nexuss/api/app.py'
+      - 'src/nexuss/interactions/service.py'
+      - 'tests/ui/**'
+      - 'tests/interactions/test_p624_update_completion.py'
+      - 'tests/core/test_p624_runtime_update_result.py'
+      - '.github/workflows/p624-targeted.yml'
+permissions:
+  contents: read
+jobs:
+  lifecycle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install -e '.[dev]'
+      - name: JavaScript behavior and syntax
+        run: |
+          node --check src/nexuss/ui/app.js
+          node --check src/nexuss/ui/file_workspace.js
+          node --test tests/ui/p624_chat_lifecycle.test.cjs
+      - name: Lifecycle and update regressions
+        run: |
+          pytest --noconftest --import-mode=importlib -q \
+            tests/ui tests/interactions \
+            tests/local_control/test_update_result.py \
+            tests/core/test_p624_runtime_update_result.py \
+            tests/conversation/test_p620_terminal_report_persistence.py \
+            tests/conversation/test_p620_update_lifecycle.py \
+            tests/conversation/test_p623_self_update_default.py
+      - name: Changed Python lint
+        run: |
+          ruff check src/nexuss/api/app.py src/nexuss/interactions/service.py \
+            tests/core/test_p624_runtime_update_result.py \
+            tests/interactions/test_p624_update_completion.py

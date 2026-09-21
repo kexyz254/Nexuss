@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -41,6 +42,7 @@ from nexuss.interactions.models import (
 )
 from nexuss.interactions.progress import emit, recording
 from nexuss.interactions.store import SQLiteInteractionStore
+from nexuss.local_control.client import HttpLocalControlClient, LocalControlError
 
 _LIFECYCLE_FOLLOWUP = re.compile(
     r"^(?:so\s+)?(?:did\s+(?:it|that)\s+(?:work|succeed|finish)|"
@@ -834,6 +836,30 @@ class UnifiedInteractionService:
             task,
             fallback=stored.display_text,
         )
+
+        # Update acceptance is an execution receipt, not proof of a healthy restart.
+        for step in getattr(getattr(task, "plan", None), "steps", ()) or ():
+            if step.capability_id != "system.update.apply" or state_text != "completed":
+                continue
+            target = step.parameters.get("expected_target_sha")
+            try:
+                result = HttpLocalControlClient.from_environment().update_result()
+            except (LocalControlError, ValueError):
+                break
+            if result.target_sha != target:
+                break
+            if (
+                result.status == "completed"
+                and result.active_sha == target
+                and os.getenv("NEXUSS_BUILD_SHA") == target
+            ):
+                display = (
+                    "Nexuss updated successfully. The restarted runtime is running "
+                    f"{str(target)[:12]}; the retained update result is verified."
+                )
+            elif result.status in {"rolled_back", "recovery_failed"}:
+                display = f"Nexuss update {result.status.replace('_', ' ')}. {result.detail}"
+            break
 
         assistant_message = stored.assistant_message
         terminal = state in {

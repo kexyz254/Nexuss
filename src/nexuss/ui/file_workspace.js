@@ -159,6 +159,11 @@
 
   async function submitFileTurn(event) {
     if (!selected.length) return;
+    if (chatTurnInProgress()) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
 
     event.preventDefault();
     event.stopImmediatePropagation();

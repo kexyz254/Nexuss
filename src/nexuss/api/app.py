@@ -5,16 +5,6 @@ FastAPI surface for the Nexuss P5 knowledge, media, and mobile action plane.
 
 from __future__ import annotations
 
-from nexuss.interactions.api import register_interaction_routes
-
-from nexuss.conversation.api import register_conversation_routes
-
-from nexuss.collaboration.api import register_collaboration_routes
-
-from nexuss.orchestration.api import register_orchestration_routes
-
-from nexuss.orchestration.supervisor_api import register_supervisor_routes
-
 import ipaddress
 import os
 from collections import defaultdict, deque
@@ -29,7 +19,6 @@ from fastapi import FastAPI, Header, HTTPException, Request, status
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from nexuss.chat_files.api import register_chat_file_routes
 from nexuss.archive.workflow import (
     ArchiveApprovalValidationError,
     ArchiveImportCoordinator,
@@ -37,7 +26,9 @@ from nexuss.archive.workflow import (
     ArchiveTaskNotFoundError,
     ArchiveWorkflowError,
 )
+from nexuss.chat_files.api import register_chat_file_routes
 from nexuss.cognitive.api import register_cognitive_routes
+from nexuss.collaboration.api import register_collaboration_routes
 from nexuss.commitments.api import register_commitment_routes
 from nexuss.commitments.service import CommitmentIntelligenceService
 from nexuss.connectors.github.workspace_api import (
@@ -50,17 +41,18 @@ from nexuss.connectors.google_workspace.service import (
     GoogleWorkspaceConnectorService,
 )
 from nexuss.connectors.trading import register_trading_routes
+from nexuss.conversation.api import register_conversation_routes
 from nexuss.core.registry import list_capabilities
-from nexuss.core.task_status import (
-    TaskProgressSnapshot,
-    task_progress,
-)
 from nexuss.core.service import (
     ApprovalValidationError,
     CoreSimulatorService,
     InvalidSessionError,
     RollbackValidationError,
     TaskNotFoundError,
+)
+from nexuss.core.task_status import (
+    TaskProgressSnapshot,
+    task_progress,
 )
 from nexuss.device.client import (
     HttpDeviceNodeClient,
@@ -84,8 +76,9 @@ from nexuss.engineering.development_packages import (
     DevelopmentPackageSessionError,
     DevelopmentPackageTaskNotFoundError,
 )
-from nexuss.memory.store import memory_store_from_environment
+from nexuss.interactions.api import register_interaction_routes
 from nexuss.local_control.client import HttpLocalControlClient, LocalControlError
+from nexuss.memory.store import memory_store_from_environment
 from nexuss.mobile.gateway import MobileApprovalGateway, MobilePairingError
 from nexuss.mobile.models import (
     MobileApprovalSummary,
@@ -99,11 +92,13 @@ from nexuss.mobile.models import (
 )
 from nexuss.mobile.store import device_store_from_environment
 from nexuss.mobile_fabric.api import register_mobile_fabric_routes
+from nexuss.orchestration.api import register_orchestration_routes
+from nexuss.orchestration.supervisor_api import register_supervisor_routes
 from nexuss.proactive.api import register_proactive_routes
-from nexuss.work.api import register_work_routes
 from nexuss.understanding.api import register_understanding_routes
 from nexuss.understanding.commitment_executor import CommitmentGoalExecutor
 from nexuss.understanding.service import GoalUnderstandingService
+from nexuss.work.api import register_work_routes
 
 _UI_DIRECTORY = Path(__file__).resolve().parents[1] / "ui"
 _MOBILE_URL = os.getenv("NEXUSS_MOBILE_PUBLIC_URL", "http://127.0.0.1:8100/mobile")
@@ -267,7 +262,7 @@ def health_ready() -> dict[str, str]:
         "phone_approval": "enabled",
         "build_sha": os.getenv("NEXUSS_BUILD_SHA", "unknown"),
         "build_branch": os.getenv("NEXUSS_BUILD_BRANCH", "unknown"),
-        "ui_contract": "p622_file_intelligence_left_rail",
+        "ui_contract": "p624_live_chat_lifecycle",
     }
 
 
@@ -302,6 +297,19 @@ def runtime_build(request: Request) -> dict[str, object]:
             "behind_by": None,
             "error": str(exc),
         }
+
+
+@app.get("/v1/runtime/update-result")
+def runtime_update_result(request: Request) -> dict[str, object]:
+    _require_local_control(request)
+    try:
+        result = HttpLocalControlClient.from_environment().update_result()
+    except LocalControlError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {
+        **result.model_dump(mode="json"),
+        "running_sha": os.getenv("NEXUSS_BUILD_SHA", "unknown"),
+    }
 
 
 @app.get("/v1/device-node/status")
