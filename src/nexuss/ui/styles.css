@@ -2810,3 +2810,61 @@ body[data-focus-mode="inspector"] .inspector {
 .workflow-progress li strong {
   color: var(--text-soft);
 }
+
+/* P6.22 LEFT-RAIL BALANCE */
+@media (min-width: 821px) {
+  .navigation {
+    display: grid;
+    grid-template-rows:
+      auto
+      minmax(190px, 38vh)
+      auto
+      minmax(0, 1fr)
+      auto
+      auto;
+    overflow: hidden;
+  }
+
+  .chat-nav-heading {
+    position: relative;
+    top: auto;
+    padding-top: 3px;
+    background: transparent;
+  }
+
+  .chat-list {
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 4px 14px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .chat-list::-webkit-scrollbar,
+  .nav-list::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  .chat-list::-webkit-scrollbar-thumb,
+  .nav-list::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(120, 167, 255, .18);
+  }
+
+  .capability-heading {
+    padding-top: 14px;
+    padding-bottom: 10px;
+  }
+
+  .nav-list {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 4px;
+  }
+
+  .boundary-card {
+    margin-top: 12px;
+  }
+}

@@ -4833,6 +4833,7 @@ function observeInteractionProgress(requestId, conversationId) {
   let sequence = 0;
   let timer = null;
   let isWorkflow = false;
+  let notFoundCount = 0;
   const controller = new AbortController();
   const labels = {
     planned: "Plan",
@@ -4855,7 +4856,15 @@ function observeInteractionProgress(requestId, conversationId) {
         },
       );
 
-      if (response.ok) {
+      if (response.status === 404) {
+        notFoundCount += 1;
+        if (notFoundCount >= 6) {
+          stopped = true;
+          panel.remove();
+          return;
+        }
+      } else if (response.ok) {
+        notFoundCount = 0;
         const progress = await response.json();
         if (stopped || activeConversationId !== conversationId) return;
 
@@ -4891,7 +4900,7 @@ function observeInteractionProgress(requestId, conversationId) {
     }
   }
 
-  void poll();
+  timer = setTimeout(poll, 150);
 
   return (interaction) => {
     stopped = true;
@@ -5292,6 +5301,7 @@ async function executeUnifiedInteraction(
       true,
     );
   } finally {
+    stopProgress(completedInteraction);
     setBusy(false);
   }
 }

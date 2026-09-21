@@ -7,7 +7,7 @@ def test_ui_exposes_exact_running_build_identity() -> None:
 
     assert 'id="runtime-build-chip"' in html
     assert 'id="runtime-build-sha"' in html
-    assert "?v=p621" in html
+    assert "?v=p62" in html
     assert "async function refreshRuntimeBuildIdentity()" in script
     assert 'fetch("/v1/runtime/build"' in script
     assert "· CURRENT" in script

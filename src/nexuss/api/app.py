@@ -267,7 +267,7 @@ def health_ready() -> dict[str, str]:
         "phone_approval": "enabled",
         "build_sha": os.getenv("NEXUSS_BUILD_SHA", "unknown"),
         "build_branch": os.getenv("NEXUSS_BUILD_BRANCH", "unknown"),
-        "ui_contract": "p621_runtime_truth_progress",
+        "ui_contract": "p622_file_intelligence_left_rail",
     }
 
 
