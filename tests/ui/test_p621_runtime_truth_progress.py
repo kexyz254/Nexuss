@@ -22,6 +22,6 @@ def test_chat_task_panel_consumes_real_engineering_telemetry() -> None:
     assert "engineering.core_task_id" in script
     assert "engineering.changed_file_count" in script
     assert "engineering.events" in script
-    assert "round \${round}" in script
+    assert "round ${round}" in script
     assert "workflow-progress-meter" in script
     assert "setTimeout(resolve, 750)" in script
