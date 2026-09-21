@@ -85,6 +85,7 @@ from nexuss.engineering.development_packages import (
     DevelopmentPackageTaskNotFoundError,
 )
 from nexuss.memory.store import memory_store_from_environment
+from nexuss.local_control.client import HttpLocalControlClient, LocalControlError
 from nexuss.mobile.gateway import MobileApprovalGateway, MobilePairingError
 from nexuss.mobile.models import (
     MobileApprovalSummary,
@@ -268,6 +269,39 @@ def health_ready() -> dict[str, str]:
         "build_branch": os.getenv("NEXUSS_BUILD_BRANCH", "unknown"),
         "ui_contract": "p621_runtime_truth_progress",
     }
+
+
+@app.get("/v1/runtime/build")
+def runtime_build(request: Request) -> dict[str, object]:
+    _require_local_control(request)
+    local_sha = os.getenv("NEXUSS_BUILD_SHA", "unknown")
+    local_branch = os.getenv("NEXUSS_BUILD_BRANCH", "unknown")
+    try:
+        status = HttpLocalControlClient.from_environment().inspect_update()
+        return {
+            "local_sha": local_sha,
+            "local_branch": local_branch,
+            "remote_sha": status.remote_sha,
+            "remote_branch": status.branch,
+            "current": local_sha == status.remote_sha,
+            "clean_worktree": status.clean_worktree,
+            "fast_forward_available": status.fast_forward_available,
+            "ahead_by": status.ahead_by,
+            "behind_by": status.behind_by,
+        }
+    except LocalControlError as exc:
+        return {
+            "local_sha": local_sha,
+            "local_branch": local_branch,
+            "remote_sha": None,
+            "remote_branch": None,
+            "current": None,
+            "clean_worktree": None,
+            "fast_forward_available": None,
+            "ahead_by": None,
+            "behind_by": None,
+            "error": str(exc),
+        }
 
 
 @app.get("/v1/device-node/status")
