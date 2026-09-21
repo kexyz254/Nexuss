@@ -44,7 +44,10 @@ def _repository_pair(tmp_path: Path) -> tuple[Path, Path]:
     _git(local, "config", "user.name", "Nexuss Test")
     _git(local, "checkout", "-b", BRANCH)
     (local / "README.md").write_text("base\n", encoding="utf-8")
-    _git(local, "add", "README.md")
+    helper = local / "scripts" / "restart_after_verified_update.ps1"
+    helper.parent.mkdir(parents=True)
+    helper.write_text("# tracked test helper\n", encoding="utf-8")
+    _git(local, "add", "README.md", str(helper.relative_to(local)))
     _git(local, "commit", "-m", "base")
     _git(local, "push", "-u", "origin", BRANCH)
 
@@ -91,9 +94,6 @@ def test_apply_is_exact_fast_forward_and_schedules_restart(
     manager = GitRepositoryManager(local)
     manager._powershell_executable = "powershell.exe"
     before = manager.inspect()
-    helper = local / "scripts" / "restart_after_verified_update.ps1"
-    helper.parent.mkdir(parents=True)
-    helper.write_text("# test helper\n", encoding="utf-8")
 
     calls: list[list[str]] = []
     real_popen = subprocess.Popen
