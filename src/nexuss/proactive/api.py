@@ -98,6 +98,6 @@ def register_proactive_routes(
         if not store.acknowledge(alert_id, session_id):
             raise HTTPException(status_code=404, detail="Alert was not found.")
 
-    app.add_event_handler("startup", scheduler.start)
-    app.add_event_handler("shutdown", scheduler.stop)
+    app.router.add_event_handler("startup", scheduler.start)
+    app.router.add_event_handler("shutdown", scheduler.stop)
     return scheduler
