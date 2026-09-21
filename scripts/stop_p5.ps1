@@ -15,11 +15,17 @@ if (-not (Test-Path -LiteralPath $RuntimeFile -PathType Leaf)) {
 }
 
 $Runtime = Get-Content -LiteralPath $RuntimeFile -Raw | ConvertFrom-Json
-$ProcessIds = @($Runtime.node_process_id, $Runtime.core_process_id) |
+$ProcessIds = @($Runtime.local_control_process_id, $Runtime.node_process_id, $Runtime.core_process_id) |
     Where-Object { $_ -is [int] -or $_ -is [long] } |
     Select-Object -Unique
 
 foreach ($ProcessId in $ProcessIds) {
+    $Process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if ($null -eq $Process) {
+        Write-Host "Nexuss PID $ProcessId is already stopped."
+        continue
+    }
+
     Write-Host "Stopping Nexuss process tree rooted at PID $ProcessId"
     & taskkill.exe /PID $ProcessId /T /F 2>$null | Out-Null
 }
