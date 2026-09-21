@@ -74,10 +74,25 @@ def evaluate_step(step: PlanStep) -> PolicyDecision:
                 for character in current_sha + target_sha
             )
         )
+        clean_worktree = (
+            str(step.parameters.get("clean_worktree", "")).casefold()
+            == "true"
+        )
+        fast_forward_available = (
+            str(
+                step.parameters.get(
+                    "fast_forward_available",
+                    "",
+                )
+            ).casefold()
+            == "true"
+        )
         if (
             branch != "feature/p5-knowledge-media-mobile"
             or not sha_valid
             or current_sha == target_sha
+            or not clean_worktree
+            or not fast_forward_available
         ):
             return PolicyDecision(
                 step_id=step.step_id,
