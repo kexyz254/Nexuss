@@ -30,14 +30,17 @@ class GitRepositoryManager:
             or (Path(configured) if configured else Path.cwd())
         )
         self._root = root.resolve()
-        self._git_executable = shutil.which("git")
-        self._powershell_executable = shutil.which("powershell.exe")
-
-        if self._git_executable is None:
+        git_executable = shutil.which("git")
+        if git_executable is None:
             raise LocalRepositoryError(
                 "LOCAL_GIT_NOT_AVAILABLE",
                 "Git executable is not available to local control.",
             )
+
+        self._git_executable: str = git_executable
+        self._powershell_executable: str | None = shutil.which(
+            "powershell.exe"
+        )
 
     @property
     def root(self) -> Path:
