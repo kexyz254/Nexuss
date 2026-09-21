@@ -6,7 +6,9 @@ on:
   pull_request:
     paths:
       - 'src/nexuss/conversation/stabilization.py'
+      - 'src/nexuss/conversation/store.py'
       - 'src/nexuss/interactions/service.py'
+      - 'src/nexuss/interactions/api.py'
       - 'src/nexuss/core/executor.py'
       - 'src/nexuss/core/planner.py'
       - 'src/nexuss/core/service.py'
@@ -15,10 +17,12 @@ on:
       - 'src/nexuss/ui/file_workspace.js'
       - 'src/nexuss/ui/index.html'
       - 'tests/conversation/test_p620_update_lifecycle.py'
+      - 'tests/conversation/test_p620_terminal_report_persistence.py'
       - 'tests/core/test_p620_update_reporting.py'
       - 'tests/core/test_p620_daily_briefing.py'
       - 'tests/chat_files/test_p620_zip_intelligence.py'
       - 'tests/ui/test_p620_intent_lifecycle.py'
+      - 'tests/interactions/test_p620_lifecycle_awareness.py'
       - '.github/workflows/p620-targeted.yml'
 
 permissions:
@@ -38,11 +42,15 @@ jobs:
         run: |
           ruff check \
             src/nexuss/conversation/stabilization.py \
+            src/nexuss/conversation/store.py \
+            src/nexuss/interactions/api.py \
             src/nexuss/interactions/service.py \
             src/nexuss/core/executor.py \
             src/nexuss/core/planner.py \
             src/nexuss/chat_files/extract.py \
             tests/conversation/test_p620_update_lifecycle.py \
+            tests/conversation/test_p620_terminal_report_persistence.py \
+            tests/interactions/test_p620_lifecycle_awareness.py \
             tests/core/test_p620_update_reporting.py \
             tests/core/test_p620_daily_briefing.py \
             tests/chat_files/test_p620_zip_intelligence.py \
@@ -51,11 +59,15 @@ jobs:
         run: |
           mypy \
             src/nexuss/conversation/stabilization.py \
+            src/nexuss/conversation/store.py \
+            src/nexuss/interactions/service.py \
             src/nexuss/chat_files/extract.py
       - name: P6.20 regression tests
         run: |
           pytest --noconftest --import-mode=importlib -q \
             tests/conversation/test_p620_update_lifecycle.py \
+            tests/conversation/test_p620_terminal_report_persistence.py \
+            tests/interactions/test_p620_lifecycle_awareness.py \
             tests/core/test_p620_update_reporting.py \
             tests/core/test_p620_daily_briefing.py \
             tests/chat_files/test_p620_zip_intelligence.py \
