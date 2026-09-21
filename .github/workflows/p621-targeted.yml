@@ -1,0 +1,52 @@
+name: P6.21 Runtime Truth + Progressive Display
+
+on:
+  push:
+    branches: [feature/p621-runtime-truth-progress]
+  pull_request:
+    paths:
+      - 'scripts/start_p5.ps1'
+      - 'src/nexuss/api/app.py'
+      - 'src/nexuss/ui/app.js'
+      - 'src/nexuss/ui/index.html'
+      - 'src/nexuss/ui/styles.css'
+      - 'tests/core/test_p621_runtime_identity.py'
+      - 'tests/ui/test_p621_runtime_truth_progress.py'
+      - '.github/workflows/p621-targeted.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-p621:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e '.[dev]'
+      - name: Compile changed Python
+        run: python -m compileall -q src/nexuss/api/app.py
+      - name: Targeted Ruff
+        run: |
+          ruff check \
+            tests/core/test_p621_runtime_identity.py \
+            tests/ui/test_p621_runtime_truth_progress.py
+      - name: P6.21 regression tests
+        run: |
+          pytest --noconftest --import-mode=importlib -q \
+            tests/core/test_p621_runtime_identity.py \
+            tests/ui/test_p621_runtime_truth_progress.py \
+            tests/ui/test_p620_intent_lifecycle.py \
+            tests/chat_files/test_p620_zip_intelligence.py
+      - name: JavaScript syntax
+        run: |
+          node --check src/nexuss/ui/app.js
+          node --check src/nexuss/ui/file_workspace.js
+      - name: Static asset version contract
+        run: |
+          grep -q 'app.js?v=p621' src/nexuss/ui/index.html
+          grep -q 'file_workspace.js?v=p621' src/nexuss/ui/index.html
+          grep -q 'runtime-build-chip' src/nexuss/ui/index.html

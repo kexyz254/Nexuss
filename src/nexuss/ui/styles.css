@@ -2761,3 +2761,52 @@ body[data-focus-mode="inspector"] .inspector {
   margin: 8px 0;
   line-height: 1.5;
 }
+
+.runtime-build-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(145, 201, 235, .14);
+  border-radius: 999px;
+  background: rgba(7, 17, 29, .72);
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: .08em;
+}
+
+.runtime-build-chip strong {
+  color: var(--text-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 9px;
+  letter-spacing: .03em;
+}
+
+.runtime-build-chip[data-state="stale"] {
+  border-color: rgba(255, 174, 92, .38);
+}
+
+.runtime-build-chip[data-state="stale"] strong {
+  color: #ffcf91;
+}
+
+.workflow-progress-meter {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 6px;
+}
+
+.workflow-progress-meter progress {
+  width: 100%;
+  height: 8px;
+}
+
+.workflow-progress-meta {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.workflow-progress li strong {
+  color: var(--text-soft);
+}

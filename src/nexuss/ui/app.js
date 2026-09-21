@@ -17,6 +17,8 @@ const elements = {
   commandSearch: document.querySelector("#command-search"),
   systemState: document.querySelector("#system-state"),
   systemStateLabel: document.querySelector("#system-state-label"),
+  runtimeBuildChip: document.querySelector("#runtime-build-chip"),
+  runtimeBuildSha: document.querySelector("#runtime-build-sha"),
   receiptState: document.querySelector("#receipt-state"),
   verificationBadge: document.querySelector("#verification-badge"),
   metricIntent: document.querySelector("#metric-intent"),
@@ -111,6 +113,64 @@ function apiHeaders() {
     "X-Nexuss-Session-Authenticated": "true",
   };
 }
+
+async function refreshRuntimeBuildIdentity() {
+  if (!elements.runtimeBuildChip || !elements.runtimeBuildSha) return;
+
+  try {
+    const healthResponse = await fetch("/health/ready", {
+      cache: "no-store",
+    });
+    if (healthResponse.ok) {
+      const health = await healthResponse.json();
+      const localSha = String(health.build_sha || "unknown");
+      elements.runtimeBuildSha.textContent = localSha === "unknown"
+        ? "unknown"
+        : localSha.slice(0, 10);
+      elements.runtimeBuildChip.title = [
+        `Local build: ${localSha}`,
+        `Branch: ${health.build_branch || "unknown"}`,
+        `UI: ${health.ui_contract || "unknown"}`,
+      ].join("\n");
+    }
+
+    const response = await fetch("/v1/runtime/build", {
+      headers: apiHeaders(),
+      cache: "no-store",
+    });
+    if (!response.ok) return;
+
+    const build = await response.json();
+    const localSha = String(build.local_sha || "unknown");
+    const remoteSha = build.remote_sha
+      ? String(build.remote_sha)
+      : null;
+
+    if (build.current === true) {
+      elements.runtimeBuildChip.dataset.state = "current";
+      elements.runtimeBuildSha.textContent =
+        `${localSha.slice(0, 10)} · CURRENT`;
+    } else if (build.current === false) {
+      elements.runtimeBuildChip.dataset.state = "stale";
+      const behind = Number(build.behind_by || 0);
+      elements.runtimeBuildSha.textContent =
+        `${localSha.slice(0, 10)} · STALE${behind ? ` +${behind}` : ""}`;
+      elements.runtimeBuildChip.title = [
+        `Local: ${localSha}`,
+        `GitHub: ${remoteSha || "unknown"}`,
+        `Branch: ${build.remote_branch || build.local_branch || "unknown"}`,
+        `Fast-forward: ${String(build.fast_forward_available)}`,
+      ].join("\n");
+    } else {
+      elements.runtimeBuildChip.dataset.state = "unknown";
+    }
+  } catch {
+    elements.runtimeBuildChip.dataset.state = "unknown";
+  }
+}
+
+void refreshRuntimeBuildIdentity();
+window.setInterval(refreshRuntimeBuildIdentity, 60_000);
 
 function setBusy(busy) {
   elements.send.disabled = busy;
@@ -4898,6 +4958,7 @@ function coreTaskDisplayText(task) {
 async function followCoreTaskLifecycle(interaction, conversationId) {
   if (!interaction?.core_task_id) return;
 
+  const taskId = String(interaction.core_task_id);
   const initialState = String(interaction.core_task_state || "");
   const terminal = new Set([
     "completed",
@@ -4916,39 +4977,133 @@ async function followCoreTaskLifecycle(interaction, conversationId) {
   const title = document.createElement("summary");
   title.textContent = "Following governed task";
 
+  const meter = document.createElement("div");
+  meter.className = "workflow-progress-meter";
+  const meterBar = document.createElement("progress");
+  meterBar.max = 100;
+  meterBar.value = 0;
+  const meterMeta = document.createElement("div");
+  meterMeta.className = "workflow-progress-meta";
+  meterMeta.textContent = "Initializing task telemetry…";
+  meter.append(meterBar, meterMeta);
+
   const events = document.createElement("ol");
   events.setAttribute("aria-live", "polite");
-  panel.append(title, events);
+  panel.append(title, meter, events);
   elements.timeline.append(panel);
 
   let lastSequence = 0;
+  const engineeringSeen = new Set();
 
-  for (let attempt = 0; attempt < 300; attempt += 1) {
+  function appendEvent(label, detail) {
+    const item = document.createElement("li");
+    const strong = document.createElement("strong");
+    strong.textContent = label;
+    item.append(strong, document.createTextNode(`: ${detail}`));
+    events.append(item);
+    panel.scrollIntoView({ block: "nearest" });
+  }
+
+  for (let attempt = 0; attempt < 800; attempt += 1) {
     if (activeConversationId !== conversationId) return;
 
     try {
-      const response = await fetch(
-        `/v1/tasks/${encodeURIComponent(interaction.core_task_id)}`,
-        {
-          headers: apiHeaders(),
-          cache: "no-store",
-        },
-      );
-      if (!response.ok) {
+      const [taskResponse, statusResponse] = await Promise.all([
+        fetch(
+          `/v1/tasks/${encodeURIComponent(taskId)}`,
+          {
+            headers: apiHeaders(),
+            cache: "no-store",
+          },
+        ),
+        fetch(
+          `/v1/tasks/${encodeURIComponent(taskId)}/status`,
+          {
+            headers: apiHeaders(),
+            cache: "no-store",
+          },
+        ),
+      ]);
+
+      if (!taskResponse.ok) {
         title.textContent = "Task follow-up unavailable";
         return;
       }
 
-      const task = await response.json();
+      const task = await taskResponse.json();
+      let progressSnapshot = null;
+      if (statusResponse.ok) {
+        progressSnapshot = await statusResponse.json();
+        const percent = Number(progressSnapshot.progress_percent || 0);
+        meterBar.value = Math.max(0, Math.min(100, percent));
+        meterMeta.textContent = [
+          titleCase(progressSnapshot.phase || "working"),
+          `${percent}%`,
+          progressSnapshot.last_event_type
+            ? titleCase(progressSnapshot.last_event_type)
+            : null,
+        ].filter(Boolean).join(" · ");
+      }
+
       for (const event of task.events || []) {
         if (Number(event.sequence || 0) <= lastSequence) continue;
         lastSequence = Number(event.sequence || lastSequence);
-        const item = document.createElement("li");
-        item.textContent = (
-          `${titleCase(event.state || "working")}: `
-          + String(event.detail || event.event_type || "Task event")
+        appendEvent(
+          titleCase(event.state || "working"),
+          String(event.detail || event.event_type || "Task event"),
         );
-        events.append(item);
+      }
+
+      try {
+        const engineeringResponse = await fetch(
+          "/v1/engineering/prompt-build/progress",
+          {
+            headers: apiHeaders(),
+            cache: "no-store",
+          },
+        );
+        if (engineeringResponse.ok) {
+          const engineering = await engineeringResponse.json();
+          if (String(engineering.core_task_id || "") === taskId) {
+            const actor = String(engineering.actor || "Nexuss");
+            const phase = String(engineering.phase || "working");
+            const round = Number(engineering.round || 0);
+            const changedFiles = Number(
+              engineering.changed_file_count || 0,
+            );
+
+            title.textContent = `${actor} · ${titleCase(phase)}`;
+            const coarse = progressSnapshot
+              ? `${Number(progressSnapshot.progress_percent || 0)}%`
+              : null;
+            meterMeta.textContent = [
+              titleCase(phase),
+              coarse,
+              round ? `round ${round}` : null,
+              changedFiles
+                ? `${changedFiles} changed file${changedFiles === 1 ? "" : "s"}`
+                : null,
+            ].filter(Boolean).join(" · ");
+
+            for (const event of engineering.events || []) {
+              const key = [
+                event.at,
+                event.actor,
+                event.phase,
+                event.message,
+              ].join("|");
+              if (engineeringSeen.has(key)) continue;
+              engineeringSeen.add(key);
+              appendEvent(
+                `${event.actor || "Nexuss"} · ${titleCase(event.phase || "working")}`,
+                String(event.message || "Engineering progress"),
+              );
+            }
+          }
+        }
+      } catch {
+        // Core task polling remains authoritative if engineering telemetry
+        // is temporarily unavailable.
       }
 
       if (typeof renderTask === "function") {
@@ -4956,6 +5111,8 @@ async function followCoreTaskLifecycle(interaction, conversationId) {
       }
 
       if (terminal.has(String(task.state || ""))) {
+        meterBar.value = 100;
+
         let refreshed = null;
         try {
           const refreshResponse = await fetch(
@@ -4989,6 +5146,11 @@ async function followCoreTaskLifecycle(interaction, conversationId) {
         title.textContent = task.state === "completed"
           ? "Governed task completed"
           : "Governed task finished";
+        meterMeta.textContent = [
+          titleCase(task.state || "finished"),
+          "100%",
+          receipt?.verified ? "verified receipt" : null,
+        ].filter(Boolean).join(" · ");
         panel.open = task.state !== "completed";
 
         addMessage(
@@ -4998,16 +5160,18 @@ async function followCoreTaskLifecycle(interaction, conversationId) {
           { rich: false },
         );
         void refreshConversationList();
+        void refreshRuntimeBuildIdentity();
         return;
       }
     } catch {
       title.textContent = "Task progress connection interrupted";
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 750));
   }
 
-  title.textContent = "Task still running — status remains available in Action Control";
+  title.textContent =
+    "Task still running — live status remains available in Action Control";
 }
 
 async function executeUnifiedInteraction(

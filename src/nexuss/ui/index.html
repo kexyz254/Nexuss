@@ -7,15 +7,15 @@
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#07111d">
   <title>Nexuss · Personal Cognitive Control Plane</title>
-  <link rel="stylesheet" href="/assets/styles.css">
-  <link rel="stylesheet" href="/assets/workspace.css">
-  <link rel="stylesheet" href="/assets/file_workspace.css">
+  <link rel="stylesheet" href="/assets/styles.css?v=p621">
+  <link rel="stylesheet" href="/assets/workspace.css?v=p621">
+  <link rel="stylesheet" href="/assets/file_workspace.css?v=p621">
   <script src="https://www.youtube.com/iframe_api"></script>
-  <script src="/assets/app.js" defer></script>
-  <script src="/assets/p5.js" defer></script>
-  <script src="/assets/workspace.js" defer></script>
-  <script src="/assets/file_workspace.js" defer></script>
-  <script src="/assets/proactive.js" defer></script>
+  <script src="/assets/app.js?v=p621" defer></script>
+  <script src="/assets/p5.js?v=p621" defer></script>
+  <script src="/assets/workspace.js?v=p621" defer></script>
+  <script src="/assets/file_workspace.js?v=p621" defer></script>
+  <script src="/assets/proactive.js?v=p621" defer></script>
   <link rel="stylesheet" href="/assets/nexuss_ui_platform.css?v=1.0.0">
 </head>
 <body>
@@ -42,6 +42,10 @@
       <div class="trust-chip" title="P5.1 intent-aware media and trusted-device boundary">
         <span class="shield" aria-hidden="true">◆</span>
         <span>Phone approval active</span>
+      </div>
+      <div class="runtime-build-chip" id="runtime-build-chip" title="Running local Nexuss Git revision">
+        <span>LOCAL</span>
+        <strong id="runtime-build-sha">unknown</strong>
       </div>
       <div class="system-state" id="system-state" role="status">
         <span class="state-dot" aria-hidden="true"></span>
@@ -71,7 +75,7 @@
 
       <div class="nav-heading capability-heading">
         <span class="section-label">CONTROL PLANE</span>
-        <span class="version-pill">P5</span>
+        <span class="version-pill">P6.21</span>
       </div>
 
       <nav class="nav-list">

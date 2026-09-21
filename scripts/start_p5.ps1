@@ -23,6 +23,9 @@ if ($LASTEXITCODE -ne 0 -or -not $PythonVersion.StartsWith("3.12.")) {
     )
 }
 
+$BuildSha = (git rev-parse HEAD).Trim()
+$BuildBranch = (git branch --show-current).Trim()
+
 if ((git branch --show-current).Trim() -ne "feature/p5-knowledge-media-mobile") {
     Write-Warning (
         "P5 normally runs from feature/p5-knowledge-media-mobile " +
@@ -104,6 +107,8 @@ Get-ChildItem Env: | Where-Object {
 } | Remove-Item -ErrorAction SilentlyContinue
 `$env:NEXUSS_LOCAL_CONTROL_SECRET = '$LocalControlSecret'
 `$env:NEXUSS_REPOSITORY_ROOT = '$EscapedRepository'
+`$env:NEXUSS_BUILD_SHA = '$BuildSha'
+`$env:NEXUSS_BUILD_BRANCH = '$BuildBranch'
 `$env:PYTHONPATH = '$EscapedRepository\src'
 `$env:PYTHONDONTWRITEBYTECODE = '1'
 & '$EscapedPython' -m uvicorn nexuss.local_control.app:app --host 127.0.0.1 --port 8300
@@ -111,6 +116,8 @@ Get-ChildItem Env: | Where-Object {
 
 $NodeCommand = @"
 Set-Location '$EscapedRepository'
+`$env:NEXUSS_BUILD_SHA = '$BuildSha'
+`$env:NEXUSS_BUILD_BRANCH = '$BuildBranch'
 `$env:PYTHONPATH = '$EscapedRepository\src'
 `$env:PYTHONDONTWRITEBYTECODE = '1'
 & '$EscapedPython' -m uvicorn nexuss.device_node.app:app --host 127.0.0.1 --port 8200
@@ -118,6 +125,8 @@ Set-Location '$EscapedRepository'
 
 $CoreCommand = @"
 Set-Location '$EscapedRepository'
+`$env:NEXUSS_BUILD_SHA = '$BuildSha'
+`$env:NEXUSS_BUILD_BRANCH = '$BuildBranch'
 `$env:PYTHONPATH = '$EscapedRepository\src'
 `$env:PYTHONDONTWRITEBYTECODE = '1'
 & '$EscapedPython' -m uvicorn nexuss.api.app:app --host 0.0.0.0 --port 8100
@@ -312,6 +321,8 @@ Write-Host "Phone:   $MobileUrl"
 Write-Host "Node:    $($NodeHealth.node_id) | $($NodeHealth.mode)"
 Write-Host "Local:   $($LocalControlHealth.mode)"
 Write-Host "Core:    $($CoreHealth.mode)"
+Write-Host "Build:   $BuildSha"
+Write-Host "Branch:  $BuildBranch"
 Write-Host "Python:  $PythonExecutable"
 Write-Host (
     "YouTube: " +
