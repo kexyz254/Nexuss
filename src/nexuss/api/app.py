@@ -29,6 +29,7 @@ from fastapi import FastAPI, Header, HTTPException, Request, status
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from nexuss.chat_files.api import register_chat_file_routes
 from nexuss.archive.workflow import (
     ArchiveApprovalValidationError,
     ArchiveImportCoordinator,
@@ -417,6 +418,10 @@ register_collaboration_routes(
     require_local_control=_require_local_control,
 )
 register_conversation_routes(
+    app,
+    require_local_control=_require_local_control,
+)
+register_chat_file_routes(
     app,
     require_local_control=_require_local_control,
 )
