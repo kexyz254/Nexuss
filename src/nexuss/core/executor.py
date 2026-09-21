@@ -29,7 +29,6 @@ from nexuss.core.web_actions import (
     validate_youtube_handoff_url,
 )
 from nexuss.device.client import DeviceCommandError, DeviceNodeClient
-from nexuss.engineering.errors import EngineeringError
 from nexuss.domain.models import (
     ApprovalRequest,
     CapabilityResult,
@@ -37,6 +36,7 @@ from nexuss.domain.models import (
     PlanStep,
     StepStatus,
 )
+from nexuss.engineering.errors import EngineeringError
 from nexuss.intelligence.context import ConversationContextStore
 from nexuss.intelligence.errors import IntelligenceError
 from nexuss.intelligence.knowledge import ExistingKnowledgeProviderAdapter
