@@ -95,7 +95,6 @@ class DockerValidator:
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            shell=False,
         )
         raw = bytearray()
         oversized = threading.Event()
@@ -128,7 +127,6 @@ class DockerValidator:
                 stderr=subprocess.DEVNULL,
                 timeout=15,
                 check=False,
-                shell=False,
             )
             reader.join(timeout=5)
             process.stdout.close()
