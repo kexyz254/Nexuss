@@ -15,9 +15,7 @@ from nexuss.conversation.models import (
 )
 from nexuss.conversation.router import ConversationRouterService
 from nexuss.conversation.security import sanitize_text
-from nexuss.conversation.stabilization import (
-    deterministic_route_result,
-)
+from nexuss.conversation.stabilization import deterministic_route_result
 from nexuss.conversation.store import SQLiteConversationStore
 from nexuss.conversation.trading import handle_trading_chat
 from nexuss.domain.models import Channel, IdentitySession, TaskRequest
