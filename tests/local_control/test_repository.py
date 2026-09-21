@@ -89,6 +89,7 @@ def test_apply_is_exact_fast_forward_and_schedules_restart(
 ) -> None:
     local, _ = _repository_pair(tmp_path)
     manager = GitRepositoryManager(local)
+    manager._powershell_executable = "powershell.exe"
     before = manager.inspect()
     helper = local / "scripts" / "restart_after_verified_update.ps1"
     helper.parent.mkdir(parents=True)
