@@ -58,6 +58,38 @@ def evaluate_step(step: PlanStep) -> PolicyDecision:
                 ),
             )
 
+    if step.capability_id == "system.update.apply":
+        branch = str(step.parameters.get("branch", ""))
+        current_sha = str(
+            step.parameters.get("expected_current_sha", "")
+        )
+        target_sha = str(
+            step.parameters.get("expected_target_sha", "")
+        )
+        sha_valid = (
+            len(current_sha) == 40
+            and len(target_sha) == 40
+            and all(
+                character in "0123456789abcdef"
+                for character in current_sha + target_sha
+            )
+        )
+        if (
+            branch != "feature/p5-knowledge-media-mobile"
+            or not sha_valid
+            or current_sha == target_sha
+        ):
+            return PolicyDecision(
+                step_id=step.step_id,
+                capability_id=step.capability_id,
+                outcome=PolicyOutcome.DENY,
+                reason_code="LOCAL_UPDATE_CONTRACT_INVALID",
+                explanation=(
+                    "Nexuss self-update requires an exact changed SHA pair "
+                    "on the approved development branch."
+                ),
+            )
+
     if step.capability_id in {
         "engineering.build_artifact",
         "engineering.repair_failed_build",
