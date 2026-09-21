@@ -12,6 +12,7 @@ from nexuss.cognitive.models import CognitiveMode
 from nexuss.conversation.models import (
     ConversationRoute,
     MessageRole,
+    RouteClassification,
 )
 from nexuss.conversation.router import ConversationRouterService
 from nexuss.conversation.security import sanitize_text
@@ -19,8 +20,10 @@ from nexuss.conversation.stabilization import (
     deterministic_route_result,
 )
 from nexuss.conversation.store import SQLiteConversationStore
+from nexuss.conversation.trading import handle_trading_chat
 from nexuss.domain.models import Channel, IdentitySession, TaskRequest
 from nexuss.interactions.journal import build_session_markdown
+from nexuss.interactions.progress import emit, recording
 from nexuss.interactions.models import (
     InteractionEvent,
     InteractionKind,
@@ -279,6 +282,15 @@ class UnifiedInteractionService:
         )
 
         if existing is not None:
+            if (
+                existing.conversation.user_session_id
+                != request.user_session_id
+                or existing.conversation_id != request.conversation_id
+            ):
+                raise UnifiedInteractionError(
+                    "INTERACTION_SESSION_MISMATCH",
+                    "Request belongs to another conversation.",
+                )
             return existing
 
         conversation = self._conversations.get(
@@ -306,6 +318,7 @@ class UnifiedInteractionService:
             state: str,
             detail: str,
         ) -> None:
+            emit(event_type, state, detail)
             events.append(
                 InteractionEvent(
                     sequence=len(events) + 1,
@@ -334,11 +347,69 @@ class UnifiedInteractionService:
         if continuation is not None:
             routing_text = continuation
 
-        deterministic = deterministic_route_result(
-            routing_text
+        def tas_proposer():
+            profile = self._providers.select(
+                provider_id=request.provider_id,
+                mode=CognitiveMode.ANALYZE,
+            )
+            return self._resolver.resolve(
+                profile=profile,
+                request_id=request.request_id,
+                instruction=sanitized.value,
+                external_processing_approved=(
+                    request.external_processing_approved
+                ),
+            ).proposer
+
+        def record_progress(
+            kind: str,
+            state: str,
+            detail: str,
+        ) -> None:
+            events.append(
+                InteractionEvent(
+                    sequence=len(events) + 1,
+                    event_type=kind,
+                    state=state,
+                    detail=detail,
+                    occurred_at=datetime.now(UTC),
+                )
+            )
+
+        with recording(record_progress):
+            trading = handle_trading_chat(
+                sanitized.value,
+                owner=(
+                    f"{request.user_session_id}:"
+                    f"{request.conversation_id}"
+                ),
+                proposer_factory=tas_proposer,
+            )
+
+        deterministic = (
+            deterministic_route_result(routing_text)
+            if trading is None
+            else None
         )
 
-        if deterministic is not None:
+        if trading is not None:
+            classification = RouteClassification(
+                route=ConversationRoute.CHAT,
+                response=trading.text,
+                confidence=1.0,
+            )
+            route_provider_id = "nexuss-tas"
+            route_model = "verified-evidence-v1"
+            route_source = "authenticated_tas_evidence"
+            event(
+                "tas_evidence",
+                "observed",
+                (
+                    f"Completed {trading.tools_executed} read operations; "
+                    "no TAS writes."
+                ),
+            )
+        elif deterministic is not None:
             classification = deterministic.classification
             route_provider_id = deterministic.provider_id
             route_model = deterministic.model
@@ -392,6 +463,8 @@ class UnifiedInteractionService:
             f"nexuss:interaction:{request.request_id}",
         )
         kind = InteractionKind(classification.route.value)
+        if trading is not None and trading.workflow:
+            kind = InteractionKind.WORKFLOW
 
         if classification.route is ConversationRoute.CHAT:
             display = classification.response
@@ -423,7 +496,15 @@ class UnifiedInteractionService:
                 request_id=request.request_id,
                 conversation_id=request.conversation_id,
                 kind=kind,
-                state=InteractionState.RESPONDED,
+                state=(
+                    (
+                        InteractionState.BLOCKED
+                        if trading.blocked
+                        else InteractionState.COMPLETED
+                    )
+                    if kind is InteractionKind.WORKFLOW
+                    else InteractionState.RESPONDED
+                ),
                 display_text=display,
                 provider_id=route_provider_id,
                 model=route_model,
