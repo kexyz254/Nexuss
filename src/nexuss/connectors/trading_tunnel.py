@@ -21,12 +21,17 @@ def load_settings(path):
     if path.stat().st_size > 4096:
         raise ValueError("Invalid tunnel settings")
     value = json.loads(path.read_text(encoding="utf-8-sig"))
-    if not isinstance(value, dict) or set(value) != {"enabled", "host", "user", "identity_file"}:
+    required = {"enabled", "host", "user", "identity_file"}
+    if not isinstance(value, dict) or not required <= set(value) or set(value) - required - {"local_port"}:
         raise ValueError("Invalid tunnel settings")
     if type(value["enabled"]) is not bool:
         raise ValueError("Invalid enabled flag")
     if not value["enabled"]:
         return None
+    local_port = value.get("local_port", 8300)
+    if type(local_port) is not int or not 1024 <= local_port <= 65535:
+        raise ValueError("Invalid local forwarding port")
+    value["local_port"] = local_port
     ipaddress.IPv4Address(value["host"])
     if not isinstance(value["user"], str) or not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", value["user"]):
         raise ValueError("Invalid SSH user")
@@ -43,19 +48,19 @@ def command(ssh, settings):
             "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3",
             "-o", "IdentitiesOnly=yes", "-o", "ForwardAgent=no",
             "-i", settings["identity_file"],
-            "-L", "127.0.0.1:8300:127.0.0.1:8300", "-l", settings["user"], settings["host"]]
+            "-L", f"127.0.0.1:{settings.get('local_port', 8300)}:127.0.0.1:8300", "-l", settings["user"], settings["host"]]
 
 
-def port_open():
+def port_open(port=8300):
     try:
-        with socket.create_connection(("127.0.0.1", 8300), timeout=0.3):
+        with socket.create_connection(("127.0.0.1", port), timeout=0.3):
             return True
     except OSError:
         return False
 
 
 class ManagedTunnel:
-    def __init__(self, path=None, *, probe=port_open, launch=subprocess.Popen, find_ssh=shutil.which):
+    def __init__(self, path=None, *, probe=None, launch=subprocess.Popen, find_ssh=shutil.which):
         self.path = path
         self.probe, self.launch, self.find_ssh = probe, launch, find_ssh
         self._stop = Event()
@@ -71,6 +76,7 @@ class ManagedTunnel:
         with self._lock:
             return {"state": self._state, "attempts": self._attempts,
                     "managed": self._process is not None,
+                    "local_port": self._settings.get("local_port", 8300) if self._settings else None,
                     "authenticated_bridge_verified": False,
                     "scope": "transport only; use signed TAS health to verify the bridge"}
 
@@ -98,13 +104,13 @@ class ManagedTunnel:
         """One bounded supervisor iteration. It never terminates an external listener."""
         if self._process is not None:
             if self._process.poll() is None:
-                self._set("forwarding" if self.probe() else "connecting")
+                self._set("forwarding" if self._listening() else "connecting")
                 return 2
             self._process.wait()
             self._process = None
             self._set("retry_wait")
             return min(60, 2 ** min(self._attempts, 6))
-        if self.probe():
+        if self._listening():
             self._set("external_listener")
             return 2
         options = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
@@ -120,6 +126,9 @@ class ManagedTunnel:
         except OSError:
             self._set("launch_failed")
             return 30
+
+    def _listening(self):
+        return self.probe() if self.probe is not None else port_open(self._settings["local_port"])
 
     def _run(self):
         while not self._stop.is_set():
@@ -157,4 +166,3 @@ class ManagedTunnel:
 
 
 managed_tunnel = ManagedTunnel()
-

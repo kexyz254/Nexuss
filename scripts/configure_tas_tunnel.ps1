@@ -2,6 +2,7 @@ param(
     [Parameter(Mandatory=$true)][string]$IdentityFile,
     [string]$ServerAddress = "167.233.158.160",
     [string]$SshUser = "root",
+    [ValidateRange(1024,65535)][int]$LocalPort = 8300,
     [switch]$Disable
 )
 $ErrorActionPreference = "Stop"
@@ -21,10 +22,10 @@ $settings = @{
     host = $address.ToString()
     user = $SshUser
     identity_file = (Resolve-Path -LiteralPath $IdentityFile).Path
+    local_port = $LocalPort
 } | ConvertTo-Json
 [System.IO.File]::WriteAllText((Join-Path $directory "tunnel.json"), $settings,
     (New-Object System.Text.UTF8Encoding($false)))
 Write-Host "Managed transport settings saved. Restart Nexuss to apply."
 Write-Host "SSH key authentication and a previously verified server host key are required. Password prompts are disabled in the background worker."
-Write-Host "Keep the bridge URL set to http://127.0.0.1:8300."
-
+Write-Host "Set the bridge URL to http://127.0.0.1:$LocalPort. The VPS destination remains 127.0.0.1:8300."

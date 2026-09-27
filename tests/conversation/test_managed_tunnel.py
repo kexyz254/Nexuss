@@ -107,3 +107,27 @@ def test_core_lifecycle_owns_transport(monkeypatch):
         assert client.get("/v1/trading/transport/status").json() == {"state": "disabled"}
     assert events == ["start", "authorized", "stop"]
 
+
+def test_configured_local_port_is_used_for_forward_and_probe(tmp_path, monkeypatch):
+    import nexuss.connectors.trading_tunnel as module
+    manager = configured(tmp_path)
+    settings = json.loads(manager.path.read_text())
+    settings["local_port"] = 8400
+    manager.path.write_text(json.dumps(settings))
+    assert manager.configure()
+    observed = []
+    monkeypatch.setattr(module, "port_open", lambda port: observed.append(port) or True)
+    manager.tick()
+    assert observed == [8400]
+    assert manager.status()["local_port"] == 8400
+    args = command("ssh", manager._settings)
+    assert args[args.index("-L") + 1] == "127.0.0.1:8400:127.0.0.1:8300"
+
+
+@pytest.mark.parametrize("port", [True, "8400", 0, 65536])
+def test_invalid_local_port_rejected(tmp_path, port):
+    manager = configured(tmp_path)
+    settings = json.loads(manager.path.read_text())
+    settings["local_port"] = port
+    manager.path.write_text(json.dumps(settings))
+    assert not manager.configure()

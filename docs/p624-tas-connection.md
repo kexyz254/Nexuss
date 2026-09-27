@@ -28,13 +28,16 @@ supervisor. Windows PowerShell and the actual host connection need live checks.
 2. In the usual Nexuss PowerShell, configure the existing identity path:
 
    ```powershell
-   .\scripts\configure_tas_tunnel.ps1 -IdentityFile "$HOME\.ssh\id_ed25519"
-   .\scripts\configure_tas.ps1 -BridgeUrl "http://127.0.0.1:8300"
+   .\scripts\configure_tas_tunnel.ps1 -IdentityFile "$HOME\.ssh\id_ed25519" -LocalPort 8400
+   .\scripts\configure_tas.ps1 -BridgeUrl "http://127.0.0.1:8400"
    .\scripts\stop_p5.ps1
    .\scripts\start_p5.ps1
    ```
 
    Use the actual identity filename and `-SshUser` if using a dedicated account.
+   `-LocalPort` defaults to 8300 for compatibility; select 8400 when the saved
+   connection uses that port. Both forwarding and supervision probe the selected
+   local port. The remote destination stays fixed at `127.0.0.1:8300`.
    The defaults target the previously supplied VPS IP and root account; they do
    not grant root access or copy a private key. Only the file path is saved in
    `%LOCALAPPDATA%/Nexuss/bridge/tunnel.json`. If no identity is authorized yet,
@@ -42,7 +45,8 @@ supervisor. Windows PowerShell and the actual host connection need live checks.
 3. Close the old manual tunnel window and ask `show TAS connection status`, then
    `check TAS health`. If an old tunnel still owns port 8300, Nexuss reports
    `external_listener` and leaves it untouched. Once it closes, the supervisor
-   attempts its own connection.
+   attempts its own connection. References to local port 8300 here mean the
+   selected local port when `-LocalPort` is supplied.
 
 `forwarding` means the managed SSH process is alive and port 8300 is listening.
 It does not mean the remote bridge authenticated or that TAS is healthy; only the
