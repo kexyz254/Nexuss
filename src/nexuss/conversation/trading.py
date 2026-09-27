@@ -137,6 +137,19 @@ def handle_trading_chat(
         return TradingReply(describe_roles())
     if not re.search(r"\b(tas|ats|trading analysis (?:system|platform))\b", normalized):
         return None
+    # These operations are strictly reads even if a constraint mentions reset or
+    # restart. Do not send those words through the generic mutation-word guard.
+    read_requested = re.search(r"\b(check|show|read)\b", normalized)
+    read_forbidden = re.search(r"\b(do not|don't|never)\s+(check|show|read)\b", normalized)
+    connection_requested = bool(re.search(r"\b(connection|transport|tunnel)\b", normalized))
+    health_requested = bool(re.search(r"\bhealth\b", normalized))
+    if read_forbidden and (connection_requested or health_requested):
+        return TradingReply("No TAS read was performed because your instruction prohibits checking or reading it. No TAS changes were made.")
+    if read_requested and not read_forbidden and (connection_requested or health_requested) and not re.search(r"\b(investigate|investigation|diagnose|debug|troubleshoot)\b", normalized):
+        from .tas_connection import check_connection
+        result, calls, blocked = check_connection(client_factory,
+            connection=connection_requested, health=health_requested)
+        return TradingReply(result, calls, workflow=connection_requested and health_requested, blocked=blocked)
     if re.match(r"^(?:please )?(?:explain\b|describe\b|what (?:is|are)\b|how (?:does|do)\b)", normalized) and not re.search(r"\b(investigate|check|inspect|run|prepare|restart|reset|deploy)\b", normalized):
         if "circuit breaker" in normalized:
             return TradingReply("A trading circuit breaker pauses new position entries when a protection condition is met, such as repeated execution failures or a loss limit. Its purpose is to contain risk while the cause is investigated. Restarting a service and deliberately clearing a breaker are different operations. This is an explanation; I have not queried or changed TAS.")
