@@ -87,6 +87,15 @@ class TradingClient:
 
 
 def register_trading_routes(app, require_local_control):
+    from .trading_tunnel import managed_tunnel
+    app.router.add_event_handler("startup", managed_tunnel.start)
+    app.router.add_event_handler("shutdown", managed_tunnel.stop)
+
+    @app.get("/v1/trading/transport/status")
+    def transport_status(request: Request):
+        require_local_control(request)
+        return managed_tunnel.status()
+
     def client():
         try:
             return trading_client_from_environment()
