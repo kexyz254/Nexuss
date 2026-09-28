@@ -1,10 +1,13 @@
-from nexuss.conversation.trading import handle_trading_chat
-from nexuss.connectors.trading import TradingClient
+from typing import ClassVar
+
 import pytest
+
+from nexuss.connectors.trading import TradingClient
+from nexuss.conversation.trading import handle_trading_chat
 
 
 class Client:
-    calls = []
+    calls: ClassVar[list[str]] = []
 
     def maintenance(self, operation):
         self.calls.append(operation)
