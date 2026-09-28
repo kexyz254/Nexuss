@@ -1,8 +1,10 @@
+from typing import ClassVar
+
 from nexuss.conversation.trading import handle_trading_chat
 
 
 class Client:
-    calls = []
+    calls: ClassVar[list[str]] = []
 
     def evidence(self, resource):
         self.calls.append(resource)
