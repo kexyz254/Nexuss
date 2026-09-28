@@ -100,7 +100,7 @@ class TradingClient:
         if operation not in {"prepare", "apply"}:
             raise ValueError("Unknown release operation")
         if not isinstance(request_id, uuid.UUID):
-            raise ValueError("Release request ID must be UUID")
+            raise TypeError("Release request ID must be UUID")
         if (not isinstance(commit, str) or len(commit) != 40
                 or any(ch not in "0123456789abcdef" for ch in commit)
                 or not isinstance(digest, str) or len(digest) != 64
