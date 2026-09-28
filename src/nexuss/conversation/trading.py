@@ -170,6 +170,12 @@ def handle_trading_chat(
             return TradingReply("TAS dashboard release preparation is blocked. Verify exact "
                                 "commit CI, bridge connection, host executor and disk space. "
                                 "No build or deployment occurred.", workflow=True, blocked=True)
+    if (re.search(r"\b(?:build|deploy|release|upgrade)\b", normalized)
+            and re.search(r"\b(?:dashboard|price[ -]?call)\b", normalized)):
+        return TradingReply("I can prepare a TAS dashboard release from a reviewed 40-character "
+                            "Git commit. Say 'Prepare TAS dashboard release from commit <SHA>'. "
+                            "I will verify its CI and current image, then show an exact approval "
+                            "request before any build or deployment. The engine and trades are outside this operation.")
     if (re.search(r"\b(price[ -]?calls?|price predictions?|forecasts?)\b", normalized)
             and re.search(r"\b(results?|track(?:er|ing)?|accuracy|outcomes?|performance)\b", normalized)
             and re.search(r"\bbtc\b", normalized)):
@@ -461,7 +467,8 @@ def handle_trading_chat(
         return TradingReply("TAS is available through these chat requests: ‘check TAS’, ‘show TAS "
                             "decisions for BTC/USDT’, ‘show TAS offline observations’, and ‘inspect TAS code’. "
                             "You can also ask ‘investigate TAS’ or ‘list Nexuss agents’. "
-                            "Live deployment and automatic internet research are not connected yet.")
+                            "Approved dashboard releases require an exact commit and a separate "
+                            "owner approval. Engine deployment and automatic internet research are not connected.")
     except (KeyError, OSError, ValueError, TypeError, AttributeError, httpx.HTTPError):
         return TradingReply("TAS evidence is unavailable. Check the bridge connection and Nexuss's "
                             "private runtime configuration. I have not substituted cached health, "
