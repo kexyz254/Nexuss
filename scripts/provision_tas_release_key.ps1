@@ -7,8 +7,10 @@ $directory = Join-Path $env:LOCALAPPDATA "Nexuss\release"
 $keyFile = Join-Path $directory "approval.key"
 New-Item -ItemType Directory -Path $directory -Force | Out-Null
 if (-not (Test-Path $keyFile)) {
-    $bytes = [System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
-    $hex = [Convert]::ToHexString($bytes).ToLowerInvariant()
+    $bytes = New-Object byte[] 32
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+    $hex = -join ($bytes | ForEach-Object { $_.ToString("x2") })
     [System.IO.File]::WriteAllText($keyFile, $hex, [System.Text.Encoding]::ASCII)
     $bytes = $null
     $hex = $null
