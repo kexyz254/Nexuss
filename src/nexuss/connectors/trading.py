@@ -52,6 +52,7 @@ class TradingClient:
         allowed = (method == "GET" and target.startswith("/agent/v1/evidence/")) or (
             method == "POST" and target == "/agent/v1/feedback") or (
             method == "POST" and target in {"/agent/v1/ops/diagnostics", "/agent/v1/ops/restart_dashboard"}) or (
+            method == "POST" and target in {"/agent/v1/releases/prepare", "/agent/v1/releases/apply"}) or (
             method == "GET" and target in {"/agent/v1/capabilities", "/agent/v1/worker/status"}) or (
             method == "GET" and target.startswith("/agent/v1/observations?"))
         if not allowed:
@@ -65,7 +66,8 @@ class TradingClient:
         signature = hmac.new(self.secret, message, hashlib.sha256).hexdigest()
         headers = {"X-Nexuss-Time": timestamp, "X-Nexuss-Nonce": nonce,
                    "X-Nexuss-Signature": signature, "Content-Type": "application/json"}
-        with httpx.Client(timeout=100 if target.startswith("/agent/v1/ops/") else 15,
+        with httpx.Client(timeout=360 if target.startswith("/agent/v1/releases/") else (
+                          100 if target.startswith("/agent/v1/ops/") else 15),
                           trust_env=False, follow_redirects=False,
                           transport=self.transport) as client:
             with client.stream(method, self.url + target, headers=headers, content=body) as response:
@@ -92,6 +94,26 @@ class TradingClient:
             raise ValueError("Unsupported TAS maintenance operation")
         return self.request("POST", "/agent/v1/ops/" + operation,
                             {"request_id": str(uuid.uuid4())})
+
+
+    def release(self, operation, request_id, commit, digest, approval_signature=""):
+        if operation not in {"prepare", "apply"}:
+            raise ValueError("Unknown release operation")
+        if not isinstance(request_id, uuid.UUID):
+            raise ValueError("Release request ID must be UUID")
+        if (not isinstance(commit, str) or len(commit) != 40
+                or any(ch not in "0123456789abcdef" for ch in commit)
+                or not isinstance(digest, str) or len(digest) != 64
+                or any(ch not in "0123456789abcdef" for ch in digest)):
+            raise ValueError("Invalid release identity")
+        if (operation == "prepare" and approval_signature
+                or operation == "apply" and (not isinstance(approval_signature, str)
+                    or len(approval_signature) != 64
+                    or any(ch not in "0123456789abcdef" for ch in approval_signature))):
+            raise ValueError("Invalid release approval")
+        return self.request("POST", "/agent/v1/releases/" + operation,
+                            {"request_id": str(request_id), "commit": commit, "digest": digest,
+                             "approval_signature": approval_signature})
 
 
 def register_trading_routes(app, require_local_control):
