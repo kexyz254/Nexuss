@@ -126,6 +126,7 @@ def test_risk_trip_does_not_invite_code_repair(tmp_path, reason, label):
                     "retrieved_at": "2026-09-27T17:42:31+00:00"}
     text, _ = investigate("owner", RiskTrip, source, store=InvestigationStore(tmp_path / "db"))
     assert label in text and "financial risk limit" in text
+    assert "Risk / assessment: partial" in text
     assert "You can ask 'prepare a repair'" not in text
 
 
