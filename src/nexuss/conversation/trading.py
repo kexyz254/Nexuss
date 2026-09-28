@@ -168,6 +168,24 @@ def handle_trading_chat(
         return TradingReply("I can investigate TAS and prepare a bounded, tested code repair if evidence supports one. "
                             "Trade execution and breaker reset remain with TAS and its operator. "
                             "No TAS action was taken.")
+    account_topic = re.search(r"\b(account|capital|balance|cash|transfer|withdrawal|deposit|spending|flows?)\b", normalized)
+    account_action = re.search(r"\b(audit|analyze|analyse|inspect|check|show|investigate|explain)\b", normalized)
+    if account_topic and account_action:
+        asserted = re.sub(r"\b(?:do not|don't|never)\s+(?:reset|restart|deploy|buy|sell|place|cancel|execute|modify)\b", "", normalized)
+        if re.search(r"\b(reset|restart|deploy|buy|sell|place|cancel|execute|modify)\b", asserted):
+            return TradingReply("TAS account audit is read-only. Ask for the audit separately; reset, deployment and trades are not connected to this chat action. No TAS change made.")
+        if re.search(r"\b(do not|don't|never)\s+(audit|analyze|analyse|inspect|check|show)\b", normalized):
+            return TradingReply("No TAS account evidence was read because this request prohibited it. No TAS change made.")
+        if not owner:
+            return TradingReply("Open an authenticated Nexuss conversation to audit TAS account movements.")
+        from .tas_account_audit import audit_account_flows
+        from .tas_workflow import InvestigationStore
+        try:
+            store = workflow_store or InvestigationStore()
+            result, calls, blocked = audit_account_flows(client_factory, owner=owner, store=store)
+            return TradingReply(result, calls, workflow=True, blocked=blocked)
+        except Exception:  # noqa: BLE001 - bridge errors may contain credentials
+            return TradingReply("TAS account audit unavailable. No TAS change made.", workflow=True, blocked=True)
     # Natural repair requests start the bounded investigation. Explicit
     # execution/reset/deployment requests retain the separate mutation guard.
     repair_intent = (bool(re.search(r"\b(fix|repair|resolve|restore)\b", normalized))
