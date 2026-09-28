@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import os
 import hashlib
 import hmac
+import os
 import re
 import sqlite3
 import time
@@ -12,7 +12,6 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from nexuss.interactions.progress import emit
-
 
 REPOSITORY = "kexyz254/trading-analysis-platform"
 REQUIRED_CI = frozenset({"Python Tests", "Docker Build",
