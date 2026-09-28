@@ -184,7 +184,7 @@ def handle_trading_chat(
             store = workflow_store or InvestigationStore()
             result, calls, blocked = audit_account_flows(client_factory, owner=owner, store=store)
             return TradingReply(result, calls, workflow=True, blocked=blocked)
-        except Exception:
+        except Exception:  # noqa: BLE001 - bridge errors may contain credentials
             return TradingReply("TAS account audit unavailable. No TAS change made.", workflow=True, blocked=True)
     # Natural repair requests start the bounded investigation. Explicit
     # execution/reset/deployment requests retain the separate mutation guard.
