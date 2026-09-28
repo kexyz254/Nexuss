@@ -137,6 +137,45 @@ def handle_trading_chat(
         return TradingReply(describe_roles())
     if not re.search(r"\b(tas|ats|trading analysis (?:system|platform))\b", normalized):
         return None
+    dashboard_topic = bool(re.search(r"\b(dashboard|web interface|web ui)\b", normalized))
+    dashboard_action = re.search(r"\b(diagnose|diagnostics|check|restore|recover|restart|heal)\b", normalized)
+    if dashboard_topic and dashboard_action:
+        denied = re.search(r"\b(do not|don't|never)\s+(?:restart|restore|recover|heal|check|diagnose)\b", normalized)
+        if denied:
+            return TradingReply("The requested TAS dashboard action is prohibited by your instruction. No operation was sent.")
+        if re.search(r"\b(engine|breaker|trade|order|strategy|deploy)\b", normalized):
+            return TradingReply("The dashboard operation cannot change the TAS engine, breaker, trades, or deployment. Ask for dashboard diagnostics separately.")
+        if not owner:
+            return TradingReply("An authenticated Nexuss conversation is required for TAS maintenance.")
+        operation = ("restart_dashboard" if re.search(r"\b(restore|recover|restart|heal)\b", normalized)
+                     else "diagnostics")
+        try:
+            receipt = client_factory().maintenance(operation)
+            if (not isinstance(receipt, dict) or receipt.get("operation") != operation
+                    or receipt.get("status") not in {"healthy", "unhealthy", "healthy_noop",
+                                                     "restarted_verified", "restarted_unverified",
+                                                     "restart_failed", "reserved"}
+                    or not re.fullmatch(r"[0-9a-f]{32}", str(receipt.get("request_id", "")))
+                    or type(receipt.get("verified")) is not bool):
+                raise ValueError("Invalid TAS receipt")
+            status = receipt["status"]
+            explanation = {
+                "healthy": "Dashboard readiness passed. No restart was performed.",
+                "unhealthy": "Dashboard readiness failed. No restart was performed.",
+                "healthy_noop": "Dashboard is ready; the executor did not restart it.",
+                "restarted_verified": "Dashboard was restarted and readiness passed afterward.",
+                "restarted_unverified": "Dashboard was restarted, but readiness has not recovered.",
+                "restart_failed": "The dashboard restart failed; readiness remains unverified.",
+                "reserved": "The command was reserved but no completion receipt exists; do not retry it with a new ID without inspection.",
+            }[status]
+            return TradingReply(f"TAS dashboard operation {receipt['request_id']}: {explanation} "
+                                "The engine and trading controls were not targeted.", 1,
+                                workflow=True, blocked=status in {"unhealthy", "restarted_unverified",
+                                                                  "restart_failed", "reserved"})
+        except Exception:  # noqa: BLE001 - never leak bridge paths, tokens or logs
+            return TradingReply("TAS dashboard maintenance is unavailable or its result could not be verified. "
+                                "Check the managed connection and executor status; no successful restart is claimed.",
+                                workflow=True, blocked=True)
     if (re.match(r"^(?:hey )?why\b", normalized)
             and re.search(r"\b(fix|repair)\b", normalized)):
         from .tas_workflow import InvestigationStore
