@@ -16,4 +16,4 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -e '.[dev]'
-      - run: pytest -q tests/conversation/test_tas_dashboard_maintenance.py tests/conversation/test_trading_chat.py tests/connectors/test_trading.py
+      - run: pytest --noconftest --import-mode=importlib -q tests/conversation/test_tas_dashboard_maintenance.py tests/conversation/test_trading_chat.py tests/connectors/test_trading.py
