@@ -1,0 +1,19 @@
+name: P6.29 TAS Dashboard Maintenance
+on:
+  pull_request:
+    paths:
+      - 'src/nexuss/connectors/trading.py'
+      - 'src/nexuss/conversation/trading.py'
+      - 'tests/conversation/test_tas_dashboard_maintenance.py'
+      - '.github/workflows/p629-tas-dashboard-maintenance.yml'
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -e '.[dev]'
+      - run: pytest --noconftest --import-mode=importlib -q tests/conversation/test_tas_dashboard_maintenance.py tests/conversation/test_trading_chat.py tests/connectors/test_trading.py

@@ -51,6 +51,7 @@ class TradingClient:
     def request(self, method, target, payload=None):
         allowed = (method == "GET" and target.startswith("/agent/v1/evidence/")) or (
             method == "POST" and target == "/agent/v1/feedback") or (
+            method == "POST" and target in {"/agent/v1/ops/diagnostics", "/agent/v1/ops/restart_dashboard"}) or (
             method == "GET" and target in {"/agent/v1/capabilities", "/agent/v1/worker/status"}) or (
             method == "GET" and target.startswith("/agent/v1/observations?"))
         if not allowed:
@@ -64,7 +65,8 @@ class TradingClient:
         signature = hmac.new(self.secret, message, hashlib.sha256).hexdigest()
         headers = {"X-Nexuss-Time": timestamp, "X-Nexuss-Nonce": nonce,
                    "X-Nexuss-Signature": signature, "Content-Type": "application/json"}
-        with httpx.Client(timeout=15, trust_env=False, follow_redirects=False,
+        with httpx.Client(timeout=100 if target.startswith("/agent/v1/ops/") else 15,
+                          trust_env=False, follow_redirects=False,
                           transport=self.transport) as client:
             with client.stream(method, self.url + target, headers=headers, content=body) as response:
                 response.raise_for_status()
@@ -84,6 +86,12 @@ class TradingClient:
         if type(after) is not int or after < 0 or type(limit) is not int or not 1 <= limit <= 100:
             raise ValueError("Invalid observation cursor or limit")
         return self.request("GET", "/agent/v1/observations?" + urlencode({"after": after, "limit": limit}))
+
+    def maintenance(self, operation):
+        if operation not in {"diagnostics", "restart_dashboard"}:
+            raise ValueError("Unsupported TAS maintenance operation")
+        return self.request("POST", "/agent/v1/ops/" + operation,
+                            {"request_id": str(uuid.uuid4())})
 
 
 def register_trading_routes(app, require_local_control):
