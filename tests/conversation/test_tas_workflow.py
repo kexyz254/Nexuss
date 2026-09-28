@@ -130,6 +130,24 @@ def test_risk_trip_does_not_invite_code_repair(tmp_path, reason, label):
     assert "You can ask 'prepare a repair'" not in text
 
 
+def test_drawdown_claim_is_checked_without_claiming_valuation_is_verified(tmp_path):
+    class RecordedDrawdown(Evidence):
+        def evidence(self, resource):
+            if resource == "incident":
+                return {"data": {"reason_code": "max_drawdown", "event_at": "2026-09-07T12:02:09+00:00",
+                                 "reported_peak_equity": 12345.00, "reported_current_equity": 10826.56,
+                                 "reported_drawdown_pct": 12.3, "configured_limit_pct": 10.0},
+                        "retrieved_at": "2026-09-28T05:10:03+00:00"}
+            return {"data": {"score": 40, "circuit_breaker_tripped": True, "staleness_seconds": 120},
+                    "retrieved_at": "2026-09-28T05:10:03+00:00"}
+    text, _ = investigate("owner", RecordedDrawdown, source, store=InvestigationStore(tmp_path / "db"))
+    assert "peak equity 12345.00" in text
+    assert "configured limit 10.0%" in text
+    assert "approximately agree" in text
+    assert "does not verify the underlying valuation" in text
+    assert "Risk / assessment: partial" in text
+
+
 def test_connection_failure_is_actionable_without_leaking_details(tmp_path):
     class Disconnected:
         def evidence(self, resource):

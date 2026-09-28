@@ -107,8 +107,15 @@ def normalize_incident(envelope):
     reason = data.get("reason_code")
     if reason not in {"execution_errors", "daily_loss_limit", "max_drawdown", "other", "no_event"}:
         raise ValueError("Unknown incident schema")
+    values = {}
+    if reason == "max_drawdown":
+        for name, cap in (("reported_drawdown_pct", 1000), ("configured_limit_pct", 1000),
+                          ("reported_peak_equity", 1e15), ("reported_current_equity", 1e15)):
+            number = _finite(data.get(name))
+            values[name] = number if number is not None and 0 <= number <= cap else None
     return {"reason_code": reason, "event_at": _date(data.get("event_at")),
-            "error_count": _finite(data.get("error_count")), "retrieved_at": _date(envelope.get("retrieved_at"))}
+            "error_count": _finite(data.get("error_count")), "retrieved_at": _date(envelope.get("retrieved_at")),
+            **values}
 
 
 def normalize_source(info):
@@ -197,6 +204,18 @@ def investigate(owner, client_factory, inspect_source, *, store=None, run_id=Non
         lines.append("Latest journal event reports a daily loss limit breach. This is a financial safety hold, not evidence of a code defect; review the accounting and limits before any operator decision.")
     elif incident.get("reason_code") == "max_drawdown":
         lines.append("Latest journal event reports a maximum drawdown breach. This is a financial safety hold, not evidence of a code defect; review equity evidence before any operator decision.")
+        peak = incident.get("reported_peak_equity")
+        current = incident.get("reported_current_equity")
+        claimed = incident.get("reported_drawdown_pct")
+        limit = incident.get("configured_limit_pct")
+        if all(v is not None for v in (peak, current, claimed, limit)):
+            lines.append(f"At the event, the journal reported peak equity {peak:.2f}, current equity {current:.2f}, drawdown {claimed:.1f}%, and configured limit {limit:.1f}%. These figures came from the recorded trip reason, not a verified account snapshot.")
+            if peak >= 100 and current <= peak and abs((peak - current) / peak * 100 - claimed) <= 0.11:
+                lines.append("The reported peak and current values approximately agree with the reported drawdown after rounding. This does not verify the underlying valuation, ownership accounting, or configured risk limit.")
+            else:
+                lines.append("The event's numeric claim cannot be independently reconciled from this evidence. Inspect the deployed equity calculation and source records.")
+        else:
+            lines.append("Recorded drawdown amounts and limit are unavailable; an equity review is required before concluding why the hold occurred.")
     elif incident.get("reason_code") == "other":
         lines.append("Latest journal event has a reason outside the supported structured categories; cause remains unresolved.")
     elif incident.get("reason_code") == "no_event":
