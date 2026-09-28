@@ -7,7 +7,6 @@ import pytest
 from nexuss.conversation import tas_release
 from nexuss.conversation.trading import handle_trading_chat
 
-
 COMMIT = "a" * 40
 IMAGE = "sha256:" + "b" * 64
 DIGEST = "c" * 64
