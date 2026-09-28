@@ -137,6 +137,42 @@ def handle_trading_chat(
         return TradingReply(describe_roles())
     if not re.search(r"\b(tas|ats|trading analysis (?:system|platform))\b", normalized):
         return None
+    if (re.match(r"^(?:hey )?why\b", normalized)
+            and re.search(r"\b(fix|repair)\b", normalized)):
+        from .tas_workflow import InvestigationStore
+        try:
+            store = workflow_store or InvestigationStore()
+            last = store.latest(owner) if owner else None
+            steps = store.get(last, owner) if last else {}
+            incident = steps.get("Research / incident", {}).get("data", {})
+            reason = incident.get("reason_code")
+            if reason in {"daily_loss_limit", "max_drawdown"}:
+                return TradingReply(
+                    f"Latest TAS investigation {last} found a {reason.replace('_', ' ')} safety trip "
+                    f"recorded at {incident.get('event_at') or 'an unknown time'}. "
+                    "The recorded trigger is not proof of a code defect. Nexuss needs the "
+                    "underlying equity/accounting evidence before proposing a repair; "
+                    "clearing the financial hold requires a separate operator decision. "
+                    "No TAS action was taken.")
+            if reason in {"other", "no_event"}:
+                return TradingReply(
+                    f"Latest TAS investigation {last} did not identify a supported trip trigger. "
+                    "A code repair would be speculative until incident evidence is available. "
+                    "No TAS action was taken.")
+        except Exception:
+            return TradingReply(
+                "The latest TAS investigation receipt is unavailable in this conversation. "
+                "I cannot verify the recorded trigger from prior evidence. "
+                "Ask me to investigate TAS again to collect fresh evidence. "
+                "No TAS action was taken.")
+        return TradingReply("I can investigate TAS and prepare a bounded, tested code repair if evidence supports one. "
+                            "Trade execution and breaker reset remain with TAS and its operator. "
+                            "No TAS action was taken.")
+    # Natural repair requests start the bounded investigation. Explicit
+    # execution/reset/deployment requests retain the separate mutation guard.
+    repair_intent = (bool(re.search(r"\b(fix|repair|resolve|restore)\b", normalized))
+                     and not re.search(r"\b(do not|don't|never)\s+(fix|repair|resolve|restore)\b", normalized)
+                     and not re.search(r"\b(buy|sell|place|cancel|execute|reset|restart|deploy)\b", normalized))
     # These operations are strictly reads even if a constraint mentions reset or
     # restart. Do not send those words through the generic mutation-word guard.
     read_requested = re.search(r"\b(check|show|read)\b", normalized)
@@ -145,7 +181,7 @@ def handle_trading_chat(
     health_requested = bool(re.search(r"\bhealth\b", normalized))
     if read_forbidden and (connection_requested or health_requested):
         return TradingReply("No TAS read was performed because your instruction prohibits checking or reading it. No TAS changes were made.")
-    if read_requested and not read_forbidden and (connection_requested or health_requested) and not re.search(r"\b(investigate|investigation|diagnose|debug|troubleshoot)\b", normalized):
+    if read_requested and not read_forbidden and (connection_requested or health_requested) and not repair_intent and not re.search(r"\b(investigate|investigation|diagnose|debug|troubleshoot)\b", normalized):
         from .tas_connection import check_connection
         result, calls, blocked = check_connection(client_factory,
             connection=connection_requested, health=health_requested)
@@ -174,7 +210,7 @@ def handle_trading_chat(
             return TradingReply(result, workflow=True, blocked=repair_blocked(store, repair_match[1], owner))
         except Exception:
             return TradingReply("Investigation unavailable in this conversation. No TAS changes made.", workflow=True, blocked=True)
-    if re.search(r"\b(investigate|investigation|diagnose|debug|troubleshoot)\b", normalized) or (
+    if repair_intent or re.search(r"\b(investigate|investigation|diagnose|debug|troubleshoot)\b", normalized) or (
         re.search(r"\b(why|what caused|find the cause|figure out)\b", normalized)
         and re.search(r"\b(breaker|tripped|unhealthy|failing|failure|stopped)\b", normalized)
     ):
@@ -195,6 +231,7 @@ def handle_trading_chat(
             steps = store.get(run_id, owner)
             blocked = any(steps[name]["status"] != "completed" for name in (
                 "Maintenance / health", "Research / incident", "Engineering / source"))
+            blocked = blocked or steps.get("Risk / assessment", {}).get("status") != "completed"
             if re.search(r"\b(repair|fix)\b", normalized) and proposer_factory is not None:
                 blocked = blocked or repair_blocked(store, run_id, owner)
             return TradingReply(result, calls, workflow=True, blocked=blocked)

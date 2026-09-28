@@ -148,6 +148,44 @@ def test_drawdown_claim_is_checked_without_claiming_valuation_is_verified(tmp_pa
     assert "Risk / assessment: partial" in text
 
 
+def test_natural_repair_request_investigates_and_why_question_answers(tmp_path):
+    class RiskEvidence(Evidence):
+        def evidence(self, resource):
+            self.calls.append(resource)
+            if resource == "incident":
+                return {"data": {"reason_code": "max_drawdown", "event_at": "2026-09-07T12:02:09+00:00"},
+                        "retrieved_at": "2026-09-28T05:10:03+00:00"}
+            return {"data": {"score": 40, "circuit_breaker_tripped": True, "staleness_seconds": 120},
+                    "retrieved_at": "2026-09-28T05:10:03+00:00"}
+    store = InvestigationStore(tmp_path / "db")
+    client = RiskEvidence()
+    reply = handle_trading_chat("lets fix ATS", owner="owner", workflow_store=store,
+                                client_factory=lambda: client, inspect_source=source)
+    assert reply.workflow and reply.blocked
+    assert "financial risk limit" in reply.text
+    assert client.calls == ["health", "incident"]
+
+    answer = handle_trading_chat("hey why cant you repair ATS", owner="owner", workflow_store=store,
+                                 client_factory=lambda: pytest.fail("Unrequested TAS read"))
+    assert not answer.workflow
+    assert "max drawdown safety trip" in answer.text
+    assert "No TAS action was taken" in answer.text
+    assert client.calls == ["health", "incident"]
+
+
+def test_why_repair_receipt_failure_does_not_invent_a_cause():
+    class UnavailableStore:
+        def latest(self, owner):
+            raise ValueError("secret=must-not-appear")
+
+    answer = handle_trading_chat("why can't you repair ATS", owner="owner",
+                                 workflow_store=UnavailableStore(),
+                                 client_factory=lambda: pytest.fail("Unrequested TAS read"))
+    assert "receipt is unavailable" in answer.text
+    assert "cannot verify the recorded trigger" in answer.text
+    assert "secret" not in answer.text
+
+
 def test_connection_failure_is_actionable_without_leaking_details(tmp_path):
     class Disconnected:
         def evidence(self, resource):
