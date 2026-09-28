@@ -137,6 +137,39 @@ def handle_trading_chat(
         return TradingReply(describe_roles())
     if not re.search(r"\b(tas|ats|trading analysis (?:system|platform))\b", normalized):
         return None
+    release_approval = re.fullmatch(
+        r"approve (?:tas|ats) dashboard release ([0-9a-f]{32}) ([0-9a-f]{64})[.!]?",
+        normalized,
+    )
+    if release_approval:
+        if not owner:
+            return TradingReply("Authenticated owner approval is required; no release was sent.")
+        from .tas_release import apply_release
+        try:
+            reply, blocked = apply_release(owner, release_approval[1], release_approval[2],
+                                           client_factory)
+            return TradingReply(reply, 1, workflow=True, blocked=blocked)
+        except Exception:  # noqa: BLE001 - never display release secrets or internals
+            return TradingReply("TAS release approval or deployment could not be verified. "
+                                "Inspect the release receipt before retrying; no successful "
+                                "deployment is claimed.", workflow=True, blocked=True)
+    release_prepare = re.search(
+        r"\b(?:prepare|build|deploy)\b.*\b(?:dashboard|price.call tracker)\b"
+        r".*\b(?:commit|revision)\s+([0-9a-f]{40})\b", normalized,
+    )
+    if release_prepare:
+        if re.search(r"\b(do not|don't|never)\s+(?:prepare|build|deploy)\b", normalized):
+            return TradingReply("No TAS release was prepared because your instruction prohibits it.")
+        if not owner:
+            return TradingReply("Open an authenticated Nexuss conversation to prepare a TAS release.")
+        from .tas_release import prepare_release
+        try:
+            return TradingReply(prepare_release(owner, release_prepare[1], client_factory),
+                                2, workflow=True)
+        except Exception:  # noqa: BLE001 - external source and executor errors
+            return TradingReply("TAS dashboard release preparation is blocked. Verify exact "
+                                "commit CI, bridge connection, host executor and disk space. "
+                                "No build or deployment occurred.", workflow=True, blocked=True)
     if (re.search(r"\b(price[ -]?calls?|price predictions?|forecasts?)\b", normalized)
             and re.search(r"\b(results?|track(?:er|ing)?|accuracy|outcomes?|performance)\b", normalized)
             and re.search(r"\bbtc\b", normalized)):
