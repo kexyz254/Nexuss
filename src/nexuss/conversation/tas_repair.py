@@ -167,6 +167,13 @@ def prepare_repair(store, run_id, owner, proposer_factory, *, loader=load_repair
     if (source.get("status") != "completed" or incident.get("status") != "completed"
             or steps.get("Maintenance / health", {}).get("status") != "completed"):
         return "Repair preparation blocked: complete the health, incident and source evidence steps first."
+    if incident["data"].get("reason_code") in {"daily_loss_limit", "max_drawdown"}:
+        return ("Repair preparation blocked: this breaker event is a financial risk limit. "
+                "Review the financial evidence and retain the safety hold; code repair cannot clear it.")
+    if (steps["Maintenance / health"]["data"].get("breaker_tripped") is True
+            and incident["data"].get("reason_code") != "execution_errors"):
+        return ("Repair preparation blocked: the bridge has not identified the active breaker trip trigger. "
+                "Inspect deployed TAS incident evidence locally; an unclassified journal reason does not justify a code patch.")
     try:
         for name in ("Maintenance / health", "Research / incident"):
             stamp = datetime.fromisoformat(steps[name]["data"]["retrieved_at"])

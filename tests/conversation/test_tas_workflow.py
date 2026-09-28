@@ -97,6 +97,39 @@ def test_invalid_evidence_does_not_complete_step(tmp_path):
     assert "Research / incident: blocked" in text
 
 
+def test_unclassified_trip_keeps_assessment_partial_and_reports_event_time(tmp_path):
+    class Unclassified(Evidence):
+        def evidence(self, resource):
+            if resource == "incident":
+                return {"data": {"reason_code": "other", "event_at": "2026-09-27T17:42:00+00:00"},
+                        "retrieved_at": "2026-09-27T17:42:31+00:00"}
+            return {"data": {"score": 40, "circuit_breaker_tripped": True, "staleness_seconds": 120},
+                    "retrieved_at": "2026-09-27T17:42:31+00:00"}
+    store = InvestigationStore(tmp_path / "db")
+    text, _ = investigate("owner", Unclassified, source, store=store)
+    assert "Research / incident: completed" in text
+    assert "Risk / assessment: partial" in text
+    assert "Latest recorded breaker event: 2026-09-27T17:42:00+00:00" in text
+    assert "Repair preparation is blocked" in text
+    assert "You can ask 'prepare a repair'" not in text
+
+
+@pytest.mark.parametrize("reason,label", [("daily_loss_limit", "daily loss limit"),
+                                         ("max_drawdown", "maximum drawdown")])
+def test_risk_trip_does_not_invite_code_repair(tmp_path, reason, label):
+    class RiskTrip(Evidence):
+        def evidence(self, resource):
+            if resource == "incident":
+                return {"data": {"reason_code": reason, "event_at": "2026-09-27T17:42:00+00:00"},
+                        "retrieved_at": "2026-09-27T17:42:31+00:00"}
+            return {"data": {"score": 40, "circuit_breaker_tripped": True, "staleness_seconds": 120},
+                    "retrieved_at": "2026-09-27T17:42:31+00:00"}
+    text, _ = investigate("owner", RiskTrip, source, store=InvestigationStore(tmp_path / "db"))
+    assert label in text and "financial risk limit" in text
+    assert "Risk / assessment: partial" in text
+    assert "You can ask 'prepare a repair'" not in text
+
+
 def test_connection_failure_is_actionable_without_leaking_details(tmp_path):
     class Disconnected:
         def evidence(self, resource):
