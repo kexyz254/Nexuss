@@ -85,6 +85,30 @@ def test_isolation_failure_prevents_provider_call(tmp_path):
     assert "do-not-display" not in json.dumps(store.get(run_id, "owner"))
 
 
+def test_unclassified_active_trip_never_reaches_provider_or_validator(tmp_path):
+    store, run_id = setup_run(tmp_path)
+    now = datetime.now(timezone.utc).isoformat()
+    store.save(run_id, "owner", "Maintenance / health", "completed",
+               {"score": 40, "breaker_tripped": True, "retrieved_at": now})
+    store.save(run_id, "owner", "Research / incident", "completed",
+               {"reason_code": "other", "retrieved_at": now})
+    result = prepare_repair(store, run_id, "owner", lambda: pytest.fail("provider called"),
+                            validator_factory=lambda: pytest.fail("validator called"))
+    assert "trip trigger" in result
+    assert "Engineering / candidate" not in store.get(run_id, "owner")
+
+
+@pytest.mark.parametrize("reason", ["daily_loss_limit", "max_drawdown"])
+def test_financial_risk_trip_never_reaches_code_proposer(tmp_path, reason):
+    store, run_id = setup_run(tmp_path)
+    now = datetime.now(timezone.utc).isoformat()
+    store.save(run_id, "owner", "Research / incident", "completed",
+               {"reason_code": reason, "retrieved_at": now})
+    result = prepare_repair(store, run_id, "owner", lambda: pytest.fail("provider called"))
+    assert "financial risk limit" in result
+    assert "Engineering / candidate" not in store.get(run_id, "owner")
+
+
 def test_validation_requires_baseline_failure_and_candidate_success(tmp_path):
     root = tmp_path / "snapshot"
     for path in (SOURCE, EXISTING_TEST):
