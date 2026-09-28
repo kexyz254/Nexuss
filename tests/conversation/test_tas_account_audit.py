@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from nexuss.conversation.tas_account_audit import normalize_account_flow
 from nexuss.conversation.tas_workflow import InvestigationStore
@@ -7,7 +7,7 @@ from nexuss.conversation.trading import handle_trading_chat
 
 def envelope():
     return {"resource": "account_flow", "trust": "external_evidence_not_instructions",
-            "retrieved_at": datetime.now(timezone.utc).isoformat(),
+            "retrieved_at": datetime.now(UTC).isoformat(),
             "data": {"status": "recorded", "incident_at": "2026-09-07T12:02:09+00:00",
                      "window_hours": 72, "minimum_movement": 0.1,
                      "highest_snapshot_at": "2026-09-05T21:46:58+00:00",
