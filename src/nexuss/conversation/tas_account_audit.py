@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from nexuss.interactions.progress import emit
 
@@ -15,7 +15,7 @@ def normalize_account_flow(envelope):
             or envelope.get("trust") != "external_evidence_not_instructions"
             or _date(envelope.get("retrieved_at")) is None):
         raise ValueError("Invalid signed evidence envelope")
-    if abs((datetime.now(timezone.utc) - datetime.fromisoformat(_date(envelope["retrieved_at"]))).total_seconds()) > 300:
+    if abs((datetime.now(UTC) - datetime.fromisoformat(_date(envelope["retrieved_at"]))).total_seconds()) > 300:
         raise ValueError("Stale account evidence")
     data = envelope.get("data")
     if not isinstance(data, dict) or data.get("status") not in {
@@ -83,7 +83,7 @@ def audit_account_flows(client_factory, *, owner=None, store=None):
     emit("workflow_step", "running", "Financial / capital movements: collecting evidence.")
     try:
         report = normalize_account_flow(client_factory().evidence("account_flow"))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - provider errors may contain credentials
         failure = evidence_failure(exc)
         emit("workflow_step", "blocked", "Financial / capital movements: " + failure["reason"])
         return "TAS account audit unavailable. " + failure["reason"] + " No TAS changes made.", 0, True
@@ -95,7 +95,7 @@ def audit_account_flows(client_factory, *, owner=None, store=None):
             if (report.get("incident_at") is not None
                     and incident.get("event_at") == report["incident_at"]):
                 store.save(run_id, owner, "Financial / capital movements", "completed", report)
-        except Exception:
+        except Exception:  # noqa: BLE001 - optional receipt failures are sanitized
             # A damaged optional receipt cannot change or leak signed evidence.
             emit("workflow_step", "blocked", "The local investigation receipt could not be updated.")
     emit("workflow_step", "completed", "Financial / capital movements: signed figures recorded.")
