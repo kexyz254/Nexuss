@@ -160,7 +160,11 @@ def handle_trading_chat(
                     "A code repair would be speculative until incident evidence is available. "
                     "No TAS action was taken.")
         except Exception:
-            pass
+            return TradingReply(
+                "The latest TAS investigation receipt is unavailable in this conversation. "
+                "I cannot verify the recorded trigger from prior evidence. "
+                "Ask me to investigate TAS again to collect fresh evidence. "
+                "No TAS action was taken.")
         return TradingReply("I can investigate TAS and prepare a bounded, tested code repair if evidence supports one. "
                             "Trade execution and breaker reset remain with TAS and its operator. "
                             "No TAS action was taken.")
