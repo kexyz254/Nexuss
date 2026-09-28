@@ -173,6 +173,19 @@ def test_natural_repair_request_investigates_and_why_question_answers(tmp_path):
     assert client.calls == ["health", "incident"]
 
 
+def test_why_repair_receipt_failure_does_not_invent_a_cause():
+    class UnavailableStore:
+        def latest(self, owner):
+            raise ValueError("secret=must-not-appear")
+
+    answer = handle_trading_chat("why can't you repair ATS", owner="owner",
+                                 workflow_store=UnavailableStore(),
+                                 client_factory=lambda: pytest.fail("Unrequested TAS read"))
+    assert "receipt is unavailable" in answer.text
+    assert "cannot verify the recorded trigger" in answer.text
+    assert "secret" not in answer.text
+
+
 def test_connection_failure_is_actionable_without_leaking_details(tmp_path):
     class Disconnected:
         def evidence(self, resource):
