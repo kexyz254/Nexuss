@@ -166,7 +166,10 @@ def investigate(owner, client_factory, inspect_source, *, store=None, run_id=Non
         issues.append("The bridge did not identify the trip trigger; inspect the deployed TAS incident locally before proposing a repair.")
     issues.append("Repository snapshot has not been matched to the deployed source and local configuration.")
     evidence_complete = all(steps[name]["status"] == "completed" for name, _ in tasks)
-    assessment_complete = evidence_complete and (health.get("breaker_tripped") is not True or trigger_identified)
+    # A recognized risk limit identifies the trigger, but no accounting or
+    # equity evidence has been checked here. Keep that assessment partial.
+    assessment_complete = evidence_complete and (health.get("breaker_tripped") is not True
+                                                or incident.get("reason_code") == "execution_errors")
     emit("workflow_assessment", "running", "Assessing evidence gaps and operational risk; a tripped flag alone does not establish a software defect.")
     store.save(run_id, owner, "Risk / assessment", "completed" if assessment_complete else "partial", {"findings": issues})
     store.save(run_id, owner, "Security / boundary", "completed", {
@@ -206,8 +209,8 @@ def investigate(owner, client_factory, inspect_source, *, store=None, run_id=Non
     lines.append("Evidence collection alone establishes no defect and tests no patch. No TAS changes made.")
     if assessment_complete and incident.get("reason_code") == "execution_errors":
         lines.append("The evidence is collected. You can ask 'prepare a repair' in this conversation. AI consent and an isolated test image are required; deployment is not connected yet.")
-    elif assessment_complete:
-        lines.append("The trip trigger is a financial risk limit. Review the underlying financial evidence; code repair preparation cannot clear this hold. No breaker reset was requested.")
+    elif evidence_complete and trigger_identified:
+        lines.append("The trip trigger is a financial risk limit. The financial cause is not verified; review the underlying financial evidence. Code repair preparation cannot clear this hold. No breaker reset was requested.")
     elif evidence_complete:
         lines.append("All requested reads succeeded, but the trip trigger is unclassified. Repair preparation is blocked. Inspect the deployed TAS journal and relevant failures locally, then start a fresh investigation with structured evidence.")
     else:
