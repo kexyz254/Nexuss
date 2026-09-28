@@ -137,6 +137,42 @@ def handle_trading_chat(
         return TradingReply(describe_roles())
     if not re.search(r"\b(tas|ats|trading analysis (?:system|platform))\b", normalized):
         return None
+    if (re.search(r"\b(price[ -]?calls?|price predictions?|forecasts?)\b", normalized)
+            and re.search(r"\b(results?|track(?:er|ing)?|accuracy|outcomes?|performance)\b", normalized)
+            and re.search(r"\bbtc\b", normalized)):
+        if re.search(r"\b(do not|don't|never)\s+(?:check|show|track|inspect|read)\b", normalized):
+            return TradingReply("I did not read TAS price-call results because you asked me not to.")
+        if not owner:
+            return TradingReply("An authenticated Nexuss conversation is required to inspect TAS outcomes.")
+        try:
+            evidence = client_factory().evidence("btc_price_results")
+            data = evidence["data"]
+            if evidence.get("resource") != "btc_price_results" or data.get("symbol") != "BTC/USDT":
+                raise ValueError("Unexpected TAS evidence")
+            if data.get("status") == "no_analytics_db":
+                return TradingReply("TAS price-call ledger is unavailable; no accuracy claim can be made.",
+                                    1, workflow=True, blocked=True)
+            if data.get("status") != "available":
+                raise ValueError("Unknown tracker status")
+            lines = ["TAS BTC/USDT paper price-call outcomes (no exchange orders)."]
+            for horizon in ("5m", "15m"):
+                summary = data["horizons"][horizon]["last_24h"]
+                if not (type(summary["directional"]) is int and type(summary["hits"]) is int
+                        and 0 <= summary["hits"] <= summary["directional"]):
+                    raise ValueError("Invalid outcome counts")
+                count = summary["directional"]
+                rate = f"{100 * summary['hits'] / count:.1f}%" if count else "unavailable"
+                sample = "sufficient" if summary["sample_sufficient"] is True else "below 100 calls"
+                lines.append(f"{horizon}: last 24h {summary['hits']}/{count} correct directional calls "
+                             f"({rate}; sample {sample}); "
+                             f"{data['horizons'][horizon]['open']} currently open; "
+                             f"{data['horizons'][horizon]['voided']} voided overall.")
+            lines.append("These are recorded paper-call outcomes, not realized returns. "
+                         "No model, deployment, or trading change was made.")
+            return TradingReply("\n".join(lines), 1, workflow=True)
+        except Exception:  # noqa: BLE001 - bridge and data errors must not leak secrets
+            return TradingReply("BTC price-call results could not be verified from live TAS evidence. "
+                                "No change was made.", workflow=True, blocked=True)
     dashboard_topic = bool(re.search(r"\b(dashboard|web interface|web ui)\b", normalized))
     dashboard_action = re.search(r"\b(diagnose|diagnostics|check|restore|recover|restart|heal)\b", normalized)
     if dashboard_topic and dashboard_action:
