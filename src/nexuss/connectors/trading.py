@@ -78,7 +78,7 @@ class TradingClient:
         return json.loads(raw)
 
     def evidence(self, resource, symbol="BTC/USDT"):
-        if resource not in {"health", "status", "decisions", "incident", "account_flow"}:
+        if resource not in {"health", "status", "decisions", "incident", "account_flow", "btc_price_results"}:
             raise ValueError("Unknown evidence resource")
         return self.request("GET", "/agent/v1/evidence/" + resource + "?" + urlencode({"symbol": symbol}))
 
