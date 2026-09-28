@@ -105,7 +105,7 @@ def normalize_health(envelope):
 def normalize_incident(envelope):
     data = envelope["data"]
     reason = data.get("reason_code")
-    if reason not in {"execution_errors", "other", "no_event"}:
+    if reason not in {"execution_errors", "daily_loss_limit", "max_drawdown", "other", "no_event"}:
         raise ValueError("Unknown incident schema")
     return {"reason_code": reason, "event_at": _date(data.get("event_at")),
             "error_count": _finite(data.get("error_count")), "retrieved_at": _date(envelope.get("retrieved_at"))}
@@ -161,10 +161,14 @@ def investigate(owner, client_factory, inspect_source, *, store=None, run_id=Non
         issues.append("Heartbeat freshness is unverified or stale.")
     if health.get("retrieved_at") and (datetime.now(timezone.utc) - datetime.fromisoformat(health["retrieved_at"])).total_seconds() > 300:
         issues.append("Retained health evidence is older than five minutes; start a new investigation before preparing a repair.")
+    trigger_identified = incident.get("reason_code") in {"execution_errors", "daily_loss_limit", "max_drawdown"}
+    if health.get("breaker_tripped") is True and not trigger_identified:
+        issues.append("The bridge did not identify the trip trigger; inspect the deployed TAS incident locally before proposing a repair.")
     issues.append("Repository snapshot has not been matched to the deployed source and local configuration.")
     evidence_complete = all(steps[name]["status"] == "completed" for name, _ in tasks)
+    assessment_complete = evidence_complete and (health.get("breaker_tripped") is not True or trigger_identified)
     emit("workflow_assessment", "running", "Assessing evidence gaps and operational risk; a tripped flag alone does not establish a software defect.")
-    store.save(run_id, owner, "Risk / assessment", "completed" if evidence_complete else "partial", {"findings": issues})
+    store.save(run_id, owner, "Risk / assessment", "completed" if assessment_complete else "partial", {"findings": issues})
     store.save(run_id, owner, "Security / boundary", "completed", {
         "checks": ["Only typed evidence retained", "No raw exceptions persisted", "No source execution", "No credentials sent to a model"],
         "scope": "Investigation boundary checks only; not a system security audit"})
@@ -182,24 +186,37 @@ def investigate(owner, client_factory, inspect_source, *, store=None, run_id=Non
         lines.append(f"Health: {health['score']}/100.")
     if health.get("retrieved_at"):
         lines.append(f"Health evidence captured: {health['retrieved_at']}. Resume preserves this observation.")
+    if incident.get("event_at"):
+        lines.append(f"Latest recorded breaker event: {incident['event_at']}.")
     if incident.get("reason_code") == "execution_errors":
         lines.append(f"Latest journal event reports consecutive execution errors (count: {incident.get('error_count')}). This identifies the trip trigger, not the underlying execution failure.")
+    elif incident.get("reason_code") == "daily_loss_limit":
+        lines.append("Latest journal event reports a daily loss limit breach. This is a financial safety hold, not evidence of a code defect; review the accounting and limits before any operator decision.")
+    elif incident.get("reason_code") == "max_drawdown":
+        lines.append("Latest journal event reports a maximum drawdown breach. This is a financial safety hold, not evidence of a code defect; review equity evidence before any operator decision.")
     elif incident.get("reason_code") == "other":
         lines.append("Latest journal event has a reason outside the supported structured categories; cause remains unresolved.")
+    elif incident.get("reason_code") == "no_event":
+        lines.append("No breaker event was available in the projected journal evidence; the trip trigger remains unverified.")
     if source.get("commit"):
         lines.append(f"Source commit: {source['commit']}.")
     if source.get("breaker_facts", {}).get("restores_persisted_trip"):
         lines.append("Source inspection found a journal-event read in the breaker restoration method; a restart is not evidence of recovery.")
     lines.extend(issues)
     lines.append("Evidence collection alone establishes no defect and tests no patch. No TAS changes made.")
-    if evidence_complete:
+    if assessment_complete and incident.get("reason_code") == "execution_errors":
         lines.append("The evidence is collected. You can ask 'prepare a repair' in this conversation. AI consent and an isolated test image are required; deployment is not connected yet.")
+    elif assessment_complete:
+        lines.append("The trip trigger is a financial risk limit. Review the underlying financial evidence; code repair preparation cannot clear this hold. No breaker reset was requested.")
+    elif evidence_complete:
+        lines.append("All requested reads succeeded, but the trip trigger is unclassified. Repair preparation is blocked. Inspect the deployed TAS journal and relevant failures locally, then start a fresh investigation with structured evidence.")
     else:
         lines.append("Next: restore the failed evidence connection, then say 'continue the investigation'. Repair preparation is blocked until its evidence prerequisites are met.")
     lines.append("A restart is not a breaker reset. No restart adapter is connected; recovery would require verified repair, an explicit proposed operation, and a post-operation health check.")
     lines.append(f"Run reference: {run_id}. For fresh evidence, ask for a new TAS investigation.")
-    emit("workflow_result", "completed" if evidence_complete else "blocked",
-         "Evidence collection completed; review findings before proposing a repair." if evidence_complete else "Investigation blocked by missing evidence. Restore the failed connection before retrying; no TAS changes were made.")
+    emit("workflow_result", "completed" if assessment_complete else "blocked",
+         "Evidence collection completed; review findings before proposing a repair." if assessment_complete else
+         "Evidence is incomplete or the trip trigger is unclassified; repair preparation remains blocked. No TAS changes were made.")
     if resuming and not evidence_complete:
         reasons = list(dict.fromkeys(steps[name]["data"]["reason"] for name, _ in tasks
                                     if steps[name]["status"] == "blocked"))
