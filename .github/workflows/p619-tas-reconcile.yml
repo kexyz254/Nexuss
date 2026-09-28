@@ -8,6 +8,7 @@ on:
       - 'src/nexuss/connectors/trading.py'
       - 'src/nexuss/conversation/agent_roles.py'
       - 'src/nexuss/conversation/tas_repair.py'
+      - 'src/nexuss/conversation/tas_account_audit.py'
       - 'src/nexuss/conversation/tas_workflow.py'
       - 'src/nexuss/conversation/trading.py'
       - 'src/nexuss/interactions/progress.py'
@@ -20,6 +21,7 @@ on:
       - 'tests/connectors/test_trading.py'
       - 'tests/conversation/test_live_workflow.py'
       - 'tests/conversation/test_tas_repair.py'
+      - 'tests/conversation/test_tas_account_audit.py'
       - 'tests/conversation/test_tas_workflow.py'
       - 'tests/conversation/test_trading_chat.py'
       - '.github/workflows/p619-tas-reconcile.yml'
@@ -43,6 +45,7 @@ jobs:
             src/nexuss/connectors/trading.py \
             src/nexuss/conversation/agent_roles.py \
             src/nexuss/conversation/tas_repair.py \
+            src/nexuss/conversation/tas_account_audit.py \
             src/nexuss/conversation/tas_workflow.py \
             src/nexuss/conversation/trading.py \
             src/nexuss/interactions/progress.py \
@@ -56,6 +59,7 @@ jobs:
             tests/connectors/test_trading.py \
             tests/conversation/test_live_workflow.py \
             tests/conversation/test_tas_repair.py \
+            tests/conversation/test_tas_account_audit.py \
             tests/conversation/test_tas_workflow.py \
             tests/conversation/test_trading_chat.py
       - name: JavaScript syntax
@@ -65,6 +69,7 @@ jobs:
           bandit -q \
             src/nexuss/connectors/trading.py \
             src/nexuss/conversation/tas_repair.py \
+            src/nexuss/conversation/tas_account_audit.py \
             src/nexuss/conversation/tas_workflow.py \
             src/nexuss/conversation/trading.py \
             src/nexuss/interactions/progress.py
