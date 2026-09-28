@@ -137,8 +137,8 @@ def handle_trading_chat(
         return TradingReply(describe_roles())
     if not re.search(r"\b(tas|ats|trading analysis (?:system|platform))\b", normalized):
         return None
-    if (re.search(r"\b(price.call|price prediction|forecast)\b", normalized)
-            and re.search(r"\b(result|track|accuracy|outcome|performance)\b", normalized)
+    if (re.search(r"\b(price[ -]?calls?|price predictions?|forecasts?)\b", normalized)
+            and re.search(r"\b(results?|track(?:er|ing)?|accuracy|outcomes?|performance)\b", normalized)
             and re.search(r"\bbtc\b", normalized)):
         if re.search(r"\b(do not|don't|never)\s+(?:check|show|track|inspect|read)\b", normalized):
             return TradingReply("I did not read TAS price-call results because you asked me not to.")
